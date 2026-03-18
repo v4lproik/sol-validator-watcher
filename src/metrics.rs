@@ -1,4 +1,7 @@
-use crate::collector::{Snapshot, ValidatorStatus, WatchedValidatorMetrics};
+use crate::{
+    collector::{Snapshot, ValidatorStatus, WatchedValidatorMetrics},
+    config::Config,
+};
 use anyhow::{Context, Result};
 use prometheus::{Encoder, GaugeVec, IntGaugeVec, Opts, Registry, TextEncoder};
 
@@ -12,6 +15,8 @@ pub struct Metrics {
     sol_vote_credits_sample_epoch: IntGaugeVec,
     sol_watcher_up: IntGaugeVec,
     sol_rpc_up: IntGaugeVec,
+    sol_ws_up: IntGaugeVec,
+    sol_watcher_config_info: IntGaugeVec,
     sol_validator_status_count: GaugeVec,
     sol_validator_status_stake_sol: GaugeVec,
     sol_activated_stake_sol: GaugeVec,
@@ -65,6 +70,26 @@ impl Metrics {
                 "Whether the last Solana RPC collection succeeded",
             ),
             &["network"],
+        )?;
+        let sol_ws_up = IntGaugeVec::new(
+            Opts::new(
+                "sol_ws_up",
+                "Whether the configured websocket transport probe succeeded",
+            ),
+            &["network"],
+        )?;
+        let sol_watcher_config_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_config_info",
+                "Watcher transport and validator mode configuration",
+            ),
+            &[
+                "network",
+                "transport_mode",
+                "validator_mode",
+                "validator_websocket_enabled",
+                "ws_configured",
+            ],
         )?;
 
         let sol_validator_status_count = GaugeVec::new(
@@ -255,6 +280,8 @@ impl Metrics {
         register(&registry, &sol_vote_credits_sample_epoch)?;
         register(&registry, &sol_watcher_up)?;
         register(&registry, &sol_rpc_up)?;
+        register(&registry, &sol_ws_up)?;
+        register(&registry, &sol_watcher_config_info)?;
         register(&registry, &sol_validator_status_count)?;
         register(&registry, &sol_validator_status_stake_sol)?;
         register(&registry, &sol_activated_stake_sol)?;
@@ -289,6 +316,8 @@ impl Metrics {
             sol_vote_credits_sample_epoch,
             sol_watcher_up,
             sol_rpc_up,
+            sol_ws_up,
+            sol_watcher_config_info,
             sol_validator_status_count,
             sol_validator_status_stake_sol,
             sol_activated_stake_sol,
@@ -329,15 +358,37 @@ impl Metrics {
     }
 
     pub fn set_watcher_up(&self, network: &str, is_up: bool) {
+        self.sol_watcher_up.reset();
         self.sol_watcher_up
             .with_label_values(&[network])
             .set(i64::from(is_up));
     }
 
     pub fn set_rpc_up(&self, network: &str, is_up: bool) {
+        self.sol_rpc_up.reset();
         self.sol_rpc_up
             .with_label_values(&[network])
             .set(i64::from(is_up));
+    }
+
+    pub fn set_ws_up(&self, network: &str, is_up: bool) {
+        self.sol_ws_up.reset();
+        self.sol_ws_up
+            .with_label_values(&[network])
+            .set(i64::from(is_up));
+    }
+
+    pub fn update_runtime_config(&self, config: &Config) {
+        self.sol_watcher_config_info.reset();
+        self.sol_watcher_config_info
+            .with_label_values(&[
+                &config.network,
+                config.transport_mode.as_str(),
+                config.validator_mode.as_str(),
+                bool_label(config.validator_websocket_enabled),
+                bool_label(config.ws_url.is_some()),
+            ])
+            .set(1);
     }
 
     pub fn update_snapshot(&self, snapshot: &Snapshot) {
@@ -351,7 +402,11 @@ impl Metrics {
             .set(snapshot.epoch as i64);
         self.sol_vote_credits_sample_epoch
             .with_label_values(&[&snapshot.network])
-            .set(snapshot.vote_credits_sample_epoch.unwrap_or_default() as i64);
+            .set(
+                snapshot
+                    .vote_credits_sample_epoch
+                    .map_or(0, |epoch| epoch as i64),
+            );
 
         for (scope, metrics) in &snapshot.scopes {
             let network = snapshot.network.as_str();
@@ -520,15 +575,27 @@ fn validator_status_label(status: ValidatorStatus) -> &'static str {
     }
 }
 
+fn bool_label(value: bool) -> &'static str {
+    if value {
+        "true"
+    } else {
+        "false"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Metrics;
-    use crate::collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics};
+    use crate::{
+        collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics},
+        config::{Config, TransportMode, ValidatorMode},
+    };
+    use anyhow::Result;
     use std::collections::BTreeMap;
 
     #[test]
-    fn renders_scoped_and_watched_validator_metrics() {
-        let metrics = Metrics::new().expect("metrics registry");
+    fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
+        let metrics = Metrics::new()?;
         let snapshot = Snapshot {
             network: "mainnet-beta".to_string(),
             epoch: 42,
@@ -576,21 +643,58 @@ mod tests {
 
         metrics.set_watcher_up("mainnet-beta", true);
         metrics.set_rpc_up("mainnet-beta", true);
+        metrics.set_ws_up("mainnet-beta", true);
+        metrics.update_runtime_config(&Config {
+            network: "mainnet-beta".to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            rpc_timeout_sec: 30,
+            transport_mode: TransportMode::PollHttpAndWs,
+            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+            ws_timeout_sec: 10,
+            validator_mode: ValidatorMode::ConsensusAndRpc,
+            validator_websocket_enabled: true,
+            metrics_port: 8000,
+            poll_interval_sec: 15,
+            commitment: "confirmed".to_string(),
+            delinquent_slot_distance: None,
+            liveness_file: None,
+            watched_validators: vec![],
+        });
         metrics.update_snapshot(&snapshot);
-        let rendered = metrics.render().expect("rendered metrics");
+        let rendered = metrics.render()?;
 
+        assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",validator_mode=\"consensus-and-rpc\",validator_websocket_enabled=\"true\",ws_configured=\"true\"} 1"));
+        assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));
         assert!(rendered.contains("sol_watched_validator_info{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_watched_validator_scope_info{identity=\"id-1\",network=\"mainnet-beta\",scope=\"region:sbg\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_watched_validator_activated_stake_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1.5"));
         assert!(rendered.contains("sol_watched_validator_block_production_rate{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 75"));
+
+        Ok(())
     }
 
     #[test]
-    fn reset_removes_stale_watched_validator_metrics() {
-        let metrics = Metrics::new().expect("metrics registry");
+    fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
+        let metrics = Metrics::new()?;
         let network = "mainnet-beta";
 
+        metrics.update_runtime_config(&Config {
+            network: network.to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            rpc_timeout_sec: 30,
+            transport_mode: TransportMode::PollHttpAndWs,
+            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+            ws_timeout_sec: 10,
+            validator_mode: ValidatorMode::Consensus,
+            validator_websocket_enabled: true,
+            metrics_port: 8000,
+            poll_interval_sec: 15,
+            commitment: "confirmed".to_string(),
+            delinquent_slot_distance: None,
+            liveness_file: None,
+            watched_validators: vec![],
+        });
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
             epoch: 1,
@@ -624,8 +728,10 @@ mod tests {
             watched_validators: vec![],
         });
 
-        let rendered = metrics.render().expect("rendered metrics");
+        let rendered = metrics.render()?;
         assert!(!rendered.contains("old-id"));
         assert!(!rendered.contains("old-vote"));
+
+        Ok(())
     }
 }

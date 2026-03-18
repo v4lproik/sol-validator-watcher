@@ -330,32 +330,26 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         .context("getLeaderSchedule for next epoch failed")?;
 
     let matcher = LabelMatcher::from_config(config);
+    let build_context = RecordBuildContext {
+        matcher: &matcher,
+        current_slot,
+        epoch_start_slot,
+        by_identity: &block_production.by_identity,
+        current_schedule: current_schedule.as_ref(),
+        next_schedule: next_schedule.as_ref(),
+    };
     let mut records =
         Vec::with_capacity(vote_accounts.current.len() + vote_accounts.delinquent.len());
 
     for info in vote_accounts.current {
-        records.push(build_record(
-            info,
-            ValidatorStatus::Current,
-            &matcher,
-            current_slot,
-            epoch_start_slot,
-            &block_production.by_identity,
-            current_schedule.as_ref(),
-            next_schedule.as_ref(),
-        ));
+        records.push(build_record(info, ValidatorStatus::Current, &build_context));
     }
 
     for info in vote_accounts.delinquent {
         records.push(build_record(
             info,
             ValidatorStatus::Delinquent,
-            &matcher,
-            current_slot,
-            epoch_start_slot,
-            &block_production.by_identity,
-            current_schedule.as_ref(),
-            next_schedule.as_ref(),
+            &build_context,
         ));
     }
 
@@ -367,35 +361,42 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
     ))
 }
 
+struct RecordBuildContext<'a> {
+    matcher: &'a LabelMatcher,
+    current_slot: u64,
+    epoch_start_slot: u64,
+    by_identity: &'a HashMap<String, (u64, u64)>,
+    current_schedule: Option<&'a HashMap<String, Vec<u64>>>,
+    next_schedule: Option<&'a HashMap<String, Vec<u64>>>,
+}
+
 fn build_record(
     info: VoteAccountInfo,
     status: ValidatorStatus,
-    matcher: &LabelMatcher,
-    current_slot: u64,
-    epoch_start_slot: u64,
-    by_identity: &HashMap<String, (u64, u64)>,
-    current_schedule: Option<&HashMap<String, Vec<u64>>>,
-    next_schedule: Option<&HashMap<String, Vec<u64>>>,
+    context: &RecordBuildContext<'_>,
 ) -> ValidatorRecord {
-    let (leader_slots, blocks_produced) = by_identity
+    let (leader_slots, blocks_produced) = context
+        .by_identity
         .get(&info.node_pubkey)
         .copied()
-        .unwrap_or((0, 0));
+        .map_or((0, 0), |entry| entry);
 
-    let future_current_epoch = current_schedule
+    let future_current_epoch = context
+        .current_schedule
         .and_then(|schedule| schedule.get(&info.node_pubkey))
-        .map(|slots| {
+        .map_or(0, |slots| {
             slots
                 .iter()
-                .filter(|relative_slot| epoch_start_slot + **relative_slot >= current_slot)
+                .filter(|relative_slot| {
+                    context.epoch_start_slot + **relative_slot >= context.current_slot
+                })
                 .count() as u64
-        })
-        .unwrap_or(0);
+        });
 
-    let future_next_epoch = next_schedule
+    let future_next_epoch = context
+        .next_schedule
         .and_then(|schedule| schedule.get(&info.node_pubkey))
-        .map(|slots| slots.len() as u64)
-        .unwrap_or(0);
+        .map_or(0, |slots| slots.len() as u64);
 
     let latest_epoch_credits = info
         .epoch_credits
@@ -406,7 +407,9 @@ fn build_record(
             earned: credits.saturating_sub(*previous),
         });
 
-    let scopes = matcher.labels_for(&info.node_pubkey, &info.vote_pubkey);
+    let scopes = context
+        .matcher
+        .labels_for(&info.node_pubkey, &info.vote_pubkey);
 
     ValidatorRecord {
         identity: info.node_pubkey,
@@ -504,14 +507,14 @@ fn build_watched_validator_metrics(
         .as_ref()
         .filter(|credits| Some(credits.epoch) == sample_epoch)
         .map(|credits| credits.earned)
-        .unwrap_or_default();
+        .map_or(0, |earned| earned);
     let vote_efficiency_pct = if latest_epoch_vote_credits > 0 {
         ideal_epoch_credits
             .filter(|ideal| *ideal > 0)
             .map(|ideal| {
                 ((latest_epoch_vote_credits as f64 / ideal as f64) * 100.0).clamp(0.0, 100.0)
             })
-            .unwrap_or_default()
+            .map_or(0.0, |efficiency| efficiency)
     } else {
         0.0
     };
@@ -632,9 +635,10 @@ mod tests {
         aggregate_records, EpochCreditsSample, ScopeMetrics, ValidatorRecord, ValidatorStatus,
         WatchedValidatorMetrics,
     };
+    use anyhow::{anyhow, Result};
 
     #[test]
-    fn aggregates_by_scope() {
+    fn aggregates_by_scope() -> Result<()> {
         let records = vec![
             ValidatorRecord {
                 identity: "id-1".to_string(),
@@ -673,11 +677,14 @@ mod tests {
         ];
 
         let snapshot = aggregate_records("mainnet-beta".to_string(), 10, 100, &records);
-        let watched = snapshot.scopes.get("scope:watched").expect("watched scope");
+        let watched = snapshot
+            .scopes
+            .get("scope:watched")
+            .ok_or_else(|| anyhow!("missing watched scope"))?;
         let all_network = snapshot
             .scopes
             .get("scope:all-network")
-            .expect("all network scope");
+            .ok_or_else(|| anyhow!("missing all-network scope"))?;
 
         assert_eq!(snapshot.vote_credits_sample_epoch, Some(9));
         assert_eq!(
@@ -722,5 +729,7 @@ mod tests {
                 future_leader_slots: 2,
             }]
         );
+
+        Ok(())
     }
 }
