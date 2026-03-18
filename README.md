@@ -30,6 +30,11 @@ Example config:
 network: mainnet-beta
 rpc_url: https://api.mainnet-beta.solana.com
 rpc_timeout_sec: 30
+transport_mode: poll-http-and-ws
+ws_url: wss://api.mainnet-beta.solana.com
+ws_timeout_sec: 10
+validator_mode: consensus-and-rpc
+validator_websocket_enabled: true
 metrics_port: 8000
 poll_interval_sec: 15
 commitment: confirmed
@@ -44,6 +49,16 @@ watched_validators:
 ```
 
 Each watched entry can match by `identity`, `vote_account`, or both.
+
+Transport and validator role options:
+
+- `transport_mode: poll-http` for RPC polling only
+- `transport_mode: poll-http-and-ws` to keep polling over HTTP and also probe a configured websocket transport
+- `validator_mode: consensus`
+- `validator_mode: rpc`
+- `validator_mode: consensus-and-rpc`
+- `validator_mode: non-voting`
+- `validator_mode: observer`
 
 As in the Ethereum watcher, labels should follow the `category:value` format. The watcher always adds these built-in scopes:
 
@@ -71,6 +86,8 @@ Primary exported series:
 - `sol_epoch{network}`
 - `sol_watcher_up{network}`
 - `sol_rpc_up{network}`
+- `sol_ws_up{network}`
+- `sol_watcher_config_info{network,transport_mode,validator_mode,validator_websocket_enabled,ws_configured}`
 - `sol_validator_status_count{scope,status,network}`
 - `sol_validator_status_stake_sol{scope,status,network}`
 - `sol_activated_stake_sol{scope,network}`
@@ -102,7 +119,7 @@ Primary exported series:
 ## Run
 
 ```bash
-cargo run --release -- --config etc/config.local.yaml
+just run-release
 ```
 
 Metrics are exposed on:
@@ -112,24 +129,46 @@ http://127.0.0.1:8000/metrics
 http://127.0.0.1:8000/healthz
 ```
 
+## Commands
+
+Bootstrap the repo tools with `mise` first:
+
+```bash
+mise install
+```
+
+Everything should be run through `just`:
+
+```bash
+just
+just doctor
+just fmt
+just check
+just clippy
+just test
+just test-surfpool
+just build-release
+just run
+just run-release
+just docker-build
+just ci
+just ci-full
+```
+
+`mise.toml` installs the pinned `rust` toolchain and `just`. `surfpool` is still only needed for `just test-surfpool` / `just ci-full`.
+
 ## Tests
 
 Fast tests:
 
 ```bash
-cargo test
+just test
 ```
 
 Surfpool-backed smoke test:
 
 ```bash
-SURFPOOL_E2E=1 cargo test
-```
-
-Or with the helper script:
-
-```bash
-bash scripts/test-with-surfpool.sh
+just test-surfpool
 ```
 
 The Surfpool test launches a real local Surfpool process on ephemeral ports, waits for RPC readiness, runs the watcher snapshot collection path against it, and renders metrics. It is opt-in so the default test suite stays fast and does not depend on local validator startup.
@@ -138,5 +177,7 @@ The Surfpool test launches a real local Surfpool process on ephemeral ports, wai
 
 - Config reload is automatic when the config file changes.
 - If `rpc_url`, `rpc_timeout_sec`, or `commitment` changes, the RPC client is recreated.
+- If `transport_mode`, `ws_url`, or `ws_timeout_sec` changes, the websocket probe client is recreated.
 - If `metrics_port` changes, restart the process. The listener address is fixed at startup.
+- `sol_ws_up` is a websocket reachability probe. The watcher still uses HTTP RPC for data collection in this version.
 - `sol_vote_efficiency_pct` is a stake-weighted comparison against the best validator in the sampled vote-credit epoch. It is intended as a Solana equivalent of the Ethereum watcher’s performance view, not a protocol-native official score.
