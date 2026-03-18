@@ -1,20 +1,30 @@
+#![deny(
+    clippy::dbg_macro,
+    clippy::expect_used,
+    clippy::todo,
+    clippy::unimplemented
+)]
+#![deny(clippy::unwrap_used)]
+
 mod collector;
 mod config;
 mod labels;
 mod metrics;
 #[cfg(test)]
 mod surfpool_tests;
+mod websocket;
 
 use crate::{
     collector::{collect_snapshot, RpcClient},
     config::Config,
     metrics::Metrics,
+    websocket::WebsocketProbeClient,
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use clap::Parser;
 use std::{
-    fs,
+    env, fs,
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
@@ -40,6 +50,7 @@ struct RuntimeState {
     config_path: PathBuf,
     config: Config,
     client: RpcClient,
+    ws_client: Option<WebsocketProbeClient>,
     config_modified: SystemTime,
     metrics_port: u16,
 }
@@ -50,11 +61,13 @@ impl RuntimeState {
         let config_modified = config_mtime(&config_path)?;
         let metrics_port = config.metrics_port;
         let client = new_rpc_client(&config)?;
+        let ws_client = new_ws_probe_client(&config);
 
         Ok(Self {
             config_path,
             config,
             client,
+            ws_client,
             config_modified,
             metrics_port,
         })
@@ -78,13 +91,21 @@ impl RuntimeState {
         let rpc_settings_changed = self.config.rpc_url != next.rpc_url
             || self.config.rpc_timeout_sec != next.rpc_timeout_sec
             || self.config.commitment != next.commitment;
+        let ws_settings_changed = self.config.transport_mode != next.transport_mode
+            || self.config.ws_url != next.ws_url
+            || self.config.ws_timeout_sec != next.ws_timeout_sec;
 
         if rpc_settings_changed {
             self.client = new_rpc_client(&next)?;
         }
+        if ws_settings_changed {
+            self.ws_client = new_ws_probe_client(&next);
+        }
 
         info!(
             watched_validators = next.watched_validators.len(),
+            transport_mode = next.transport_mode.as_str(),
+            validator_mode = next.validator_mode.as_str(),
             "reloaded configuration"
         );
 
@@ -96,26 +117,44 @@ impl RuntimeState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing();
+    init_tracing()?;
     let cli = Cli::parse();
     let runtime = RuntimeState::load(cli.config)?;
     let metrics = Arc::new(Metrics::new()?);
     metrics.set_watcher_up(&runtime.config.network, true);
     metrics.set_rpc_up(&runtime.config.network, false);
 
+    run(runtime, metrics).await
+}
+
+async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
     let server_state = AppState {
         metrics: Arc::clone(&metrics),
     };
     let metrics_port = runtime.metrics_port;
-    let server = tokio::spawn(async move {
-        if let Err(err) = run_http_server(server_state, metrics_port).await {
-            error!(error = ?err, "metrics HTTP server failed");
-        }
-    });
+    let mut server = tokio::spawn(run_http_server(server_state, metrics_port));
+    let watcher = run_watcher_loop(runtime, metrics);
+    tokio::pin!(watcher);
 
-    let run_result = run_watcher_loop(runtime, Arc::clone(&metrics)).await;
-    server.abort();
-    run_result
+    let result = tokio::select! {
+        watcher_result = &mut watcher => watcher_result.context("watcher loop exited"),
+        server_result = &mut server => match server_result {
+            Ok(Ok(())) => Err(anyhow!("metrics HTTP server exited unexpectedly")),
+            Ok(Err(err)) => Err(err).context("metrics HTTP server failed"),
+            Err(err) => Err(err).context("metrics HTTP server task failed"),
+        },
+    };
+
+    if !server.is_finished() {
+        server.abort();
+        if let Err(err) = server.await {
+            if !err.is_cancelled() {
+                error!(error = ?err, "metrics HTTP server task failed during shutdown");
+            }
+        }
+    }
+
+    result
 }
 
 async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
@@ -123,6 +162,8 @@ async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> R
         network = runtime.config.network,
         rpc_url = runtime.config.rpc_url,
         watched_validators = runtime.config.watched_validators.len(),
+        transport_mode = runtime.config.transport_mode.as_str(),
+        validator_mode = runtime.config.validator_mode.as_str(),
         "starting Solana validator watcher"
     );
 
@@ -132,6 +173,15 @@ async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> R
         }
 
         metrics.set_watcher_up(&runtime.config.network, true);
+        metrics.update_runtime_config(&runtime.config);
+        metrics.set_ws_up(&runtime.config.network, false);
+
+        if let Some(ws_client) = runtime.ws_client.as_ref() {
+            match ws_client.probe().await {
+                Ok(()) => metrics.set_ws_up(&runtime.config.network, true),
+                Err(err) => warn!(error = ?err, "websocket probe failed"),
+            }
+        }
 
         match collect_snapshot(&runtime.client, &runtime.config).await {
             Ok(snapshot) => {
@@ -198,11 +248,17 @@ async fn health_handler() -> &'static str {
 }
 
 fn new_rpc_client(config: &Config) -> Result<RpcClient> {
-    Ok(RpcClient::new(
+    RpcClient::new(
         config.rpc_url.clone(),
         Duration::from_secs(config.rpc_timeout_sec),
         config.commitment_config()?,
-    )?)
+    )
+}
+
+fn new_ws_probe_client(config: &Config) -> Option<WebsocketProbeClient> {
+    config.ws_url.as_ref().map(|url| {
+        WebsocketProbeClient::new(url.clone(), Duration::from_secs(config.ws_timeout_sec))
+    })
 }
 
 fn config_mtime(path: &Path) -> Result<SystemTime> {
@@ -236,13 +292,22 @@ fn update_liveness_file(path: Option<&Path>) -> Result<()> {
         .with_context(|| format!("failed to update liveness file {}", path.display()))
 }
 
-fn init_tracing() {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info,hyper=warn,h2=warn,tower_http=warn".into());
+fn init_tracing() -> Result<()> {
+    const DEFAULT_LOG_FILTER: &str = "info,hyper=warn,h2=warn,tower_http=warn";
+    let filter = match env::var(tracing_subscriber::EnvFilter::DEFAULT_ENV) {
+        Ok(value) => tracing_subscriber::EnvFilter::try_new(value)
+            .context("invalid RUST_LOG filter expression")?,
+        Err(env::VarError::NotPresent) => {
+            tracing_subscriber::EnvFilter::try_new(DEFAULT_LOG_FILTER)
+                .context("failed to build default log filter")?
+        }
+        Err(err) => return Err(err).context("failed to read RUST_LOG"),
+    };
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
         .compact()
-        .init();
+        .try_init()
+        .map_err(|err| anyhow!("failed to initialize tracing subscriber: {err}"))
 }

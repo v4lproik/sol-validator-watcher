@@ -1,14 +1,15 @@
 use crate::{
     collector::{collect_snapshot, RpcClient},
-    config::Config,
+    config::{Config, TransportMode, ValidatorMode},
     metrics::Metrics,
+    websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
 use std::{
     env, fs,
     fs::File,
     net::TcpListener,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -26,6 +27,11 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
         network: "localnet".to_string(),
         rpc_url: harness.rpc_url(),
         rpc_timeout_sec: 5,
+        transport_mode: TransportMode::PollHttpAndWs,
+        ws_url: Some(harness.ws_url()),
+        ws_timeout_sec: 5,
+        validator_mode: ValidatorMode::ConsensusAndRpc,
+        validator_websocket_enabled: true,
         metrics_port: 8000,
         poll_interval_sec: 1,
         commitment: "confirmed".to_string(),
@@ -38,8 +44,18 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
         Duration::from_secs(config.rpc_timeout_sec),
         config.commitment_config()?,
     )?;
+    let ws_client = WebsocketProbeClient::new(
+        config
+            .ws_url
+            .clone()
+            .context("transport_mode requires ws_url")?,
+        Duration::from_secs(config.ws_timeout_sec),
+    );
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
+    runtime
+        .block_on(ws_client.probe())
+        .context("failed to probe surfpool websocket")?;
     let snapshot = runtime
         .block_on(collect_snapshot(&client, &config))
         .context("failed to collect snapshot from surfpool")?;
@@ -47,6 +63,8 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     let metrics = Metrics::new()?;
     metrics.set_watcher_up(&config.network, true);
     metrics.set_rpc_up(&config.network, true);
+    metrics.set_ws_up(&config.network, true);
+    metrics.update_runtime_config(&config);
     metrics.update_snapshot(&snapshot);
     let rendered = metrics.render()?;
 
@@ -56,6 +74,8 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     assert!(rendered.contains("sol_epoch"));
     assert!(rendered.contains("sol_watcher_up"));
     assert!(rendered.contains("sol_rpc_up"));
+    assert!(rendered.contains("sol_ws_up"));
+    assert!(rendered.contains("sol_watcher_config_info"));
 
     drop(runtime);
     drop(harness);
@@ -64,8 +84,8 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
 
 fn surfpool_e2e_enabled() -> bool {
     matches!(
-        env::var("SURFPOOL_E2E").ok().as_deref(),
-        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+        env::var("SURFPOOL_E2E").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE") | Ok("yes") | Ok("YES")
     )
 }
 
@@ -73,6 +93,7 @@ struct SurfpoolHarness {
     child: Child,
     workdir: PathBuf,
     rpc_port: u16,
+    ws_port: u16,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
 }
@@ -117,6 +138,7 @@ impl SurfpoolHarness {
             child,
             workdir,
             rpc_port,
+            ws_port,
             stdout_path,
             stderr_path,
         };
@@ -126,6 +148,10 @@ impl SurfpoolHarness {
 
     fn rpc_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.rpc_port)
+    }
+
+    fn ws_url(&self) -> String {
+        format!("ws://127.0.0.1:{}", self.ws_port)
     }
 
     fn wait_until_ready(&mut self, timeout: Duration) -> Result<()> {
@@ -167,14 +193,21 @@ impl SurfpoolHarness {
     }
 
     fn log_output(&self) -> String {
-        let stdout = fs::read_to_string(&self.stdout_path).unwrap_or_default();
-        let stderr = fs::read_to_string(&self.stderr_path).unwrap_or_default();
+        let stdout = read_log_file(&self.stdout_path);
+        let stderr = read_log_file(&self.stderr_path);
         format!(
             "stdout:\n{}\n\nstderr:\n{}\nworkdir: {}",
             stdout,
             stderr,
             self.workdir.display()
         )
+    }
+}
+
+fn read_log_file(path: &Path) -> String {
+    match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(err) => format!("<failed to read {}: {}>", path.display(), err),
     }
 }
 
