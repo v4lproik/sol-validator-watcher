@@ -1,0 +1,39 @@
+services:
+  surfpool:
+    image: surfpool/surfpool:1.0
+    command:
+      - start
+      - --offline
+      - --ci
+      - --no-deploy
+      - --no-tui
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8899"
+      - --ws-port
+      - "8900"
+      - --studio-port
+      - "3000"
+    ports:
+      - "8899:8899"
+      - "8900:8900"
+      - "3000:3000"
+    restart: unless-stopped
+
+  watcher-surfpool:
+    build:
+      context: .
+    image: sol-validator-watcher:local
+    command:
+      - --config
+      - /app/etc/config.compose.surfpool.yaml
+    environment:
+      RUST_LOG: info
+    volumes:
+      - ./etc/config.compose.surfpool.yaml:/app/etc/config.compose.surfpool.yaml:ro
+    depends_on:
+      - surfpool
+    ports:
+      - "8000:8000"
+    restart: on-failure

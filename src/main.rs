@@ -124,7 +124,12 @@ async fn main() -> Result<()> {
     metrics.set_watcher_up(&runtime.config.network, true);
     metrics.set_rpc_up(&runtime.config.network, false);
 
-    run(runtime, metrics).await
+    if let Err(err) = run(runtime, metrics).await {
+        error!(error = ?err, "watcher exiting due to fatal error");
+        return Err(err);
+    }
+
+    Ok(())
 }
 
 async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
@@ -174,32 +179,24 @@ async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> R
 
         metrics.set_watcher_up(&runtime.config.network, true);
         metrics.update_runtime_config(&runtime.config);
-        metrics.set_ws_up(&runtime.config.network, false);
+        guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
 
-        if let Some(ws_client) = runtime.ws_client.as_ref() {
-            match ws_client.probe().await {
-                Ok(()) => metrics.set_ws_up(&runtime.config.network, true),
-                Err(err) => warn!(error = ?err, "websocket probe failed"),
-            }
-        }
-
-        match collect_snapshot(&runtime.client, &runtime.config).await {
-            Ok(snapshot) => {
-                metrics.set_rpc_up(&snapshot.network, true);
-                metrics.update_snapshot(&snapshot);
-                update_liveness_file(runtime.config.liveness_file.as_deref())?;
-                info!(
-                    epoch = snapshot.epoch,
-                    slot = snapshot.slot,
-                    scopes = snapshot.scopes.len(),
-                    "updated Prometheus metrics"
-                );
-            }
-            Err(err) => {
-                metrics.set_rpc_up(&runtime.config.network, false);
-                warn!(error = ?err, "RPC collection failed");
-            }
-        }
+        let snapshot = collect_snapshot(&runtime.client, &runtime.config)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to collect snapshot from RPC endpoint {}",
+                    runtime.config.rpc_url
+                )
+            })?;
+        metrics.update_snapshot(&snapshot);
+        update_liveness_file(runtime.config.liveness_file.as_deref())?;
+        info!(
+            epoch = snapshot.epoch,
+            slot = snapshot.slot,
+            scopes = snapshot.scopes.len(),
+            "updated Prometheus metrics"
+        );
 
         tokio::select! {
             _ = signal::ctrl_c() => {
@@ -208,6 +205,33 @@ async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> R
             }
             _ = sleep(Duration::from_secs(runtime.config.poll_interval_sec)) => {}
         }
+    }
+
+    Ok(())
+}
+
+async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
+    metrics.set_rpc_up(&runtime.config.network, false);
+    runtime.client.ensure_healthy().await.with_context(|| {
+        format!(
+            "RPC health guard failed for endpoint {}",
+            runtime.config.rpc_url
+        )
+    })?;
+    metrics.set_rpc_up(&runtime.config.network, true);
+
+    metrics.set_ws_up(&runtime.config.network, false);
+    if let Some(ws_client) = runtime.ws_client.as_ref() {
+        let ws_url = runtime
+            .config
+            .ws_url
+            .as_deref()
+            .unwrap_or("<missing-ws-url>");
+        ws_client
+            .probe()
+            .await
+            .with_context(|| format!("websocket health guard failed for endpoint {}", ws_url))?;
+        metrics.set_ws_up(&runtime.config.network, true);
     }
 
     Ok(())
@@ -310,4 +334,93 @@ fn init_tracing() -> Result<()> {
         .compact()
         .try_init()
         .map_err(|err| anyhow!("failed to initialize tracing subscriber: {err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{config_mtime, new_ws_probe_client, update_liveness_file};
+    use crate::config::{Config, TransportMode, ValidatorMode};
+    use anyhow::{Context, Result};
+    use std::{
+        env, fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    #[test]
+    fn new_ws_probe_client_respects_ws_configuration() {
+        let with_ws = Config {
+            network: "mainnet-beta".to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            rpc_timeout_sec: 30,
+            transport_mode: TransportMode::PollHttpAndWs,
+            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+            ws_timeout_sec: 10,
+            validator_mode: ValidatorMode::ConsensusAndRpc,
+            validator_websocket_enabled: true,
+            metrics_port: 8000,
+            poll_interval_sec: 15,
+            commitment: "confirmed".to_string(),
+            delinquent_slot_distance: None,
+            liveness_file: None,
+            watched_validators: vec![],
+        };
+        let without_ws = Config {
+            ws_url: None,
+            transport_mode: TransportMode::PollHttp,
+            validator_websocket_enabled: false,
+            ..with_ws.clone()
+        };
+
+        assert!(new_ws_probe_client(&with_ws).is_some());
+        assert!(new_ws_probe_client(&without_ws).is_none());
+    }
+
+    #[test]
+    fn update_liveness_file_writes_timestamp() -> Result<()> {
+        let test_dir = unique_test_dir("liveness");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let path = test_dir.join("liveness.txt");
+        update_liveness_file(Some(&path))?;
+
+        let contents = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        assert!(!contents.trim().is_empty());
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_mtime_reads_existing_file() -> Result<()> {
+        let test_dir = unique_test_dir("mtime");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let path = test_dir.join("mtime.txt");
+        fs::write(&path, "test").with_context(|| format!("failed to write {}", path.display()))?;
+
+        let modified = config_mtime(&path)?;
+        assert!(modified.duration_since(UNIX_EPOCH).is_ok());
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+
+        Ok(())
+    }
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        env::temp_dir().join(format!(
+            "sol-validator-watcher-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nonce
+        ))
+    }
 }

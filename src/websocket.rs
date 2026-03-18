@@ -25,3 +25,32 @@ impl WebsocketProbeClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::WebsocketProbeClient;
+    use anyhow::Result;
+    use std::time::Duration;
+
+    #[test]
+    fn constructor_stores_url_and_timeout() {
+        let client =
+            WebsocketProbeClient::new("ws://127.0.0.1:8900".to_string(), Duration::from_secs(3));
+        assert_eq!(client.url, "ws://127.0.0.1:8900");
+        assert_eq!(client.timeout, Duration::from_secs(3));
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_invalid_url() -> Result<()> {
+        let client =
+            WebsocketProbeClient::new("not-a-websocket-url".to_string(), Duration::from_secs(1));
+        let err = match client.probe().await {
+            Ok(()) => anyhow::bail!("probe should fail"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("failed to connect websocket not-a-websocket-url"));
+        Ok(())
+    }
+}

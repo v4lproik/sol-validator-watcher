@@ -1,0 +1,28 @@
+services:
+  watcher-validator:
+    build:
+      context: .
+    image: sol-validator-watcher:local
+    command:
+      - --config
+      - /app/etc/config.compose.validator.yaml
+    environment:
+      RUST_LOG: info
+      SOL_WATCHER_NETWORK: ${SOL_WATCHER_NETWORK:-external-validator}
+      SOL_VALIDATOR_RPC_URL: ${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}
+      SOL_VALIDATOR_WS_URL: ${SOL_VALIDATOR_WS_URL:-}
+      SOL_WATCHER_TRANSPORT_MODE: ${SOL_WATCHER_TRANSPORT_MODE:-poll-http}
+      SOL_WATCHER_VALIDATOR_MODE: ${SOL_WATCHER_VALIDATOR_MODE:-consensus-and-rpc}
+      SOL_WATCHER_VALIDATOR_WEBSOCKET_ENABLED: ${SOL_WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-false}
+      SOL_WATCHER_RPC_TIMEOUT_SEC: ${SOL_WATCHER_RPC_TIMEOUT_SEC:-30}
+      SOL_WATCHER_WS_TIMEOUT_SEC: ${SOL_WATCHER_WS_TIMEOUT_SEC:-10}
+      SOL_WATCHER_POLL_INTERVAL_SEC: ${SOL_WATCHER_POLL_INTERVAL_SEC:-15}
+      SOL_WATCHER_COMMITMENT: ${SOL_WATCHER_COMMITMENT:-confirmed}
+      SOL_WATCHER_DELINQUENT_SLOT_DISTANCE: ${SOL_WATCHER_DELINQUENT_SLOT_DISTANCE:-128}
+    volumes:
+      - ./etc/config.compose.validator.yaml:/app/etc/config.compose.validator.yaml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "8001:8000"
+    restart: on-failure

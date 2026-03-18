@@ -42,6 +42,10 @@ impl RpcClient {
         .await
     }
 
+    async fn get_health(&self) -> Result<String> {
+        self.call("getHealth", json!([])).await
+    }
+
     async fn get_vote_accounts(
         &self,
         delinquent_slot_distance: Option<u64>,
@@ -91,9 +95,21 @@ impl RpcClient {
         .await
     }
 
-    #[cfg(test)]
-    pub(crate) async fn probe(&self) -> Result<()> {
-        self.get_epoch_info().await.map(|_| ())
+    pub(crate) async fn ensure_healthy(&self) -> Result<()> {
+        let health = self
+            .get_health()
+            .await
+            .with_context(|| format!("RPC endpoint {} failed getHealth", self.url))?;
+
+        if health != "ok" {
+            bail!(
+                "RPC endpoint {} returned unexpected getHealth result {:?}",
+                self.url,
+                health
+            );
+        }
+
+        Ok(())
     }
 
     async fn call<T>(&self, method: &str, params: Value) -> Result<T>
@@ -632,8 +648,8 @@ struct BlockProduction {
 #[cfg(test)]
 mod tests {
     use super::{
-        aggregate_records, EpochCreditsSample, ScopeMetrics, ValidatorRecord, ValidatorStatus,
-        WatchedValidatorMetrics,
+        aggregate_records, build_watched_validator_metrics, ratio, EpochCreditsSample,
+        ScopeMetrics, ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics,
     };
     use anyhow::{anyhow, Result};
 
@@ -731,5 +747,54 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn watched_validator_metrics_use_zero_efficiency_without_matching_epoch() {
+        let record = ValidatorRecord {
+            identity: "id-1".to_string(),
+            vote_account: "vote-1".to_string(),
+            status: ValidatorStatus::Current,
+            activated_stake_lamports: 10,
+            commission: 7,
+            last_vote: 98,
+            root_slot: 97,
+            latest_epoch_credits: Some(EpochCreditsSample {
+                epoch: 4,
+                earned: 12,
+            }),
+            current_epoch_leader_slots: 0,
+            current_epoch_blocks_produced: 0,
+            future_leader_slots: 3,
+            scopes: vec!["scope:watched".to_string()],
+        };
+
+        let watched = build_watched_validator_metrics(&record, 100, Some(20), Some(5));
+        assert_eq!(
+            watched,
+            WatchedValidatorMetrics {
+                identity: "id-1".to_string(),
+                vote_account: "vote-1".to_string(),
+                status: ValidatorStatus::Current,
+                scopes: vec!["scope:watched".to_string()],
+                activated_stake_lamports: 10,
+                latest_epoch_vote_credits: 0,
+                vote_efficiency_pct: 0.0,
+                last_vote_slot_lag: 2,
+                root_slot_lag: 3,
+                commission_pct: 7,
+                blocks_produced: 0,
+                blocks_missed: 0,
+                block_production_rate: 0.0,
+                future_leader_slots: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn ratio_returns_zero_for_empty_denominator() {
+        assert_eq!(ratio(0, 0), 0.0);
+        assert_eq!(ratio(5, 0), 0.0);
+        assert_eq!(ratio(3, 4), 75.0);
     }
 }

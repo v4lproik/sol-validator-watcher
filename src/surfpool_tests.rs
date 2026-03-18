@@ -176,7 +176,7 @@ impl SurfpoolHarness {
                 );
             }
 
-            if runtime.block_on(client.probe()).is_ok() {
+            if runtime.block_on(client.ensure_healthy()).is_ok() {
                 return Ok(());
             }
 

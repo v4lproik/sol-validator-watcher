@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -114,11 +114,17 @@ impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let raw = fs::read_to_string(path)
             .with_context(|| format!("failed to read config file {}", path.display()))?;
+        let expanded = expand_env_vars(&raw).with_context(|| {
+            format!(
+                "failed to expand environment variables in {}",
+                path.display()
+            )
+        })?;
 
         let mut config = match path.extension().and_then(|ext| ext.to_str()) {
-            Some("json") => serde_json::from_str::<Self>(&raw)
+            Some("json") => serde_json::from_str::<Self>(&expanded)
                 .with_context(|| format!("failed to parse JSON config {}", path.display()))?,
-            _ => serde_yaml::from_str::<Self>(&raw)
+            _ => serde_yaml::from_str::<Self>(&expanded)
                 .with_context(|| format!("failed to parse YAML config {}", path.display()))?,
         };
 
@@ -208,6 +214,71 @@ impl Config {
     }
 }
 
+fn expand_env_vars(input: &str) -> Result<String> {
+    expand_env_vars_with(input, |key| match env::var(key) {
+        Ok(value) => Ok(Some(value)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => {
+            bail!("environment variable {} is not valid UTF-8", key)
+        }
+    })
+}
+
+fn expand_env_vars_with<F>(input: &str, mut resolve: F) -> Result<String>
+where
+    F: FnMut(&str) -> Result<Option<String>>,
+{
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch != '$' || chars.peek() != Some(&'{') {
+            output.push(ch);
+            continue;
+        }
+
+        let _ = chars.next();
+        let mut expression = String::new();
+        let mut closed = false;
+
+        for next in chars.by_ref() {
+            if next == '}' {
+                closed = true;
+                break;
+            }
+            expression.push(next);
+        }
+
+        if !closed {
+            bail!(
+                "unterminated environment variable expression starting with ${{{}}}",
+                expression
+            );
+        }
+
+        let (key, default) = match expression.split_once(":-") {
+            Some((key, default)) => (key.trim(), Some(default)),
+            None => (expression.trim(), None),
+        };
+
+        if key.is_empty() {
+            bail!("environment variable expression must include a variable name");
+        }
+
+        let value = match resolve(key)? {
+            Some(value) if !value.is_empty() => value,
+            Some(_) | None => match default {
+                Some(default) => default.to_string(),
+                None => bail!("environment variable {} is required but not set", key),
+            },
+        };
+
+        output.push_str(&value);
+    }
+
+    Ok(output)
+}
+
 fn normalize_pubkey(value: &str, field_name: &str) -> Result<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -239,7 +310,7 @@ fn validate_ws_url(url: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, TransportMode, ValidatorMode};
+    use super::{expand_env_vars_with, Config, TransportMode, ValidatorMode};
     use anyhow::Result;
 
     #[test]
@@ -295,6 +366,122 @@ watched_validators:
                 .contains("ws_url requires transport_mode: poll-http-and-ws")),
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_invalid_ws_scheme() -> Result<()> {
+        let mut cfg = Config {
+            network: "mainnet-beta".to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            rpc_timeout_sec: 30,
+            transport_mode: TransportMode::PollHttpAndWs,
+            ws_url: Some("https://api.mainnet-beta.solana.com".to_string()),
+            ws_timeout_sec: 10,
+            validator_mode: ValidatorMode::Consensus,
+            validator_websocket_enabled: true,
+            metrics_port: 8000,
+            poll_interval_sec: 15,
+            commitment: "confirmed".to_string(),
+            delinquent_slot_distance: None,
+            liveness_file: None,
+            watched_validators: vec![],
+        };
+
+        match cfg.validate() {
+            Ok(()) => anyhow::bail!("config should be rejected"),
+            Err(err) => assert!(err
+                .to_string()
+                .contains("ws_url must start with ws:// or wss://")),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn trims_blank_ws_url_when_ws_transport_is_disabled() -> Result<()> {
+        let mut cfg = Config {
+            network: "mainnet-beta".to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            rpc_timeout_sec: 30,
+            transport_mode: TransportMode::PollHttp,
+            ws_url: Some("   ".to_string()),
+            ws_timeout_sec: 10,
+            validator_mode: ValidatorMode::Observer,
+            validator_websocket_enabled: false,
+            metrics_port: 8000,
+            poll_interval_sec: 15,
+            commitment: "confirmed".to_string(),
+            delinquent_slot_distance: None,
+            liveness_file: None,
+            watched_validators: vec![],
+        };
+
+        cfg.validate()?;
+        assert!(cfg.ws_url.is_none());
+        assert_eq!(cfg.validator_mode.as_str(), "observer");
+        assert_eq!(cfg.transport_mode.as_str(), "poll-http");
+
+        Ok(())
+    }
+
+    #[test]
+    fn expands_env_variables_with_defaults() -> Result<()> {
+        let expanded = expand_env_vars_with(
+            r#"
+network: ${WATCHER_NETWORK:-localnet}
+rpc_url: ${WATCHER_RPC_URL}
+validator_websocket_enabled: ${WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-true}
+"#,
+            |key| {
+                let value = match key {
+                    "WATCHER_RPC_URL" => Some("http://validator:8899".to_string()),
+                    _ => None,
+                };
+                Ok(value)
+            },
+        )?;
+
+        assert!(expanded.contains("network: localnet"));
+        assert!(expanded.contains("rpc_url: http://validator:8899"));
+        assert!(expanded.contains("validator_websocket_enabled: true"));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_missing_env_variables_without_defaults() -> Result<()> {
+        let err = match expand_env_vars_with("rpc_url: ${WATCHER_RPC_URL}", |_| Ok(None)) {
+            Ok(_) => anyhow::bail!("expansion should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err
+            .to_string()
+            .contains("environment variable WATCHER_RPC_URL is required but not set"));
+        Ok(())
+    }
+
+    #[test]
+    fn uses_default_for_empty_env_values() -> Result<()> {
+        let expanded = expand_env_vars_with(
+            "validator_websocket_enabled: ${WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-false}",
+            |_| Ok(Some(String::new())),
+        )?;
+
+        assert_eq!(expanded, "validator_websocket_enabled: false");
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_unterminated_env_expressions() -> Result<()> {
+        let err = match expand_env_vars_with("rpc_url: ${WATCHER_RPC_URL", |_| Ok(None)) {
+            Ok(_) => anyhow::bail!("expansion should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err
+            .to_string()
+            .contains("unterminated environment variable expression"));
         Ok(())
     }
 }

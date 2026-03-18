@@ -585,7 +585,7 @@ fn bool_label(value: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::Metrics;
+    use super::{bool_label, validator_status_label, Metrics};
     use crate::{
         collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics},
         config::{Config, TransportMode, ValidatorMode},
@@ -733,5 +733,16 @@ mod tests {
         assert!(!rendered.contains("old-vote"));
 
         Ok(())
+    }
+
+    #[test]
+    fn helper_labels_return_expected_values() {
+        assert_eq!(validator_status_label(ValidatorStatus::Current), "current");
+        assert_eq!(
+            validator_status_label(ValidatorStatus::Delinquent),
+            "delinquent"
+        );
+        assert_eq!(bool_label(true), "true");
+        assert_eq!(bool_label(false), "false");
     }
 }
