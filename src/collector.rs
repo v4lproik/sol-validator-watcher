@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    labels::{LabelMatcher, LABEL_SCOPE_WATCHED},
+    labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
 };
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
@@ -83,7 +83,7 @@ impl RpcClient {
     }
 
     async fn get_leader_schedule(&self, slot: u64) -> Result<Option<HashMap<String, Vec<u64>>>> {
-        self.call(
+        self.call_optional(
             "getLeaderSchedule",
             json!([
                 slot,
@@ -116,6 +116,15 @@ impl RpcClient {
     where
         T: DeserializeOwned,
     {
+        self.call_optional(method, params)
+            .await?
+            .with_context(|| format!("{} returned no result", method))
+    }
+
+    async fn call_optional<T>(&self, method: &str, params: Value) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
         let response = self
             .http
             .post(&self.url)
@@ -145,9 +154,7 @@ impl RpcClient {
             );
         }
 
-        envelope
-            .result
-            .with_context(|| format!("{} returned no result", method))
+        Ok(envelope.result)
     }
 }
 
@@ -469,6 +476,11 @@ pub fn aggregate_records(
     });
 
     let mut scopes: BTreeMap<String, ScopeAccumulator> = BTreeMap::new();
+    scopes
+        .entry(LABEL_SCOPE_ALL_NETWORK.to_string())
+        .or_default();
+    scopes.entry(LABEL_SCOPE_NETWORK.to_string()).or_default();
+    scopes.entry(LABEL_SCOPE_WATCHED.to_string()).or_default();
 
     for record in records {
         for scope in &record.scopes {
@@ -796,5 +808,30 @@ mod tests {
         assert_eq!(ratio(0, 0), 0.0);
         assert_eq!(ratio(5, 0), 0.0);
         assert_eq!(ratio(3, 4), 75.0);
+    }
+
+    #[test]
+    fn aggregate_records_emits_zeroed_builtin_scopes_for_empty_clusters() -> Result<()> {
+        let snapshot = aggregate_records("localnet".to_string(), 0, 42, &[]);
+
+        let all_network = snapshot
+            .scopes
+            .get("scope:all-network")
+            .ok_or_else(|| anyhow!("missing all-network scope"))?;
+        let network = snapshot
+            .scopes
+            .get("scope:network")
+            .ok_or_else(|| anyhow!("missing network scope"))?;
+        let watched = snapshot
+            .scopes
+            .get("scope:watched")
+            .ok_or_else(|| anyhow!("missing watched scope"))?;
+
+        assert_eq!(snapshot.network, "localnet");
+        assert_eq!(snapshot.slot, 42);
+        assert_eq!(all_network, &ScopeMetrics::default());
+        assert_eq!(network, &ScopeMetrics::default());
+        assert_eq!(watched, &ScopeMetrics::default());
+        Ok(())
     }
 }

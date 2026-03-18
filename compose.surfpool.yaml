@@ -16,9 +16,9 @@ services:
       - --studio-port
       - "3000"
     ports:
-      - "8899:8899"
-      - "8900:8900"
-      - "3000:3000"
+      - "${SURFPOOL_HOST_RPC_PORT:-18899}:8899"
+      - "${SURFPOOL_HOST_WS_PORT:-18900}:8900"
+      - "${SURFPOOL_HOST_STUDIO_PORT:-13000}:3000"
     restart: unless-stopped
 
   watcher-surfpool:
@@ -35,5 +35,5 @@ services:
     depends_on:
       - surfpool
     ports:
-      - "8000:8000"
+      - "${WATCHER_SURFPOOL_METRICS_PORT:-8000}:8000"
     restart: on-failure

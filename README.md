@@ -198,7 +198,9 @@ The repo now ships a full local observability stack:
 
 - `Prometheus` on `http://127.0.0.1:9090`
 - `Grafana` on `http://127.0.0.1:3001`
-- `Surfpool Studio` on `http://127.0.0.1:3000` when the Surfpool profile is enabled
+- `Surfpool Studio` on `http://127.0.0.1:13000` by default when the Surfpool profile is enabled
+- `Surfpool RPC` on `http://127.0.0.1:18899` by default when the Surfpool profile is enabled
+- `Surfpool WS` on `ws://127.0.0.1:18900` by default when the Surfpool profile is enabled
 - `watcher-surfpool` metrics on `http://127.0.0.1:8000/metrics`
 - `watcher-validator` metrics on `http://127.0.0.1:8001/metrics`
 
@@ -219,13 +221,13 @@ Useful inspection commands:
 - `just stack-logs-surfpool`
 - `just stack-logs-validator`
 
-`Grafana` provisions a `Solana / Solana Validator Watcher Overview` dashboard automatically, backed by the provisioned Prometheus datasource.
+`Grafana` provisions a `Solana / Solana Validator Watcher Overview` dashboard automatically, backed by the provisioned Prometheus datasource. The dashboard defaults to `scope:all-network` so it shows data even before you add watched validators to the compose watcher configs.
 
 External validator mode:
 
 - `compose.validator.yaml` points the watcher at `host.docker.internal` by default so it can reach a validator or RPC endpoint running on the host machine
 - the watcher config now expands `${VAR}` and `${VAR:-default}` placeholders, so `etc/config.compose.validator.yaml` can be driven by environment variables
-- `.env.example` lists the variables used by the validator profile; the compose stack reads them when `just stack-up-validator` or `just stack-up-all` is used
+- `.env.example` lists the variables used by the validator profile and the Surfpool host port mappings; the compose stack reads them when `just stack-up-validator`, `just stack-up-surfpool`, or `just stack-up-all` is used
 
 Compose config files:
 

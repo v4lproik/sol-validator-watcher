@@ -484,4 +484,15 @@ validator_websocket_enabled: ${WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-true}
             .contains("unterminated environment variable expression"));
         Ok(())
     }
+
+    #[test]
+    fn enum_string_helpers_cover_supported_modes() {
+        assert_eq!(TransportMode::PollHttp.as_str(), "poll-http");
+        assert_eq!(TransportMode::PollHttpAndWs.as_str(), "poll-http-and-ws");
+        assert_eq!(ValidatorMode::Consensus.as_str(), "consensus");
+        assert_eq!(ValidatorMode::Rpc.as_str(), "rpc");
+        assert_eq!(ValidatorMode::ConsensusAndRpc.as_str(), "consensus-and-rpc");
+        assert_eq!(ValidatorMode::NonVoting.as_str(), "non-voting");
+        assert_eq!(ValidatorMode::Observer.as_str(), "observer");
+    }
 }

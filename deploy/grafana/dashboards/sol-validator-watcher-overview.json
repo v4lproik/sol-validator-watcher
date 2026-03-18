@@ -609,8 +609,8 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": "scope:watched",
-          "value": "scope:watched"
+          "text": "scope:all-network",
+          "value": "scope:all-network"
         },
         "datasource": {
           "type": "prometheus",

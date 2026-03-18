@@ -18,4 +18,5 @@ COPY etc ./etc
 
 EXPOSE 8000
 
-ENTRYPOINT ["sol-validator-watcher", "--config", "/app/etc/config.local.yaml"]
+ENTRYPOINT ["sol-validator-watcher"]
+CMD ["--config", "/app/etc/config.local.yaml"]
