@@ -1,0 +1,15 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 0.5%
+        informational: false
+
+comment:
+  layout: "header,diff,files"
+  require_changes: false
+
+ignore:
+  - "src/main.rs"
+  - "src/surfpool_tests.rs"

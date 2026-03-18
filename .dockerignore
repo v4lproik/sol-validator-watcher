@@ -1,0 +1,6 @@
+.git
+.github
+.env
+coverage
+lcov.info
+target

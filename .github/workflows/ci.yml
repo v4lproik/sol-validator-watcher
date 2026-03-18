@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install toolchain with mise
+        uses: jdx/mise-action@v2
+
+      - name: Verify toolchain
+        run: just doctor
+
+      - name: Run CI checks
+        run: just ci
+
+      - name: Enforce coverage gate
+        run: just coverage-ci
+
+      - name: Generate LCOV report
+        run: just coverage-lcov
+
+      - name: Generate HTML coverage report
+        run: just coverage-html
+
+      - name: Upload LCOV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          if-no-files-found: error
+
+      - name: Upload HTML coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage
+          if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        if: ${{ !github.event.repository.private || secrets.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./lcov.info
+          flags: unit
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
