@@ -1,0 +1,54 @@
+name: Task
+description: Track a scoped implementation, refactor, docs, or operational task
+title: "[Task]: "
+labels:
+  - task
+body:
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - p1
+        - p2
+        - p3
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: What will be better or different after this task is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Call out the main areas touched by this task.
+      placeholder: |
+        - code:
+        - dashboards:
+        - docs:
+        - config:
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: input
+    id: links
+    attributes:
+      label: Related issue, PR, roadmap item, or dependency
+      placeholder: e.g. #123, docs/operator-observability-roadmap.md
