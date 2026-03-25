@@ -1182,20 +1182,24 @@ struct InflationRewardValue {
 mod tests {
     use super::{
         aggregate_records, block_production_or_required, build_record,
-        build_watched_validator_metrics, economics_preflight_reward_addresses,
+        build_watched_validator_metrics, collect_snapshot, economics_preflight_reward_addresses,
         optional_block_production_or_default, optional_rpc_or_default, optional_rpc_or_required,
         ratio, reward_epoch_block_range, EpochCreditsSample, RecordBuildContext, RewardSample,
-        ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts,
-        WatchedValidatorMetrics,
+        RpcClient, ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo,
+        VoteAccounts, WatchedValidatorMetrics,
     };
     use crate::{
         config::{
-            Config, TransportMode, ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig,
+            Config, EconomicsConfig, EconomicsMode, TransportMode, ValidatorConnectionConfig,
+            ValidatorMode, WatchedValidatorConfig,
         },
         labels::LabelMatcher,
     };
-    use anyhow::{anyhow, Result};
-    use std::collections::HashMap;
+    use anyhow::{anyhow, Context, Result};
+    use axum::{extract::Json, routing::post, Router};
+    use serde_json::{json, Value};
+    use std::{collections::HashMap, time::Duration};
+    use tokio::{net::TcpListener, task::JoinHandle};
 
     #[test]
     fn aggregates_by_scope() -> Result<()> {
@@ -1434,6 +1438,63 @@ mod tests {
         assert!(supported);
     }
 
+    #[tokio::test]
+    async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -> Result<()> {
+        let (rpc_url, server_task) = start_mock_rpc_server().await?;
+        let config = Config {
+            network: "devnet".to_string(),
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: rpc_url.clone(),
+                rpc_timeout_sec: 5,
+                ..ValidatorConnectionConfig::default()
+            },
+            watched_validators: vec![WatchedValidatorConfig {
+                identity: Some("id-1".to_string()),
+                vote_account: Some("vote-1".to_string()),
+                labels: vec!["operator:test".to_string()],
+            }],
+            economics: EconomicsConfig {
+                mode: EconomicsMode::SingleValidator,
+                validator: Some(WatchedValidatorConfig {
+                    identity: Some("id-1".to_string()),
+                    vote_account: Some("vote-1".to_string()),
+                    labels: vec!["focus:economics".to_string()],
+                }),
+            },
+            ..Config::default()
+        };
+        let client = RpcClient::new(
+            rpc_url,
+            Duration::from_secs(5),
+            config.validator_connection.commitment_config()?,
+        )?;
+
+        client.ensure_healthy().await?;
+        client.ensure_economics_supported(&config).await?;
+        let snapshot = collect_snapshot(&client, &config).await?;
+
+        server_task.abort();
+
+        assert_eq!(snapshot.network, "devnet");
+        assert_eq!(snapshot.epoch, 9);
+        assert_eq!(snapshot.slot, 810);
+        assert_eq!(snapshot.vote_credits_sample_epoch, Some(8));
+        assert_eq!(snapshot.reward_sample_epoch, Some(8));
+        assert_eq!(snapshot.watched_validators.len(), 1);
+        assert_eq!(
+            snapshot.watched_validators[0].latest_epoch_reward_lamports,
+            12_000_000_000
+        );
+        assert_eq!(
+            snapshot.watched_validators[0].latest_epoch_rewarded_blocks_produced,
+            3
+        );
+        assert_eq!(snapshot.watched_validators[0].blocks_produced, 4);
+        assert_eq!(snapshot.watched_validators[0].future_leader_slots, 3);
+
+        Ok(())
+    }
+
     #[test]
     fn build_record_uses_block_production_schedules_and_labels() {
         let config = Config {
@@ -1645,6 +1706,112 @@ mod tests {
             economics_preflight_reward_addresses(&config, &vote_accounts),
             vec!["vote-cluster".to_string()]
         );
+    }
+
+    async fn start_mock_rpc_server() -> Result<(String, JoinHandle<()>)> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .context("failed to bind mock RPC listener")?;
+        let address = listener
+            .local_addr()
+            .context("failed to read mock RPC listener address")?;
+        let app = Router::new().route("/", post(mock_rpc_handler));
+        let task = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        Ok((format!("http://{address}"), task))
+    }
+
+    async fn mock_rpc_handler(Json(request): Json<Value>) -> Json<Value> {
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let params = request
+            .get("params")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let response = match method {
+            "getHealth" => rpc_success(json!("ok")),
+            "getEpochInfo" => rpc_success(json!({
+                "epoch": 9,
+                "slotIndex": 10,
+                "slotsInEpoch": 100,
+                "absoluteSlot": 810
+            })),
+            "getVoteAccounts" => rpc_success(json!({
+                "current": [{
+                    "votePubkey": "vote-1",
+                    "nodePubkey": "id-1",
+                    "activatedStake": 1_500_000_000u64,
+                    "commission": 5,
+                    "epochCredits": [[8, 20, 10]],
+                    "lastVote": 809,
+                    "rootSlot": 808
+                }],
+                "delinquent": []
+            })),
+            "getBlockProduction" => {
+                let first_slot = params
+                    .first()
+                    .and_then(|config| config.get("range"))
+                    .and_then(|range| range.get("firstSlot"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default();
+                let by_identity = if first_slot == 700 {
+                    json!({ "id-1": [4, 3] })
+                } else {
+                    json!({ "id-1": [5, 4] })
+                };
+                rpc_success(json!({ "value": { "byIdentity": by_identity } }))
+            }
+            "getLeaderSchedule" => {
+                let slot = params.first().and_then(Value::as_u64).unwrap_or_default();
+                let schedule = if slot == 810 {
+                    json!({ "id-1": [0, 2, 5, 10] })
+                } else {
+                    json!({ "id-1": [1, 50] })
+                };
+                rpc_success(schedule)
+            }
+            "minimumLedgerSlot" => rpc_success(json!(600)),
+            "getInflationReward" => {
+                let rewards = params
+                    .first()
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|_| json!({ "amount": 12_000_000_000i64, "epoch": 8 }))
+                    .collect::<Vec<_>>();
+                rpc_success(json!(rewards))
+            }
+            _ => rpc_error(-32601, "method not found"),
+        };
+
+        Json(response)
+    }
+
+    fn rpc_success(result: Value) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "result": result,
+            "id": 1
+        })
+    }
+
+    fn rpc_error(code: i64, message: &str) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": code,
+                "message": message
+            },
+            "id": 1
+        })
     }
 
     #[test]
