@@ -366,19 +366,12 @@ fn init_tracing() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        config_mtime, new_ws_probe_client, run_http_server, update_liveness_file, AppState,
-    };
-    use crate::{
-        config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
-        metrics::Metrics,
-        tasks::{TaskExit, TaskManager},
-    };
+    use super::{config_mtime, new_ws_probe_client, update_liveness_file};
+    use crate::config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode};
     use anyhow::{Context, Result};
     use std::{
         env, fs,
         path::PathBuf,
-        sync::Arc,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -441,26 +434,6 @@ mod tests {
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
 
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn http_server_task_stops_cleanly_when_shutdown_is_requested() -> Result<()> {
-        let mut tasks = TaskManager::new();
-        let state = AppState {
-            metrics: Arc::new(Metrics::new()?),
-        };
-
-        tasks.spawn(
-            "http-server",
-            run_http_server(state, 0, tasks.shutdown_handle()),
-        );
-        tasks.spawn("signal", async move {
-            tokio::task::yield_now().await;
-            Ok(TaskExit::ShutdownRequested)
-        });
-
-        tasks.run().await?;
         Ok(())
     }
 

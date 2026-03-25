@@ -151,10 +151,10 @@ mod tests {
         });
         manager.spawn("unexpected", async move { Ok(TaskExit::Finished) });
 
-        let err = manager
-            .run()
-            .await
-            .expect_err("unexpected task exit should fail");
+        let err = match manager.run().await {
+            Ok(()) => return Err(anyhow!("unexpected task exit should fail")),
+            Err(err) => err,
+        };
         assert!(err
             .to_string()
             .contains("task unexpected exited unexpectedly"));
@@ -162,12 +162,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_errors_are_reported() {
+    async fn task_errors_are_reported() -> Result<()> {
         let mut manager = TaskManager::new();
         manager.spawn("broken", async move { Err(anyhow!("boom")) });
 
-        let err = manager.run().await.expect_err("task error should bubble");
+        let err = match manager.run().await {
+            Ok(()) => return Err(anyhow!("task error should bubble")),
+            Err(err) => err,
+        };
         assert!(err.to_string().contains("boom"));
+        Ok(())
     }
 
     #[tokio::test]
@@ -182,7 +186,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn panicking_tasks_are_reported_as_join_errors() {
+    async fn panicking_tasks_are_reported_as_join_errors() -> Result<()> {
         let mut manager = TaskManager::new();
         manager.spawn("panic", async move {
             panic!("boom");
@@ -190,10 +194,11 @@ mod tests {
             Ok(TaskExit::Finished)
         });
 
-        let err = manager
-            .run()
-            .await
-            .expect_err("panic should fail the manager");
+        let err = match manager.run().await {
+            Ok(()) => return Err(anyhow!("panic should fail the manager")),
+            Err(err) => err,
+        };
         assert!(err.to_string().contains("task join failed"));
+        Ok(())
     }
 }

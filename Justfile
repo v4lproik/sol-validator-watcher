@@ -36,6 +36,12 @@ clippy: ensure-rust-components
 test:
   mise exec -- cargo test
 
+verify:
+  just fmt
+  just clippy
+  just build
+  just test
+
 test-surfpool:
   if ! command -v surfpool >/dev/null 2>&1; then echo "surfpool CLI not found. Install it with: curl -sL https://run.surfpool.run/ | bash" >&2; exit 1; fi
   SURFPOOL_E2E=1 mise exec -- cargo test surfpool_smoke_test_collects_snapshot_and_renders_metrics -- --nocapture
@@ -135,9 +141,7 @@ clean:
   mise exec -- cargo clean
 
 ci:
-  just fmt
-  just clippy
-  just test
+  just verify
 
 ci-full:
   just fmt
