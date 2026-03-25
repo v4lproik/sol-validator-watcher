@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
+      PAGES_AUTO_ENABLE: ${{ vars.PAGES_AUTO_ENABLE }}
       PAGES_ENABLEMENT_TOKEN: ${{ secrets.PAGES_ENABLEMENT_TOKEN }}
     outputs:
       pages_should_run: ${{ steps.pages.outputs.should_run }}
@@ -32,6 +33,8 @@ jobs:
           script: |
             const enablementTokenConfigured =
               (process.env.PAGES_ENABLEMENT_TOKEN || '').trim() !== '';
+            const autoEnableRequested =
+              (process.env.PAGES_AUTO_ENABLE || '').trim().toLowerCase() === 'true';
 
             try {
               await github.request('GET /repos/{owner}/{repo}/pages', {
@@ -45,7 +48,7 @@ jobs:
                 throw error;
               }
 
-              if (enablementTokenConfigured) {
+              if (enablementTokenConfigured && autoEnableRequested) {
                 core.notice(
                   'GitHub Pages is not enabled; configure-pages will attempt enablement.'
                 );
@@ -53,7 +56,7 @@ jobs:
                 core.setOutput('enablement', 'true');
               } else {
                 core.notice(
-                  'Skipping coverage-pages because GitHub Pages is not enabled and PAGES_ENABLEMENT_TOKEN is not configured.'
+                  'Skipping coverage-pages because GitHub Pages is not enabled. To auto-enable it, set PAGES_AUTO_ENABLE=true and configure PAGES_ENABLEMENT_TOKEN.'
                 );
                 core.setOutput('should_run', 'false');
                 core.setOutput('enablement', 'false');

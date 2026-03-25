@@ -132,7 +132,7 @@ GitHub Actions runs:
 - container publishing to GHCR
 - HTML coverage publishing to GitHub Pages
 
-For a public repo, set GitHub Pages to `GitHub Actions`. If Pages is not enabled yet, set `PAGES_ENABLEMENT_TOKEN` with repository admin or Pages-write access so the workflow can enable it automatically; otherwise the Pages publish job skips cleanly. `CODECOV_TOKEN` is only needed for private repositories.
+For a public repo, set GitHub Pages to `GitHub Actions`. If Pages is not enabled yet and your plan supports it, set `PAGES_AUTO_ENABLE=true` and provide `PAGES_ENABLEMENT_TOKEN` with repository admin or Pages-write access so the workflow can enable it automatically; otherwise the Pages publish job skips cleanly. GitHub documents that Pages is available for public repositories on GitHub Free, and for public and private repositories on GitHub Pro, Team, Enterprise Cloud, and Enterprise Server. `CODECOV_TOKEN` is only needed for private repositories.
 
 ## Notes
 
