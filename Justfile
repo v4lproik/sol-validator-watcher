@@ -60,9 +60,15 @@ build-release:
   cargo build --release
 
 run config="etc/config.local.yaml":
+  set -a; \
+  [ ! -f .env ] || source .env; \
+  set +a; \
   cargo run -- --config '{{config}}'
 
 run-release config="etc/config.local.yaml":
+  set -a; \
+  [ ! -f .env ] || source .env; \
+  set +a; \
   cargo run --release -- --config '{{config}}'
 
 docker-build tag="sol-validator-watcher:local":
