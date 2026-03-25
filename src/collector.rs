@@ -95,6 +95,57 @@ impl RpcClient {
         .await
     }
 
+    async fn get_inflation_rewards(
+        &self,
+        addresses: &[String],
+        epoch: u64,
+    ) -> Result<HashMap<String, RewardSample>> {
+        if addresses.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rewards: Vec<Option<InflationRewardValue>> = self
+            .call(
+                "getInflationReward",
+                (
+                    addresses,
+                    GetInflationRewardConfig {
+                        commitment: &self.commitment,
+                        epoch,
+                    },
+                ),
+            )
+            .await?;
+
+        if rewards.len() != addresses.len() {
+            bail!(
+                "getInflationReward returned {} rewards for {} addresses",
+                rewards.len(),
+                addresses.len()
+            );
+        }
+
+        let mut by_address = HashMap::with_capacity(addresses.len());
+        for (address, reward) in addresses.iter().zip(rewards) {
+            let Some(reward) = reward else {
+                continue;
+            };
+            let Ok(amount_lamports) = u64::try_from(reward.amount) else {
+                continue;
+            };
+
+            by_address.insert(
+                address.clone(),
+                RewardSample {
+                    epoch: reward.epoch,
+                    amount_lamports,
+                },
+            );
+        }
+
+        Ok(by_address)
+    }
+
     pub(crate) async fn ensure_healthy(&self) -> Result<()> {
         let health = self
             .get_health()
@@ -176,6 +227,12 @@ pub struct EpochCreditsSample {
     pub earned: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardSample {
+    pub epoch: u64,
+    pub amount_lamports: u64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct WatchedValidatorMetrics {
     pub identity: String,
@@ -188,6 +245,8 @@ pub struct WatchedValidatorMetrics {
     pub last_vote_slot_lag: u64,
     pub root_slot_lag: u64,
     pub commission_pct: u8,
+    pub latest_epoch_reward_lamports: u64,
+    pub latest_epoch_rewarded_blocks_produced: u64,
     pub blocks_produced: u64,
     pub blocks_missed: u64,
     pub block_production_rate: f64,
@@ -204,6 +263,8 @@ pub struct ValidatorRecord {
     pub last_vote: u64,
     pub root_slot: u64,
     pub latest_epoch_credits: Option<EpochCreditsSample>,
+    pub latest_epoch_reward: Option<RewardSample>,
+    pub latest_epoch_rewarded_blocks_produced: u64,
     pub current_epoch_leader_slots: u64,
     pub current_epoch_blocks_produced: u64,
     pub future_leader_slots: u64,
@@ -228,6 +289,13 @@ impl ValidatorRecord {
             .as_ref()
             .filter(|credits| Some(credits.epoch) == sample_epoch)
             .map(|credits| credits.earned)
+    }
+
+    fn matching_epoch_reward_lamports(&self, reward_sample_epoch: Option<u64>) -> Option<u64> {
+        self.latest_epoch_reward
+            .as_ref()
+            .filter(|reward| Some(reward.epoch) == reward_sample_epoch)
+            .map(|reward| reward.amount_lamports)
     }
 
     fn vote_efficiency_pct(
@@ -258,6 +326,8 @@ pub struct ScopeMetrics {
     pub current_stake_lamports: u64,
     pub delinquent_stake_lamports: u64,
     pub latest_epoch_vote_credits: u64,
+    pub latest_epoch_reward_lamports: u64,
+    pub latest_epoch_rewarded_blocks_produced: u64,
     pub vote_efficiency_pct: f64,
     pub last_vote_slot_lag: f64,
     pub root_slot_lag: f64,
@@ -280,6 +350,7 @@ pub struct Snapshot {
     pub epoch: u64,
     pub slot: u64,
     pub vote_credits_sample_epoch: Option<u64>,
+    pub reward_sample_epoch: Option<u64>,
     pub scopes: BTreeMap<String, ScopeMetrics>,
     pub watched_validators: Vec<WatchedValidatorMetrics>,
 }
@@ -291,6 +362,8 @@ struct ScopeAccumulator {
     current_stake_lamports: u64,
     delinquent_stake_lamports: u64,
     latest_epoch_vote_credits: u64,
+    latest_epoch_reward_lamports: u64,
+    latest_epoch_rewarded_blocks_produced: u64,
     weighted_vote_efficiency_sum: f64,
     weighted_last_vote_slot_lag_sum: f64,
     weighted_root_slot_lag_sum: f64,
@@ -308,6 +381,7 @@ impl ScopeAccumulator {
         current_slot: u64,
         ideal_epoch_credits: Option<u64>,
         sample_epoch: Option<u64>,
+        reward_sample_epoch: Option<u64>,
     ) {
         match record.status {
             ValidatorStatus::Current => {
@@ -333,6 +407,12 @@ impl ScopeAccumulator {
                 weight * record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch);
         }
 
+        if let Some(reward_lamports) = record.matching_epoch_reward_lamports(reward_sample_epoch) {
+            self.latest_epoch_reward_lamports += reward_lamports;
+            self.latest_epoch_rewarded_blocks_produced +=
+                record.latest_epoch_rewarded_blocks_produced;
+        }
+
         self.blocks_produced += record.current_epoch_blocks_produced;
         self.blocks_missed += record.blocks_missed();
         self.future_leader_slots += record.future_leader_slots;
@@ -352,6 +432,8 @@ impl ScopeAccumulator {
             current_stake_lamports: self.current_stake_lamports,
             delinquent_stake_lamports: self.delinquent_stake_lamports,
             latest_epoch_vote_credits: self.latest_epoch_vote_credits,
+            latest_epoch_reward_lamports: self.latest_epoch_reward_lamports,
+            latest_epoch_rewarded_blocks_produced: self.latest_epoch_rewarded_blocks_produced,
             vote_efficiency_pct: self.weighted_vote_efficiency_sum / weight_sum,
             last_vote_slot_lag: self.weighted_last_vote_slot_lag_sum / weight_sum,
             root_slot_lag: self.weighted_root_slot_lag_sum / weight_sum,
@@ -381,8 +463,23 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
     let current_slot = epoch_info.absolute_slot;
     let epoch_start_slot = current_slot.saturating_sub(epoch_info.slot_index);
     let next_epoch_start_slot = epoch_start_slot + epoch_info.slots_in_epoch;
+    let reward_epoch = epoch_info.epoch.checked_sub(1);
+    let reward_epoch_start_slot = epoch_start_slot.saturating_sub(epoch_info.slots_in_epoch);
+    let reward_epoch_end_slot = epoch_start_slot.saturating_sub(1);
+    let reward_vote_accounts = vote_accounts
+        .current
+        .iter()
+        .chain(vote_accounts.delinquent.iter())
+        .map(|info| info.vote_pubkey.clone())
+        .collect::<Vec<_>>();
 
-    let (block_production_result, current_schedule_result, next_schedule_result) = tokio::join!(
+    let (
+        block_production_result,
+        current_schedule_result,
+        next_schedule_result,
+        reward_epoch_block_production_result,
+        inflation_rewards_result,
+    ) = tokio::join!(
         async {
             client
                 .get_block_production(epoch_start_slot, current_slot)
@@ -400,6 +497,24 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
                 .get_leader_schedule(next_epoch_start_slot)
                 .await
                 .context("getLeaderSchedule for next epoch failed")
+        },
+        async {
+            match reward_epoch {
+                Some(_) => client
+                    .get_block_production(reward_epoch_start_slot, reward_epoch_end_slot)
+                    .await
+                    .context("getBlockProduction for reward epoch failed"),
+                None => Ok(BlockProduction::default()),
+            }
+        },
+        async {
+            match reward_epoch {
+                Some(epoch) => client
+                    .get_inflation_rewards(&reward_vote_accounts, epoch)
+                    .await
+                    .context("getInflationReward failed"),
+                None => Ok(HashMap::new()),
+            }
         },
     );
 
@@ -420,6 +535,16 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         &config.validator_connection.rpc_url,
         "getLeaderSchedule(next epoch)",
     );
+    let reward_epoch_block_production = optional_rpc_or_default(
+        reward_epoch_block_production_result,
+        &config.validator_connection.rpc_url,
+        "getBlockProduction(reward epoch)",
+    );
+    let inflation_rewards = optional_rpc_or_default(
+        inflation_rewards_result,
+        &config.validator_connection.rpc_url,
+        "getInflationReward",
+    );
 
     let matcher = LabelMatcher::from_config(config);
     let build_context = RecordBuildContext {
@@ -427,8 +552,10 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         current_slot,
         epoch_start_slot,
         by_identity: &block_production.by_identity,
+        reward_epoch_by_identity: &reward_epoch_block_production.by_identity,
         current_schedule: current_schedule.as_ref(),
         next_schedule: next_schedule.as_ref(),
+        latest_epoch_rewards: &inflation_rewards,
     };
     let mut records =
         Vec::with_capacity(vote_accounts.current.len() + vote_accounts.delinquent.len());
@@ -458,8 +585,10 @@ struct RecordBuildContext<'a> {
     current_slot: u64,
     epoch_start_slot: u64,
     by_identity: &'a HashMap<String, (u64, u64)>,
+    reward_epoch_by_identity: &'a HashMap<String, (u64, u64)>,
     current_schedule: Option<&'a HashMap<String, Vec<u64>>>,
     next_schedule: Option<&'a HashMap<String, Vec<u64>>>,
+    latest_epoch_rewards: &'a HashMap<String, RewardSample>,
 }
 
 fn build_record(
@@ -472,6 +601,11 @@ fn build_record(
         .get(&info.node_pubkey)
         .copied()
         .map_or((0, 0), |entry| entry);
+    let reward_epoch_blocks_produced = context
+        .reward_epoch_by_identity
+        .get(&info.node_pubkey)
+        .copied()
+        .map_or(0, |(_, produced)| produced);
 
     let future_current_epoch = context
         .current_schedule
@@ -498,6 +632,7 @@ fn build_record(
             epoch: *epoch,
             earned: credits.saturating_sub(*previous),
         });
+    let latest_epoch_reward = context.latest_epoch_rewards.get(&info.vote_pubkey).cloned();
 
     let scopes = context
         .matcher
@@ -512,6 +647,8 @@ fn build_record(
         last_vote: info.last_vote,
         root_slot: info.root_slot,
         latest_epoch_credits,
+        latest_epoch_reward,
+        latest_epoch_rewarded_blocks_produced: reward_epoch_blocks_produced,
         current_epoch_leader_slots: leader_slots,
         current_epoch_blocks_produced: blocks_produced,
         future_leader_slots: future_current_epoch + future_next_epoch,
@@ -532,6 +669,15 @@ pub fn aggregate_records(
                 .latest_epoch_credits
                 .as_ref()
                 .map(|credits| credits.epoch)
+        })
+        .max();
+    let reward_sample_epoch = records
+        .iter()
+        .filter_map(|record| {
+            record
+                .latest_epoch_reward
+                .as_ref()
+                .map(|reward| reward.epoch)
         })
         .max();
 
@@ -558,6 +704,7 @@ pub fn aggregate_records(
                 slot,
                 ideal_epoch_credits,
                 sample_epoch,
+                reward_sample_epoch,
             );
         }
     }
@@ -566,7 +713,13 @@ pub fn aggregate_records(
         .iter()
         .filter(|record| record.is_watched())
         .map(|record| {
-            build_watched_validator_metrics(record, slot, ideal_epoch_credits, sample_epoch)
+            build_watched_validator_metrics(
+                record,
+                slot,
+                ideal_epoch_credits,
+                sample_epoch,
+                reward_sample_epoch,
+            )
         })
         .collect::<Vec<_>>();
     watched_validators.sort_by(|left, right| {
@@ -580,6 +733,7 @@ pub fn aggregate_records(
         epoch,
         slot,
         vote_credits_sample_epoch: sample_epoch,
+        reward_sample_epoch,
         scopes: scopes
             .into_iter()
             .map(|(scope, metrics)| (scope, metrics.finish()))
@@ -593,9 +747,13 @@ fn build_watched_validator_metrics(
     current_slot: u64,
     ideal_epoch_credits: Option<u64>,
     sample_epoch: Option<u64>,
+    reward_sample_epoch: Option<u64>,
 ) -> WatchedValidatorMetrics {
     let latest_epoch_vote_credits = record
         .matching_epoch_credits(sample_epoch)
+        .unwrap_or_default();
+    let latest_epoch_reward_lamports = record
+        .matching_epoch_reward_lamports(reward_sample_epoch)
         .unwrap_or_default();
     let vote_efficiency_pct = record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch);
 
@@ -610,6 +768,12 @@ fn build_watched_validator_metrics(
         last_vote_slot_lag: record.last_vote_slot_lag(current_slot),
         root_slot_lag: record.root_slot_lag(current_slot),
         commission_pct: record.commission,
+        latest_epoch_reward_lamports,
+        latest_epoch_rewarded_blocks_produced: if latest_epoch_reward_lamports > 0 {
+            record.latest_epoch_rewarded_blocks_produced
+        } else {
+            0
+        },
         blocks_produced: record.current_epoch_blocks_produced,
         blocks_missed: record.blocks_missed(),
         block_production_rate: ratio(
@@ -688,6 +852,13 @@ struct GetBlockProductionConfig<'a> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct GetInflationRewardConfig<'a> {
+    commitment: &'a str,
+    epoch: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SlotRange {
     first_slot: u64,
     last_slot: u64,
@@ -744,11 +915,18 @@ struct BlockProduction {
     by_identity: HashMap<String, (u64, u64)>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InflationRewardValue {
+    amount: i64,
+    epoch: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         aggregate_records, build_record, build_watched_validator_metrics, optional_rpc_or_default,
-        ratio, EpochCreditsSample, RecordBuildContext, ScopeMetrics, ValidatorRecord,
+        ratio, EpochCreditsSample, RecordBuildContext, RewardSample, ScopeMetrics, ValidatorRecord,
         ValidatorStatus, VoteAccountInfo, WatchedValidatorMetrics,
     };
     use crate::{
@@ -775,6 +953,11 @@ mod tests {
                     epoch: 9,
                     earned: 10,
                 }),
+                latest_epoch_reward: Some(RewardSample {
+                    epoch: 9,
+                    amount_lamports: 9_000_000_000,
+                }),
+                latest_epoch_rewarded_blocks_produced: 3,
                 current_epoch_leader_slots: 4,
                 current_epoch_blocks_produced: 3,
                 future_leader_slots: 2,
@@ -792,6 +975,11 @@ mod tests {
                     epoch: 9,
                     earned: 5,
                 }),
+                latest_epoch_reward: Some(RewardSample {
+                    epoch: 9,
+                    amount_lamports: 2_000_000_000,
+                }),
+                latest_epoch_rewarded_blocks_produced: 1,
                 current_epoch_leader_slots: 2,
                 current_epoch_blocks_produced: 1,
                 future_leader_slots: 1,
@@ -810,6 +998,7 @@ mod tests {
             .ok_or_else(|| anyhow!("missing all-network scope"))?;
 
         assert_eq!(snapshot.vote_credits_sample_epoch, Some(9));
+        assert_eq!(snapshot.reward_sample_epoch, Some(9));
         assert_eq!(
             watched,
             &ScopeMetrics {
@@ -818,6 +1007,8 @@ mod tests {
                 current_stake_lamports: 10,
                 delinquent_stake_lamports: 0,
                 latest_epoch_vote_credits: 10,
+                latest_epoch_reward_lamports: 9_000_000_000,
+                latest_epoch_rewarded_blocks_produced: 3,
                 vote_efficiency_pct: 100.0,
                 last_vote_slot_lag: 5.0,
                 root_slot_lag: 6.0,
@@ -842,6 +1033,8 @@ mod tests {
                 scopes: vec!["scope:watched".to_string(), "scope:all-network".to_string()],
                 activated_stake_lamports: 10,
                 latest_epoch_vote_credits: 10,
+                latest_epoch_reward_lamports: 9_000_000_000,
+                latest_epoch_rewarded_blocks_produced: 3,
                 vote_efficiency_pct: 100.0,
                 last_vote_slot_lag: 5,
                 root_slot_lag: 6,
@@ -870,13 +1063,15 @@ mod tests {
                 epoch: 4,
                 earned: 12,
             }),
+            latest_epoch_reward: None,
+            latest_epoch_rewarded_blocks_produced: 0,
             current_epoch_leader_slots: 0,
             current_epoch_blocks_produced: 0,
             future_leader_slots: 3,
             scopes: vec!["scope:watched".to_string()],
         };
 
-        let watched = build_watched_validator_metrics(&record, 100, Some(20), Some(5));
+        let watched = build_watched_validator_metrics(&record, 100, Some(20), Some(5), None);
         assert_eq!(
             watched,
             WatchedValidatorMetrics {
@@ -886,6 +1081,8 @@ mod tests {
                 scopes: vec!["scope:watched".to_string()],
                 activated_stake_lamports: 10,
                 latest_epoch_vote_credits: 0,
+                latest_epoch_reward_lamports: 0,
+                latest_epoch_rewarded_blocks_produced: 0,
                 vote_efficiency_pct: 0.0,
                 last_vote_slot_lag: 2,
                 root_slot_lag: 3,
@@ -940,20 +1137,32 @@ mod tests {
         };
         let matcher = LabelMatcher::from_config(&config);
         let mut by_identity = HashMap::new();
+        let mut reward_epoch_by_identity = HashMap::new();
         let mut current_schedule = HashMap::new();
         let mut next_schedule = HashMap::new();
+        let mut latest_epoch_rewards = HashMap::new();
 
         by_identity.insert("id-1".to_string(), (5, 4));
+        reward_epoch_by_identity.insert("id-1".to_string(), (4, 3));
         current_schedule.insert("id-1".to_string(), vec![5, 10, 15]);
         next_schedule.insert("id-1".to_string(), vec![1, 2]);
+        latest_epoch_rewards.insert(
+            "vote-1".to_string(),
+            RewardSample {
+                epoch: 9,
+                amount_lamports: 12_000_000_000,
+            },
+        );
 
         let context = RecordBuildContext {
             matcher: &matcher,
             current_slot: 110,
             epoch_start_slot: 100,
             by_identity: &by_identity,
+            reward_epoch_by_identity: &reward_epoch_by_identity,
             current_schedule: Some(&current_schedule),
             next_schedule: Some(&next_schedule),
+            latest_epoch_rewards: &latest_epoch_rewards,
         };
 
         let record = build_record(
@@ -972,12 +1181,20 @@ mod tests {
 
         assert_eq!(record.current_epoch_leader_slots, 5);
         assert_eq!(record.current_epoch_blocks_produced, 4);
+        assert_eq!(record.latest_epoch_rewarded_blocks_produced, 3);
         assert_eq!(record.future_leader_slots, 4);
         assert_eq!(
             record.latest_epoch_credits,
             Some(EpochCreditsSample {
                 epoch: 9,
                 earned: 15,
+            })
+        );
+        assert_eq!(
+            record.latest_epoch_reward,
+            Some(RewardSample {
+                epoch: 9,
+                amount_lamports: 12_000_000_000,
             })
         );
         assert!(record.scopes.contains(&"scope:watched".to_string()));
@@ -998,14 +1215,18 @@ mod tests {
         };
         let matcher = LabelMatcher::from_config(&config);
         let by_identity = HashMap::new();
+        let reward_epoch_by_identity = HashMap::new();
+        let latest_epoch_rewards = HashMap::new();
 
         let context = RecordBuildContext {
             matcher: &matcher,
             current_slot: 50,
             epoch_start_slot: 40,
             by_identity: &by_identity,
+            reward_epoch_by_identity: &reward_epoch_by_identity,
             current_schedule: None,
             next_schedule: None,
+            latest_epoch_rewards: &latest_epoch_rewards,
         };
 
         let record = build_record(
@@ -1026,6 +1247,7 @@ mod tests {
         assert_eq!(record.current_epoch_blocks_produced, 0);
         assert_eq!(record.future_leader_slots, 0);
         assert_eq!(record.latest_epoch_credits, None);
+        assert_eq!(record.latest_epoch_reward, None);
         assert!(record.scopes.contains(&"scope:network".to_string()));
     }
 

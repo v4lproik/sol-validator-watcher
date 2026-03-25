@@ -41,7 +41,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "🖧 Network 🖧",
+      "title": "\ud83d\udda7 Network \ud83d\udda7",
       "type": "row"
     },
     {
@@ -441,7 +441,7 @@
       },
       "id": 141,
       "panels": [],
-      "title": "🚨 Operator State 🚨",
+      "title": "\ud83d\udea8 Operator State \ud83d\udea8",
       "type": "row"
     },
     {
@@ -751,7 +751,7 @@
       },
       "id": 107,
       "panels": [],
-      "title": "🧱 Validator Performance 🧱",
+      "title": "\ud83e\uddf1 Validator Performance \ud83e\uddf1",
       "type": "row"
     },
     {
@@ -1511,9 +1511,187 @@
         "x": 0,
         "y": 21
       },
+      "id": 146,
+      "panels": [],
+      "title": "\ud83d\udcb8 Validator Economics \ud83d\udcb8",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
+      "id": 147,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(sol_epoch_reward_sol{scope=\"scope:network\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Network",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(sol_epoch_reward_sol{scope=\"scope:watched\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Watched",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Latest Epoch Reward",
+      "type": "stat",
+      "description": "Latest completed epoch reward in SOL for the network slice and the watched set."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 22
+      },
+      "id": 148,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "avg(sol_reward_per_block_sol{scope=\"scope:network\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Network",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "avg(sol_reward_per_block_sol{scope=\"scope:watched\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Watched",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Reward / Produced Block",
+      "type": "stat",
+      "description": "Latest completed epoch reward divided by produced blocks."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 22
+      },
+      "id": 149,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:network\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Network",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:watched\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Watched",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Rewarded Blocks",
+      "type": "stat",
+      "description": "Produced blocks counted in the sampled reward epoch."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
       "id": 119,
       "panels": [],
-      "title": "🔎 Watched validators compared to the rest of the network 🔎",
+      "title": "\ud83d\udd0e Watched validators compared to the rest of the network \ud83d\udd0e",
       "type": "row"
     },
     {
@@ -1532,7 +1710,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 22
+        "y": 28
       },
       "id": 120,
       "options": {
@@ -1587,7 +1765,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 22
+        "y": 28
       },
       "id": 121,
       "options": {
@@ -1642,7 +1820,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 22
+        "y": 28
       },
       "id": 135,
       "options": {
@@ -1696,7 +1874,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 22
+        "y": 28
       },
       "id": 136,
       "options": {
@@ -1744,7 +1922,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 30
+        "y": 36
       },
       "id": 122,
       "options": {
@@ -1799,7 +1977,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 30
+        "y": 36
       },
       "id": 123,
       "options": {
@@ -1854,7 +2032,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 30
+        "y": 36
       },
       "id": 137,
       "options": {
@@ -1909,7 +2087,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 30
+        "y": 36
       },
       "id": 125,
       "options": {
@@ -1954,11 +2132,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 44
       },
       "id": 126,
       "panels": [],
-      "title": "👀 Watched validator leaders 👀",
+      "title": "\ud83d\udc40 Watched validator leaders \ud83d\udc40",
       "type": "row"
     },
     {
@@ -1976,7 +2154,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 39
+        "y": 45
       },
       "id": 127,
       "options": {
@@ -2019,7 +2197,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 39
+        "y": 45
       },
       "id": 138,
       "options": {
@@ -2062,7 +2240,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 39
+        "y": 45
       },
       "id": 139,
       "options": {
@@ -2105,7 +2283,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 39
+        "y": 45
       },
       "id": 130,
       "options": {
@@ -2138,7 +2316,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Sortable operator view for watched validators. Prioritize status, vote lag, skip rate, and upcoming leader pressure when triaging issues.",
+      "description": "Sortable operator view for watched validators. Includes latest epoch rewards and reward per produced block alongside health and performance signals.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2440,6 +2618,66 @@
                 "value": 230
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Epoch Reward (SOL)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rewarded Blocks"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reward / Block (SOL)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
           }
         ]
       },
@@ -2447,7 +2685,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 53
       },
       "id": 140,
       "options": {
@@ -2550,6 +2788,33 @@
           "legendFormat": "{{network}} / {{identity}}",
           "range": false,
           "refId": "J"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_epoch_reward_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "K"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "L"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_reward_per_block_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "M"
         }
       ],
       "transformations": [
@@ -2637,7 +2902,28 @@
               "status 6": true,
               "status 7": true,
               "status 8": true,
-              "status 9": true
+              "status 9": true,
+              "Time 10": true,
+              "__name__ 10": true,
+              "validator_key 10": true,
+              "network 10": true,
+              "identity 10": true,
+              "vote_account 10": true,
+              "status 10": true,
+              "Time 11": true,
+              "__name__ 11": true,
+              "validator_key 11": true,
+              "network 11": true,
+              "identity 11": true,
+              "vote_account 11": true,
+              "status 11": true,
+              "Time 12": true,
+              "__name__ 12": true,
+              "validator_key 12": true,
+              "network 12": true,
+              "identity 12": true,
+              "vote_account 12": true,
+              "status 12": true
             },
             "indexByName": {},
             "renameByName": {
@@ -2653,7 +2939,10 @@
               "Value #G": "Produced",
               "Value #H": "Missed",
               "Value #I": "Skip Rate",
-              "Value #J": "Next Leader Slots"
+              "Value #J": "Next Leader Slots",
+              "Value #K": "Epoch Reward (SOL)",
+              "Value #L": "Rewarded Blocks",
+              "Value #M": "Reward / Block (SOL)"
             }
           }
         }

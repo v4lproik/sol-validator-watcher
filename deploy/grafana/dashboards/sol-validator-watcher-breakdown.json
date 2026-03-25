@@ -41,7 +41,7 @@
       },
       "id": 200,
       "panels": [],
-      "title": "🖧 Network 🖧",
+      "title": "\ud83d\udda7 Network \ud83d\udda7",
       "type": "row"
     },
     {
@@ -339,9 +339,112 @@
         "x": 0,
         "y": 9
       },
+      "id": 228,
+      "panels": [],
+      "title": "\ud83d\udcb8 Economics \ud83d\udcb8",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 229,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (scope) (sol_epoch_reward_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "{{scope}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Epoch Reward",
+      "type": "bargauge",
+      "description": "Latest completed epoch reward by scope."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 230,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (scope) (sol_epoch_reward_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}) / clamp_min(sum by (scope) (sol_rewarded_blocks_latest_epoch{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}), 1e-9)",
+          "instant": true,
+          "legendFormat": "{{scope}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Reward / Produced Block",
+      "type": "bargauge",
+      "description": "Latest completed epoch reward divided by produced blocks, grouped by scope."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
       "id": 208,
       "panels": [],
-      "title": "🧱 Leadership 🧱",
+      "title": "\ud83e\uddf1 Leadership \ud83e\uddf1",
       "type": "row"
     },
     {
@@ -361,7 +464,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 10
+        "y": 19
       },
       "id": 209,
       "options": {
@@ -412,7 +515,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 10
+        "y": 19
       },
       "id": 210,
       "options": {
@@ -452,7 +555,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 10
+        "y": 19
       },
       "id": 211,
       "options": {
@@ -492,7 +595,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 10
+        "y": 19
       },
       "id": 212,
       "options": {
@@ -523,11 +626,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 27
       },
       "id": 213,
       "panels": [],
-      "title": "✍ Consensus ✍",
+      "title": "\u270d Consensus \u270d",
       "type": "row"
     },
     {
@@ -545,7 +648,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 19
+        "y": 28
       },
       "id": 214,
       "options": {
@@ -585,7 +688,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 19
+        "y": 28
       },
       "id": 215,
       "options": {
@@ -625,7 +728,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 19
+        "y": 28
       },
       "id": 216,
       "options": {
@@ -665,7 +768,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 19
+        "y": 28
       },
       "id": 217,
       "options": {
@@ -696,11 +799,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 36
       },
       "id": 218,
       "panels": [],
-      "title": "🎯 Finalization 🎯",
+      "title": "\ud83c\udfaf Finalization \ud83c\udfaf",
       "type": "row"
     },
     {
@@ -718,7 +821,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 28
+        "y": 37
       },
       "id": 219,
       "options": {
@@ -758,7 +861,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 28
+        "y": 37
       },
       "id": 220,
       "options": {
@@ -798,7 +901,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 28
+        "y": 37
       },
       "id": 221,
       "options": {
@@ -838,7 +941,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 28
+        "y": 37
       },
       "id": 222,
       "options": {
@@ -869,11 +972,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 45
       },
       "id": 223,
       "panels": [],
-      "title": "🏁 Scope Leaderboards 🏁",
+      "title": "\ud83c\udfc1 Scope Leaderboards \ud83c\udfc1",
       "type": "row"
     },
     {
@@ -891,7 +994,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 37
+        "y": 46
       },
       "id": 224,
       "options": {
@@ -934,7 +1037,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 37
+        "y": 46
       },
       "id": 225,
       "options": {
@@ -977,7 +1080,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 37
+        "y": 46
       },
       "id": 226,
       "options": {
@@ -1020,7 +1123,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 37
+        "y": 46
       },
       "id": 227,
       "options": {

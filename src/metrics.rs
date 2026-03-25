@@ -13,6 +13,7 @@ pub struct Metrics {
     sol_slot: IntGaugeVec,
     sol_epoch: IntGaugeVec,
     sol_vote_credits_sample_epoch: IntGaugeVec,
+    sol_reward_sample_epoch: IntGaugeVec,
     sol_watcher_up: IntGaugeVec,
     sol_rpc_up: IntGaugeVec,
     sol_ws_up: IntGaugeVec,
@@ -23,6 +24,9 @@ pub struct Metrics {
     sol_delinquent_validator_count: GaugeVec,
     sol_delinquent_stake_sol: GaugeVec,
     sol_vote_credits_latest_epoch: GaugeVec,
+    sol_epoch_reward_sol: GaugeVec,
+    sol_rewarded_blocks_latest_epoch: GaugeVec,
+    sol_reward_per_block_sol: GaugeVec,
     sol_vote_efficiency_pct: GaugeVec,
     sol_last_vote_slot_lag: GaugeVec,
     sol_root_slot_lag: GaugeVec,
@@ -35,6 +39,9 @@ pub struct Metrics {
     sol_watched_validator_scope_info: IntGaugeVec,
     sol_watched_validator_activated_stake_sol: GaugeVec,
     sol_watched_validator_vote_credits_latest_epoch: GaugeVec,
+    sol_watched_validator_epoch_reward_sol: GaugeVec,
+    sol_watched_validator_rewarded_blocks_latest_epoch: GaugeVec,
+    sol_watched_validator_reward_per_block_sol: GaugeVec,
     sol_watched_validator_vote_efficiency_pct: GaugeVec,
     sol_watched_validator_last_vote_slot_lag: GaugeVec,
     sol_watched_validator_root_slot_lag: GaugeVec,
@@ -57,6 +64,13 @@ impl Metrics {
             Opts::new(
                 "sol_vote_credits_sample_epoch",
                 "Epoch used for sol_vote_credits_latest_epoch and sol_vote_efficiency_pct",
+            ),
+            &["network"],
+        )?;
+        let sol_reward_sample_epoch = IntGaugeVec::new(
+            Opts::new(
+                "sol_reward_sample_epoch",
+                "Epoch used for latest epoch reward metrics",
             ),
             &["network"],
         )?;
@@ -131,6 +145,27 @@ impl Metrics {
             Opts::new(
                 "sol_vote_credits_latest_epoch",
                 "Sum of latest available epoch vote credits for a scope",
+            ),
+            &["scope", "network"],
+        )?;
+        let sol_epoch_reward_sol = GaugeVec::new(
+            Opts::new(
+                "sol_epoch_reward_sol",
+                "Latest sampled epoch reward in SOL for a scope",
+            ),
+            &["scope", "network"],
+        )?;
+        let sol_rewarded_blocks_latest_epoch = GaugeVec::new(
+            Opts::new(
+                "sol_rewarded_blocks_latest_epoch",
+                "Produced blocks in the sampled reward epoch for a scope",
+            ),
+            &["scope", "network"],
+        )?;
+        let sol_reward_per_block_sol = GaugeVec::new(
+            Opts::new(
+                "sol_reward_per_block_sol",
+                "Latest sampled epoch reward divided by produced blocks for a scope",
             ),
             &["scope", "network"],
         )?;
@@ -218,6 +253,27 @@ impl Metrics {
             ),
             &["network", "identity", "vote_account", "status"],
         )?;
+        let sol_watched_validator_epoch_reward_sol = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_epoch_reward_sol",
+                "Latest sampled epoch reward in SOL for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_rewarded_blocks_latest_epoch = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_rewarded_blocks_latest_epoch",
+                "Produced blocks in the sampled reward epoch for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_reward_per_block_sol = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_reward_per_block_sol",
+                "Latest sampled epoch reward divided by produced blocks for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
         let sol_watched_validator_vote_efficiency_pct = GaugeVec::new(
             Opts::new(
                 "sol_watched_validator_vote_efficiency_pct",
@@ -278,6 +334,7 @@ impl Metrics {
         register(&registry, &sol_slot)?;
         register(&registry, &sol_epoch)?;
         register(&registry, &sol_vote_credits_sample_epoch)?;
+        register(&registry, &sol_reward_sample_epoch)?;
         register(&registry, &sol_watcher_up)?;
         register(&registry, &sol_rpc_up)?;
         register(&registry, &sol_ws_up)?;
@@ -288,6 +345,9 @@ impl Metrics {
         register(&registry, &sol_delinquent_validator_count)?;
         register(&registry, &sol_delinquent_stake_sol)?;
         register(&registry, &sol_vote_credits_latest_epoch)?;
+        register(&registry, &sol_epoch_reward_sol)?;
+        register(&registry, &sol_rewarded_blocks_latest_epoch)?;
+        register(&registry, &sol_reward_per_block_sol)?;
         register(&registry, &sol_vote_efficiency_pct)?;
         register(&registry, &sol_last_vote_slot_lag)?;
         register(&registry, &sol_root_slot_lag)?;
@@ -300,6 +360,12 @@ impl Metrics {
         register(&registry, &sol_watched_validator_scope_info)?;
         register(&registry, &sol_watched_validator_activated_stake_sol)?;
         register(&registry, &sol_watched_validator_vote_credits_latest_epoch)?;
+        register(&registry, &sol_watched_validator_epoch_reward_sol)?;
+        register(
+            &registry,
+            &sol_watched_validator_rewarded_blocks_latest_epoch,
+        )?;
+        register(&registry, &sol_watched_validator_reward_per_block_sol)?;
         register(&registry, &sol_watched_validator_vote_efficiency_pct)?;
         register(&registry, &sol_watched_validator_last_vote_slot_lag)?;
         register(&registry, &sol_watched_validator_root_slot_lag)?;
@@ -314,6 +380,7 @@ impl Metrics {
             sol_slot,
             sol_epoch,
             sol_vote_credits_sample_epoch,
+            sol_reward_sample_epoch,
             sol_watcher_up,
             sol_rpc_up,
             sol_ws_up,
@@ -324,6 +391,9 @@ impl Metrics {
             sol_delinquent_validator_count,
             sol_delinquent_stake_sol,
             sol_vote_credits_latest_epoch,
+            sol_epoch_reward_sol,
+            sol_rewarded_blocks_latest_epoch,
+            sol_reward_per_block_sol,
             sol_vote_efficiency_pct,
             sol_last_vote_slot_lag,
             sol_root_slot_lag,
@@ -336,6 +406,9 @@ impl Metrics {
             sol_watched_validator_scope_info,
             sol_watched_validator_activated_stake_sol,
             sol_watched_validator_vote_credits_latest_epoch,
+            sol_watched_validator_epoch_reward_sol,
+            sol_watched_validator_rewarded_blocks_latest_epoch,
+            sol_watched_validator_reward_per_block_sol,
             sol_watched_validator_vote_efficiency_pct,
             sol_watched_validator_last_vote_slot_lag,
             sol_watched_validator_root_slot_lag,
@@ -408,6 +481,9 @@ impl Metrics {
                     .vote_credits_sample_epoch
                     .map_or(0, |epoch| epoch as i64),
             );
+        self.sol_reward_sample_epoch
+            .with_label_values(&[&snapshot.network])
+            .set(snapshot.reward_sample_epoch.map_or(0, |epoch| epoch as i64));
 
         for (scope, metrics) in &snapshot.scopes {
             let network = snapshot.network.as_str();
@@ -438,6 +514,18 @@ impl Metrics {
             self.sol_vote_credits_latest_epoch
                 .with_label_values(&[scope, network])
                 .set(metrics.latest_epoch_vote_credits as f64);
+            self.sol_epoch_reward_sol
+                .with_label_values(&[scope, network])
+                .set(lamports_to_sol(metrics.latest_epoch_reward_lamports));
+            self.sol_rewarded_blocks_latest_epoch
+                .with_label_values(&[scope, network])
+                .set(metrics.latest_epoch_rewarded_blocks_produced as f64);
+            self.sol_reward_per_block_sol
+                .with_label_values(&[scope, network])
+                .set(reward_per_block_sol(
+                    metrics.latest_epoch_reward_lamports,
+                    metrics.latest_epoch_rewarded_blocks_produced,
+                ));
             self.sol_vote_efficiency_pct
                 .with_label_values(&[scope, network])
                 .set(metrics.vote_efficiency_pct);
@@ -476,6 +564,9 @@ impl Metrics {
         self.sol_delinquent_validator_count.reset();
         self.sol_delinquent_stake_sol.reset();
         self.sol_vote_credits_latest_epoch.reset();
+        self.sol_epoch_reward_sol.reset();
+        self.sol_rewarded_blocks_latest_epoch.reset();
+        self.sol_reward_per_block_sol.reset();
         self.sol_vote_efficiency_pct.reset();
         self.sol_last_vote_slot_lag.reset();
         self.sol_root_slot_lag.reset();
@@ -488,6 +579,10 @@ impl Metrics {
         self.sol_watched_validator_scope_info.reset();
         self.sol_watched_validator_activated_stake_sol.reset();
         self.sol_watched_validator_vote_credits_latest_epoch.reset();
+        self.sol_watched_validator_epoch_reward_sol.reset();
+        self.sol_watched_validator_rewarded_blocks_latest_epoch
+            .reset();
+        self.sol_watched_validator_reward_per_block_sol.reset();
         self.sol_watched_validator_vote_efficiency_pct.reset();
         self.sol_watched_validator_last_vote_slot_lag.reset();
         self.sol_watched_validator_root_slot_lag.reset();
@@ -510,6 +605,18 @@ impl Metrics {
         self.sol_watched_validator_vote_credits_latest_epoch
             .with_label_values(&labels)
             .set(validator.latest_epoch_vote_credits as f64);
+        self.sol_watched_validator_epoch_reward_sol
+            .with_label_values(&labels)
+            .set(lamports_to_sol(validator.latest_epoch_reward_lamports));
+        self.sol_watched_validator_rewarded_blocks_latest_epoch
+            .with_label_values(&labels)
+            .set(validator.latest_epoch_rewarded_blocks_produced as f64);
+        self.sol_watched_validator_reward_per_block_sol
+            .with_label_values(&labels)
+            .set(reward_per_block_sol(
+                validator.latest_epoch_reward_lamports,
+                validator.latest_epoch_rewarded_blocks_produced,
+            ));
         self.sol_watched_validator_vote_efficiency_pct
             .with_label_values(&labels)
             .set(validator.vote_efficiency_pct);
@@ -561,6 +668,14 @@ fn lamports_to_sol(lamports: u64) -> f64 {
     lamports as f64 / LAMPORTS_PER_SOL
 }
 
+fn reward_per_block_sol(reward_lamports: u64, produced_blocks: u64) -> f64 {
+    if produced_blocks == 0 {
+        return 0.0;
+    }
+
+    lamports_to_sol(reward_lamports) / produced_blocks as f64
+}
+
 fn bool_label(value: bool) -> &'static str {
     if value {
         "true"
@@ -599,6 +714,7 @@ mod tests {
             epoch: 42,
             slot: 1234,
             vote_credits_sample_epoch: Some(41),
+            reward_sample_epoch: Some(41),
             scopes: BTreeMap::from([(
                 "scope:watched".to_string(),
                 ScopeMetrics {
@@ -607,6 +723,8 @@ mod tests {
                     current_stake_lamports: 1_500_000_000,
                     delinquent_stake_lamports: 0,
                     latest_epoch_vote_credits: 11,
+                    latest_epoch_reward_lamports: 6_000_000_000,
+                    latest_epoch_rewarded_blocks_produced: 3,
                     vote_efficiency_pct: 91.5,
                     last_vote_slot_lag: 4.0,
                     root_slot_lag: 5.0,
@@ -628,6 +746,8 @@ mod tests {
                 ],
                 activated_stake_lamports: 1_500_000_000,
                 latest_epoch_vote_credits: 11,
+                latest_epoch_reward_lamports: 6_000_000_000,
+                latest_epoch_rewarded_blocks_produced: 3,
                 vote_efficiency_pct: 91.5,
                 last_vote_slot_lag: 4,
                 root_slot_lag: 5,
@@ -659,10 +779,18 @@ mod tests {
 
         assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",validator_mode=\"consensus-and-rpc\",validator_websocket_enabled=\"true\",ws_configured=\"true\"} 1"));
         assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
+        assert!(rendered.contains("sol_reward_sample_epoch{network=\"mainnet-beta\"} 41"));
         assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));
+        assert!(rendered
+            .contains("sol_epoch_reward_sol{network=\"mainnet-beta\",scope=\"scope:watched\"} 6"));
+        assert!(rendered.contains(
+            "sol_reward_per_block_sol{network=\"mainnet-beta\",scope=\"scope:watched\"} 2"
+        ));
         assert!(rendered.contains("sol_watched_validator_info{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_watched_validator_scope_info{identity=\"id-1\",network=\"mainnet-beta\",scope=\"region:sbg\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_watched_validator_activated_stake_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1.5"));
+        assert!(rendered.contains("sol_watched_validator_epoch_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 6"));
+        assert!(rendered.contains("sol_watched_validator_reward_per_block_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 2"));
         assert!(rendered.contains("sol_watched_validator_block_production_rate{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 75"));
 
         Ok(())
@@ -690,6 +818,7 @@ mod tests {
             epoch: 1,
             slot: 1,
             vote_credits_sample_epoch: Some(1),
+            reward_sample_epoch: Some(1),
             scopes: BTreeMap::new(),
             watched_validators: vec![WatchedValidatorMetrics {
                 identity: "old-id".to_string(),
@@ -698,6 +827,8 @@ mod tests {
                 scopes: vec!["scope:watched".to_string()],
                 activated_stake_lamports: 1_000_000_000,
                 latest_epoch_vote_credits: 1,
+                latest_epoch_reward_lamports: 1_000_000_000,
+                latest_epoch_rewarded_blocks_produced: 1,
                 vote_efficiency_pct: 100.0,
                 last_vote_slot_lag: 0,
                 root_slot_lag: 0,
@@ -714,6 +845,7 @@ mod tests {
             epoch: 2,
             slot: 2,
             vote_credits_sample_epoch: Some(2),
+            reward_sample_epoch: Some(2),
             scopes: BTreeMap::new(),
             watched_validators: vec![],
         });
