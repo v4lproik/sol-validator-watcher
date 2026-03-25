@@ -76,6 +76,16 @@ These are the operator signals that would most improve the dashboards.
 - epoch rewards
 - cumulative rewards
 
+### Validator economics and revenue
+
+- Jito tip revenue
+- Harmonic revenue
+- base revenue per block
+- total revenue per produced block
+- revenue per leader slot
+- revenue normalized by activated stake
+- revenue split by base fees, tips, and sidecar/auction sources when available
+
 ### Stake and topology
 
 - stake activated / deactivated this epoch
@@ -88,4 +98,4 @@ These are the operator signals that would most improve the dashboards.
 2. Add freshness and scrape reliability metrics.
 3. Add node-local operator health metrics.
 4. Add epoch progress and timing metrics.
-5. Add rewards, balances, and optional topology enrichment.
+5. Add rewards, balances, validator economics, and optional topology enrichment.

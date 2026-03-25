@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Watch your validators against the rest of the network, ship usable dashboards on day one, and surface the signals that matter during incidents: vote lag, delinquency, skip pressure, stake, and future leader slots.
+  Build a single Grafana-oriented operator surface for Solana: validator health, watched-validator comparisons, network context, and eventually validator economics like Jito revenue, Harmonic revenue, and base revenue per block.
 </p>
 
 It follows the same core model as [`kilnfi/eth-validator-watcher`](https://github.com/kilnfi/eth-validator-watcher): poll the network, group validators by labels, and compare:
@@ -24,6 +24,7 @@ It follows the same core model as [`kilnfi/eth-validator-watcher`](https://githu
 - operator-first metrics instead of raw RPC dumps
 - watched-validator views alongside network and custom-scope baselines
 - prebuilt Grafana dashboards for overview and breakdown workflows
+- a clear path toward unifying revenue and economics metrics in the same Grafana surface
 - local devnet, Surfpool, and external-validator profiles out of the box
 - split validator connection config via `figment` and TOML, so secrets stay out of the main YAML
 - graceful degradation when optional RPC methods are unavailable on a provider
@@ -45,6 +46,13 @@ It follows the same core model as [`kilnfi/eth-validator-watcher`](https://githu
 - Docker Compose profiles for devnet, Surfpool, and external validator targets
 - provisioned Grafana dashboards for fleet health and scope drill-downs
 - GitHub Actions for CI, coverage, container publishing, and a Pages-hosted project site with coverage under `/coverage/`
+
+## Product direction
+
+- unify validator operations and validator economics in one Grafana interface
+- add Jito revenue, Harmonic revenue, and base revenue per block
+- normalize revenue by leader slots, produced blocks, and stake where useful
+- reduce operator context-switching across separate dashboards and vendor tools
 
 ## Quick start
 
