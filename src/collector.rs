@@ -365,43 +365,58 @@ impl ScopeAccumulator {
 }
 
 pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Snapshot> {
-    let epoch_info = client
-        .get_epoch_info()
-        .await
-        .context("getEpochInfo failed")?;
+    let (epoch_info_result, vote_accounts_result) = tokio::join!(
+        async { client.get_epoch_info().await.context("getEpochInfo failed") },
+        async {
+            client
+                .get_vote_accounts(config.delinquent_slot_distance)
+                .await
+                .context("getVoteAccounts failed")
+        },
+    );
+
+    let epoch_info = epoch_info_result?;
+    let vote_accounts = vote_accounts_result?;
 
     let current_slot = epoch_info.absolute_slot;
     let epoch_start_slot = current_slot.saturating_sub(epoch_info.slot_index);
     let next_epoch_start_slot = epoch_start_slot + epoch_info.slots_in_epoch;
 
-    let vote_accounts = client
-        .get_vote_accounts(config.delinquent_slot_distance)
-        .await
-        .context("getVoteAccounts failed")?;
+    let (block_production_result, current_schedule_result, next_schedule_result) = tokio::join!(
+        async {
+            client
+                .get_block_production(epoch_start_slot, current_slot)
+                .await
+                .context("getBlockProduction failed")
+        },
+        async {
+            client
+                .get_leader_schedule(current_slot)
+                .await
+                .context("getLeaderSchedule for current epoch failed")
+        },
+        async {
+            client
+                .get_leader_schedule(next_epoch_start_slot)
+                .await
+                .context("getLeaderSchedule for next epoch failed")
+        },
+    );
 
     let block_production = optional_rpc_or_default(
-        client
-            .get_block_production(epoch_start_slot, current_slot)
-            .await
-            .context("getBlockProduction failed"),
+        block_production_result,
         &config.validator_connection.rpc_url,
         "getBlockProduction",
     );
 
     let current_schedule = optional_rpc_or_default(
-        client
-            .get_leader_schedule(current_slot)
-            .await
-            .context("getLeaderSchedule for current epoch failed"),
+        current_schedule_result,
         &config.validator_connection.rpc_url,
         "getLeaderSchedule(current epoch)",
     );
 
     let next_schedule = optional_rpc_or_default(
-        client
-            .get_leader_schedule(next_epoch_start_slot)
-            .await
-            .context("getLeaderSchedule for next epoch failed"),
+        next_schedule_result,
         &config.validator_connection.rpc_url,
         "getLeaderSchedule(next epoch)",
     );

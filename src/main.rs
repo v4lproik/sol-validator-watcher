@@ -12,12 +12,14 @@ mod labels;
 mod metrics;
 #[cfg(test)]
 mod surfpool_tests;
+mod tasks;
 mod websocket;
 
 use crate::{
     collector::{collect_snapshot, RpcClient},
     config::Config,
     metrics::Metrics,
+    tasks::{Shutdown, TaskExit, TaskManager},
     websocket::WebsocketProbeClient,
 };
 use anyhow::{anyhow, Context, Result};
@@ -138,33 +140,26 @@ async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
     let server_state = AppState {
         metrics: Arc::clone(&metrics),
     };
-    let metrics_port = runtime.metrics_port;
-    let mut server = tokio::spawn(run_http_server(server_state, metrics_port));
-    let watcher = run_watcher_loop(runtime, metrics);
-    tokio::pin!(watcher);
+    let mut tasks = TaskManager::new();
 
-    let result = tokio::select! {
-        watcher_result = &mut watcher => watcher_result.context("watcher loop exited"),
-        server_result = &mut server => match server_result {
-            Ok(Ok(())) => Err(anyhow!("metrics HTTP server exited unexpectedly")),
-            Ok(Err(err)) => Err(err).context("metrics HTTP server failed"),
-            Err(err) => Err(err).context("metrics HTTP server task failed"),
-        },
-    };
+    tasks.spawn(
+        "metrics-http-server",
+        run_http_server(server_state, runtime.metrics_port, tasks.shutdown_handle()),
+    );
+    tasks.spawn(
+        "watcher-loop",
+        run_watcher_loop(runtime, metrics, tasks.shutdown_handle()),
+    );
+    tasks.spawn("shutdown-signal", wait_for_shutdown_signal());
 
-    if !server.is_finished() {
-        server.abort();
-        if let Err(err) = server.await {
-            if !err.is_cancelled() {
-                error!(error = ?err, "metrics HTTP server task failed during shutdown");
-            }
-        }
-    }
-
-    result
+    tasks.run().await
 }
 
-async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
+async fn run_watcher_loop(
+    mut runtime: RuntimeState,
+    metrics: Arc<Metrics>,
+    mut shutdown: Shutdown,
+) -> Result<TaskExit> {
     info!(
         network = runtime.config.network,
         rpc_url = runtime.config.validator_connection.rpc_url,
@@ -201,45 +196,61 @@ async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> R
         );
 
         tokio::select! {
-            _ = signal::ctrl_c() => {
-                info!("received shutdown signal");
-                break;
+            _ = shutdown.cancelled() => {
+                metrics.set_watcher_up(&runtime.config.network, false);
+                info!("watcher loop shutting down");
+                return Ok(TaskExit::Finished);
             }
             _ = sleep(Duration::from_secs(runtime.config.poll_interval_sec)) => {}
         }
+    }
+}
+
+async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
+    metrics.set_rpc_up(&runtime.config.network, false);
+    metrics.set_ws_up(&runtime.config.network, false);
+    let rpc_url = runtime.config.validator_connection.rpc_url.clone();
+    let ws_url = runtime.config.validator_connection.ws_url.clone();
+
+    let rpc_check = async {
+        runtime
+            .client
+            .ensure_healthy()
+            .await
+            .with_context(|| format!("RPC health guard failed for endpoint {}", rpc_url))
+    };
+    let ws_check = async {
+        let Some(ws_client) = runtime.ws_client.as_ref() else {
+            return Ok::<bool, anyhow::Error>(false);
+        };
+        let ws_url = ws_url
+            .as_deref()
+            .with_context(|| "missing ws_url for configured websocket probe")?;
+
+        ws_client
+            .probe()
+            .await
+            .with_context(|| format!("websocket health guard failed for endpoint {}", ws_url))?;
+        Ok(true)
+    };
+
+    let (rpc_result, ws_result) = tokio::join!(rpc_check, ws_check);
+
+    rpc_result?;
+    metrics.set_rpc_up(&runtime.config.network, true);
+
+    if ws_result? {
+        metrics.set_ws_up(&runtime.config.network, true);
     }
 
     Ok(())
 }
 
-async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
-    metrics.set_rpc_up(&runtime.config.network, false);
-    runtime.client.ensure_healthy().await.with_context(|| {
-        format!(
-            "RPC health guard failed for endpoint {}",
-            runtime.config.validator_connection.rpc_url
-        )
-    })?;
-    metrics.set_rpc_up(&runtime.config.network, true);
-
-    metrics.set_ws_up(&runtime.config.network, false);
-    let Some(ws_client) = runtime.ws_client.as_ref() else {
-        return Ok(());
-    };
-    let Some(ws_url) = runtime.config.validator_connection.ws_url.as_deref() else {
-        return Ok(());
-    };
-
-    ws_client
-        .probe()
-        .await
-        .with_context(|| format!("websocket health guard failed for endpoint {}", ws_url))?;
-    metrics.set_ws_up(&runtime.config.network, true);
-
-    Ok(())
-}
-
-async fn run_http_server(state: AppState, metrics_port: u16) -> Result<()> {
+async fn run_http_server(
+    state: AppState,
+    metrics_port: u16,
+    mut shutdown: Shutdown,
+) -> Result<TaskExit> {
     let address = SocketAddr::from(([0, 0, 0, 0], metrics_port));
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
@@ -252,8 +263,21 @@ async fn run_http_server(state: AppState, metrics_port: u16) -> Result<()> {
 
     info!(address = %address, "serving metrics");
     axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            shutdown.cancelled().await;
+        })
         .await
-        .context("HTTP server failed")
+        .context("HTTP server failed")?;
+
+    Ok(TaskExit::Finished)
+}
+
+async fn wait_for_shutdown_signal() -> Result<TaskExit> {
+    signal::ctrl_c()
+        .await
+        .context("failed to listen for shutdown signal")?;
+    info!("received shutdown signal");
+    Ok(TaskExit::ShutdownRequested)
 }
 
 async fn metrics_handler(
@@ -342,12 +366,19 @@ fn init_tracing() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_mtime, new_ws_probe_client, update_liveness_file};
-    use crate::config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode};
+    use super::{
+        config_mtime, new_ws_probe_client, run_http_server, update_liveness_file, AppState,
+    };
+    use crate::{
+        config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
+        metrics::Metrics,
+        tasks::{TaskExit, TaskManager},
+    };
     use anyhow::{Context, Result};
     use std::{
         env, fs,
         path::PathBuf,
+        sync::Arc,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -410,6 +441,26 @@ mod tests {
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn http_server_task_stops_cleanly_when_shutdown_is_requested() -> Result<()> {
+        let mut tasks = TaskManager::new();
+        let state = AppState {
+            metrics: Arc::new(Metrics::new()?),
+        };
+
+        tasks.spawn(
+            "http-server",
+            run_http_server(state, 0, tasks.shutdown_handle()),
+        );
+        tasks.spawn("signal", async move {
+            tokio::task::yield_now().await;
+            Ok(TaskExit::ShutdownRequested)
+        });
+
+        tasks.run().await?;
         Ok(())
     }
 
