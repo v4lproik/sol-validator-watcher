@@ -1,4 +1,4 @@
-name: coverage-pages
+name: pages
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: coverage-pages
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -82,11 +82,15 @@ jobs:
         if: ${{ steps.pages.outputs.should_run == 'true' }}
         run: just coverage-html
 
+      - name: Assemble Pages site
+        if: ${{ steps.pages.outputs.should_run == 'true' }}
+        run: bash ./scripts/build-pages-site.sh
+
       - name: Upload Pages artifact
         if: ${{ steps.pages.outputs.should_run == 'true' }}
         uses: actions/upload-pages-artifact@v4
         with:
-          path: coverage/html
+          path: public
 
   deploy:
     needs: build

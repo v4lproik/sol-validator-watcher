@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Solana Validator Watcher</title>
+    <meta
+      name="description"
+      content="Operator-first Prometheus monitoring for Solana validators, with built-in Grafana dashboards, coverage publishing, and a GHCR container image."
+    >
+    <meta name="theme-color" content="#08131f">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <div class="page-backdrop" aria-hidden="true">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="grid-glow"></div>
+    </div>
+
+    <header class="topbar">
+      <a class="brand" href="./">
+        <img src="assets/logo.svg" alt="Solana Validator Watcher logo" width="42" height="42">
+        <span>Solana Validator Watcher</span>
+      </a>
+
+      <nav class="topnav" aria-label="Primary">
+        <a href="#why">Why it matters</a>
+        <a href="#product-tabs">Explore</a>
+        <a href="#preview-carousel">Screenshots</a>
+      </nav>
+
+      <div class="topbar-actions">
+        <a class="button button-ghost" href="coverage/">Coverage</a>
+        <a class="button button-solid" href="https://github.com/v4lproik/sol-validator-watcher">GitHub</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Operator-first Solana monitoring</p>
+          <h1>Watch validator fleets with context, not just raw RPC noise.</h1>
+          <p class="hero-text">
+            Solana Validator Watcher gives operators a clean Prometheus exporter, label-aware fleet comparisons,
+            and Grafana dashboards that surface vote lag, delinquency, skip pressure, stake, and future leader slots.
+          </p>
+
+          <div class="cta-row">
+            <a class="button button-solid" href="#product-tabs">Explore the site</a>
+            <a class="button button-ghost" href="#tab-coverage">Open coverage tab</a>
+          </div>
+
+          <ul class="signal-chips" aria-label="Key signals">
+            <li>Vote lag</li>
+            <li>Delinquency</li>
+            <li>Stake distribution</li>
+            <li>Leader slots</li>
+            <li>Grafana-ready</li>
+          </ul>
+        </div>
+
+        <div class="hero-stack">
+          <div class="hero-panel status-panel">
+            <div class="panel-heading">
+              <span>Flight deck</span>
+              <span class="status-pill">live layout</span>
+            </div>
+            <div class="status-grid">
+              <article>
+                <strong>Watched fleet</strong>
+                <span>Track identities, vote accounts, and custom scopes side by side.</span>
+              </article>
+              <article>
+                <strong>Network context</strong>
+                <span>Compare watched validators against the rest of the network and full network baselines.</span>
+              </article>
+              <article>
+                <strong>Graceful RPC fallback</strong>
+                <span>Keep exporting core signals even when optional provider methods are unavailable.</span>
+              </article>
+              <article>
+                <strong>One Pages site</strong>
+                <span>Landing page at the root, generated coverage report under <code>/coverage/</code>.</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="hero-panel shell-panel">
+            <div class="terminal-bar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <pre><code>just stack-up-devnet
+just stack-ps-devnet
+open http://127.0.0.1:3001
+
+docker pull ghcr.io/v4lproik/sol-validator-watcher:latest
+just coverage-html</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="Technology stack">
+        <span>Rust</span>
+        <span>Prometheus</span>
+        <span>Grafana</span>
+        <span>GitHub Pages</span>
+        <span>GHCR</span>
+        <span>Figment</span>
+      </section>
+
+      <section id="why" class="value-grid">
+        <article class="value-card">
+          <p class="card-kicker">Built for operators</p>
+          <h2>Actionable signals over generic telemetry</h2>
+          <p>
+            The exporter focuses on the decisions Solana operators actually make: who is lagging, who is skipping,
+            how watched validators compare to the rest of the network, and where the next leader pressure sits.
+          </p>
+        </article>
+        <article class="value-card">
+          <p class="card-kicker">Ready on day one</p>
+          <h2>Profiles, dashboards, and pages already wired</h2>
+          <p>
+            Devnet, Surfpool, and external-validator profiles are included. Grafana dashboards are provisioned. The
+            GitHub Pages site publishes both the landing page and the generated coverage report from the same workflow.
+          </p>
+        </article>
+        <article class="value-card">
+          <p class="card-kicker">Keeps secrets out of YAML</p>
+          <h2>Split config with Figment and TOML</h2>
+          <p>
+            Validator connection details live in a dedicated TOML file with environment expansion, while the main YAML
+            stays focused on watcher behavior and operator labeling.
+          </p>
+        </article>
+      </section>
+
+      <section id="product-tabs" class="product-tabs">
+        <div class="section-header">
+          <p class="eyebrow">Explore the project</p>
+          <h2>One static site, four operator-facing entry points</h2>
+          <p>
+            Coverage lives beside the product story. Container usage is visible without hunting through workflow files.
+            Dashboard placeholders are already in place for the screenshot carousel you plan to add next.
+          </p>
+        </div>
+
+        <div class="tab-buttons" role="tablist" aria-label="Project sections">
+          <button id="tab-overview" class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" data-tab="overview">
+            Overview
+          </button>
+          <button id="tab-coverage" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-coverage" data-tab="coverage">
+            Coverage
+          </button>
+          <button id="tab-container" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-container" data-tab="container">
+            Container
+          </button>
+          <button id="tab-dashboards" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboards" data-tab="dashboards">
+            Dashboards
+          </button>
+        </div>
+
+        <div class="tab-panels">
+          <section id="panel-overview" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
+            <div class="tab-copy">
+              <h3>Operator-first, label-aware fleet monitoring</h3>
+              <p>
+                The watcher exports network-wide, watched-validator, and custom-scope metrics from the same collection
+                pass. That makes the dashboards useful immediately, not after weeks of panel cleanup.
+              </p>
+            </div>
+
+            <div class="highlight-grid">
+              <article>
+                <strong>Watched vs network baselines</strong>
+                <span>Track your validator set against full-network and non-watched comparisons.</span>
+              </article>
+              <article>
+                <strong>Scope breakdowns</strong>
+                <span>Use `category:value` labels to slice fleets by operator, region, validator class, or customer group.</span>
+              </article>
+              <article>
+                <strong>Failure-aware collection</strong>
+                <span>Optional RPC enrichments degrade cleanly while the core metrics stay online.</span>
+              </article>
+              <article>
+                <strong>Pages, CI, and GHCR included</strong>
+                <span>Publish the site, push the image, and keep coverage available from the same repository.</span>
+              </article>
+            </div>
+          </section>
+
+          <section id="panel-coverage" class="tab-panel" role="tabpanel" aria-labelledby="tab-coverage" data-panel="coverage" hidden>
+            <div class="tab-copy">
+              <h3>Coverage is part of the site, not an afterthought</h3>
+              <p>
+                The Pages build publishes the landing page at the root and the generated `cargo llvm-cov` report under
+                <code>/coverage/</code>. That keeps engineering hygiene visible without making the homepage feel like a raw artifact dump.
+              </p>
+              <div class="inline-actions">
+                <a class="button button-solid" href="coverage/">Open full coverage report</a>
+              </div>
+            </div>
+
+            <div class="coverage-frame-shell">
+              <iframe
+                src="coverage/"
+                title="Coverage report preview"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              ></iframe>
+            </div>
+          </section>
+
+          <section id="panel-container" class="tab-panel" role="tabpanel" aria-labelledby="tab-container" data-panel="container" hidden>
+            <div class="tab-copy">
+              <h3>Ship the image straight from GHCR</h3>
+              <p>
+                The container workflow publishes branch, tag, SHA, and `latest` tags to GitHub Container Registry on
+                pushes to the default branch and release tags.
+              </p>
+            </div>
+
+            <div class="command-layout">
+              <article class="snippet-card">
+                <p class="snippet-title">Pull the latest image</p>
+                <pre><code>docker pull ghcr.io/v4lproik/sol-validator-watcher:latest</code></pre>
+              </article>
+              <article class="snippet-card">
+                <p class="snippet-title">Run against a config file</p>
+                <pre><code>docker run --rm \
+  -p 8000:8000 \
+  -v "$(pwd)/etc:/app/etc:ro" \
+  ghcr.io/v4lproik/sol-validator-watcher:latest \
+  --config /app/etc/config.devnet.yaml</code></pre>
+              </article>
+              <article class="snippet-card">
+                <p class="snippet-title">Published tag patterns</p>
+                <pre><code>main
+latest
+sha-&lt;commit&gt;
+v&lt;release-tag&gt;</code></pre>
+              </article>
+            </div>
+          </section>
+
+          <section id="panel-dashboards" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboards" data-panel="dashboards" hidden>
+            <div class="tab-copy">
+              <h3>Carousel-ready dashboard showcase</h3>
+              <p>
+                The layout below is already structured for upcoming Grafana screenshots. Today it uses polished
+                placeholders; later you can swap each frame with real captures without changing the surrounding UI.
+              </p>
+            </div>
+
+            <div id="preview-carousel" class="carousel-shell" data-carousel>
+              <div class="carousel-track">
+                <article class="carousel-slide is-active" data-slide>
+                  <div class="shot shot-overview">
+                    <span class="shot-label">Overview dashboard</span>
+                    <div class="shot-bands"></div>
+                  </div>
+                  <div class="slide-copy">
+                    <strong>Fleet health at a glance</strong>
+                    <span>Ideal slot for the high-level Grafana overview, health state, and watched-validator table.</span>
+                  </div>
+                </article>
+
+                <article class="carousel-slide" data-slide>
+                  <div class="shot shot-breakdown">
+                    <span class="shot-label">Scope breakdown</span>
+                    <div class="shot-bars"></div>
+                  </div>
+                  <div class="slide-copy">
+                    <strong>Custom scope drill-downs</strong>
+                    <span>Good place for ranked bars, top problem scopes, and scope-specific operator triage views.</span>
+                  </div>
+                </article>
+
+                <article class="carousel-slide" data-slide>
+                  <div class="shot shot-watched">
+                    <span class="shot-label">Watched validators</span>
+                    <div class="shot-table"></div>
+                  </div>
+                  <div class="slide-copy">
+                    <strong>Validator-by-validator operations view</strong>
+                    <span>Perfect for the table screenshot with vote lag, skip rate, stake, and future leader slots.</span>
+                  </div>
+                </article>
+              </div>
+
+              <div class="carousel-controls">
+                <button type="button" class="carousel-button" data-carousel-action="prev" aria-label="Previous slide">
+                  Prev
+                </button>
+                <div class="carousel-dots" aria-label="Carousel pagination">
+                  <button type="button" class="carousel-dot is-active" data-carousel-dot="0" aria-label="Go to slide 1"></button>
+                  <button type="button" class="carousel-dot" data-carousel-dot="1" aria-label="Go to slide 2"></button>
+                  <button type="button" class="carousel-dot" data-carousel-dot="2" aria-label="Go to slide 3"></button>
+                </div>
+                <button type="button" class="carousel-button" data-carousel-action="next" aria-label="Next slide">
+                  Next
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <strong>Solana Validator Watcher</strong>
+        <span>Rust exporter, Grafana dashboards, GHCR image, and Pages-hosted coverage in one repository.</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/v4lproik/sol-validator-watcher">Repository</a>
+        <a href="coverage/">Coverage</a>
+        <a href="#tab-container">Container</a>
+      </div>
+    </footer>
+  </body>
+</html>

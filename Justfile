@@ -56,6 +56,9 @@ coverage-lcov: ensure-rust-components
 coverage-ci threshold="80": ensure-rust-components
   mise exec -- cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines {{threshold}} --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
 
+site-build: coverage-html
+  bash ./scripts/build-pages-site.sh
+
 build:
   mise exec -- cargo build
 

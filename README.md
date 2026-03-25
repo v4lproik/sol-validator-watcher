@@ -1,6 +1,16 @@
-# Solana Validator Watcher
+<p align="center">
+  <img src="assets/logo.svg" alt="Solana Validator Watcher logo" width="112">
+</p>
 
-Prometheus watcher for Solana validators, built in Rust.
+<h1 align="center">Solana Validator Watcher</h1>
+
+<p align="center">
+  Operator-first Prometheus monitoring for Solana validators, built in Rust.
+</p>
+
+<p align="center">
+  Watch your validators against the rest of the network, ship usable dashboards on day one, and surface the signals that matter during incidents: vote lag, delinquency, skip pressure, stake, and future leader slots.
+</p>
 
 It follows the same core model as [`kilnfi/eth-validator-watcher`](https://github.com/kilnfi/eth-validator-watcher): poll the network, group validators by labels, and compare:
 
@@ -8,6 +18,15 @@ It follows the same core model as [`kilnfi/eth-validator-watcher`](https://githu
 - the rest of the network
 - the full network
 - any custom `category:value` scopes you define
+
+## Why operators use it
+
+- operator-first metrics instead of raw RPC dumps
+- watched-validator views alongside network and custom-scope baselines
+- prebuilt Grafana dashboards for overview and breakdown workflows
+- local devnet, Surfpool, and external-validator profiles out of the box
+- split validator connection config via `figment` and TOML, so secrets stay out of the main YAML
+- graceful degradation when optional RPC methods are unavailable on a provider
 
 ## What it exports
 
@@ -18,6 +37,14 @@ It follows the same core model as [`kilnfi/eth-validator-watcher`](https://githu
 - blocks produced, missed, skip rate inputs
 - future leader slots
 - per-watched-validator metrics
+
+## What you get in the box
+
+- a Prometheus exporter for Solana validator fleets
+- a label model for watched validators, the rest of the network, and custom slices
+- Docker Compose profiles for devnet, Surfpool, and external validator targets
+- provisioned Grafana dashboards for fleet health and scope drill-downs
+- GitHub Actions for CI, coverage, container publishing, and a Pages-hosted project site with coverage under `/coverage/`
 
 ## Quick start
 
@@ -94,6 +121,7 @@ just check
 just clippy
 just test
 just coverage-ci
+just site-build
 just run config=etc/config.devnet.yaml
 just stack-up-devnet
 just stack-up-validator
@@ -130,7 +158,7 @@ GitHub Actions runs:
 - coverage artifacts upload
 - optional Codecov upload
 - container publishing to GHCR
-- HTML coverage publishing to GitHub Pages
+- a GitHub Pages site that serves the landing page at `/` and the HTML coverage report at `/coverage/`
 
 For a public repo, set GitHub Pages to `GitHub Actions`. If Pages is not enabled yet and your plan supports it, set `PAGES_AUTO_ENABLE=true` and provide `PAGES_ENABLEMENT_TOKEN` with repository admin or Pages-write access so the workflow can enable it automatically; otherwise the Pages publish job skips cleanly. GitHub documents that Pages is available for public repositories on GitHub Free, and for public and private repositories on GitHub Pro, Team, Enterprise Cloud, and Enterprise Server. `CODECOV_TOKEN` is only needed for private repositories.
 
