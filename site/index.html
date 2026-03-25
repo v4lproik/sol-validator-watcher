@@ -6,7 +6,7 @@
     <title>Solana Validator Watcher</title>
     <meta
       name="description"
-      content="A unified Grafana-oriented operator surface for Solana node health, validator performance, and validator economics, with Pages-hosted coverage and a GHCR container image."
+      content="A Solana operator surface for validator health, network context, dashboards, coverage, and container delivery."
     >
     <meta name="theme-color" content="#0a111b">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,7 +19,7 @@
     <script defer src="app.js"></script>
   </head>
   <body>
-    <div class="page-glow" aria-hidden="true"></div>
+    <div class="page-aura" aria-hidden="true"></div>
 
     <header class="topbar">
       <div class="topbar-shell">
@@ -29,9 +29,10 @@
         </a>
 
         <nav class="topnav" aria-label="Primary">
-          <a href="#why">Why it matters</a>
-          <a href="#product-tabs">Explore</a>
-          <a href="#preview-carousel">Preview</a>
+          <a href="#product-tabs">Product</a>
+          <a href="#tab-coverage">Coverage</a>
+          <a href="#tab-container">Container</a>
+          <a href="#tab-dashboards">Dashboards</a>
         </nav>
 
         <div class="topbar-actions">
@@ -43,129 +44,127 @@
 
     <main>
       <section class="hero">
-        <p class="eyebrow">Operator-first Solana monitoring</p>
-        <h1>One operator surface for Solana node health, validator performance, and validator economics.</h1>
-        <p class="hero-text">
-          Solana Validator Watcher is evolving into a single Grafana-facing interface for node operators: validator
-          health, watched-validator comparisons, network context, and block economics in one place instead of across separate tools.
-        </p>
+        <div class="hero-copy">
+          <p class="launch-pill">Built for Solana validator operations</p>
+          <h1>One Grafana surface for Solana operators.</h1>
+          <p class="hero-text">Track validator health, network context, and block revenue in one place.</p>
+          <p class="hero-subtext">
+            Solana Validator Watcher brings together exporter metrics, dashboards, container delivery, and Pages-hosted
+            engineering visibility in a single operator-facing site.
+          </p>
 
-        <div class="cta-row">
-          <a class="button button-solid" href="#product-tabs">Explore the site</a>
-          <a class="button button-ghost" href="#tab-coverage">Open coverage tab</a>
-        </div>
-
-        <ul class="trust-strip" aria-label="Project stack">
-          <li>Rust</li>
-          <li>Prometheus</li>
-          <li>Grafana</li>
-          <li>Jito</li>
-          <li>Harmonic</li>
-          <li>GitHub Pages</li>
-          <li>GHCR</li>
-        </ul>
-      </section>
-
-      <section id="preview-carousel" class="preview-stage">
-        <div class="preview-frame">
-          <div class="preview-toolbar">
-            <span>Preview surface</span>
-            <div class="preview-badges">
-              <span>Health</span>
-              <span>Revenue</span>
-              <span>/coverage</span>
-            </div>
+          <div class="cta-row">
+            <a class="button button-solid" href="#product-tabs">Explore the product</a>
+            <a class="button button-ghost" href="coverage/">Open coverage</a>
           </div>
 
-          <div class="carousel-shell" data-carousel>
-            <div class="carousel-track">
-              <article class="carousel-slide is-active" data-slide>
-                <div class="shot shot-overview">
-                  <span class="shot-label">Grafana overview</span>
-                  <div class="shot-bands"></div>
-                </div>
-                <div class="slide-copy">
-                  <strong>High-level fleet view</strong>
-                  <span>A calm entry point for watched-validator health, RPC state, slot freshness, and network-relative context.</span>
-                </div>
-              </article>
+          <ul class="trust-strip" aria-label="Project stack">
+            <li>Rust exporter</li>
+            <li>Grafana dashboards</li>
+            <li>GHCR image</li>
+            <li>GitHub Pages</li>
+            <li>Jito and Harmonic roadmap</li>
+          </ul>
+        </div>
 
-              <article class="carousel-slide" data-slide>
-                <div class="shot shot-breakdown">
-                  <span class="shot-label">Scope breakdown</span>
-                  <div class="shot-bars"></div>
-                </div>
-                <div class="slide-copy">
-                  <strong>Scope and revenue drill-downs</strong>
-                  <span>Built for ranked scope views, outlier scans, and later additions like Jito, Harmonic, and fee-revenue panels.</span>
-                </div>
-              </article>
-
-              <article class="carousel-slide" data-slide>
-                <div class="shot shot-watched">
-                  <span class="shot-label">Watched validators</span>
-                  <div class="shot-table"></div>
-                </div>
-                <div class="slide-copy">
-                  <strong>Operator table view</strong>
-                  <span>Ideal home for the validator-by-validator screenshot with vote lag, skip rate, stake, future leader slots, and revenue columns.</span>
-                </div>
-              </article>
-            </div>
-
-            <div class="carousel-controls">
-              <button type="button" class="carousel-button" data-carousel-action="prev" aria-label="Previous slide">
-                Prev
-              </button>
-              <div class="carousel-dots" aria-label="Carousel pagination">
-                <button type="button" class="carousel-dot is-active" data-carousel-dot="0" aria-label="Go to slide 1"></button>
-                <button type="button" class="carousel-dot" data-carousel-dot="1" aria-label="Go to slide 2"></button>
-                <button type="button" class="carousel-dot" data-carousel-dot="2" aria-label="Go to slide 3"></button>
+        <div id="preview-carousel" class="hero-stage">
+          <div class="stage-shell">
+            <div class="stage-top">
+              <span>Operator preview</span>
+              <div class="preview-badges">
+                <span>Health</span>
+                <span>Economics</span>
+                <span>Coverage</span>
               </div>
-              <button type="button" class="carousel-button" data-carousel-action="next" aria-label="Next slide">
-                Next
-              </button>
+            </div>
+
+            <div class="carousel-shell" data-carousel>
+              <div class="carousel-track">
+                <article class="carousel-slide is-active" data-slide>
+                  <div class="shot shot-overview">
+                    <span class="shot-label">Fleet overview</span>
+                    <div class="shot-head"></div>
+                    <div class="shot-surface shot-surface-grid"></div>
+                    <div class="shot-footer">Validator health, slot freshness, RPC state, and network-relative context.</div>
+                  </div>
+                  <div class="slide-copy">
+                    <strong>Start from the operator view</strong>
+                    <span>A single landing view for watched validators, network baselines, and fast incident scanning.</span>
+                  </div>
+                </article>
+
+                <article class="carousel-slide" data-slide>
+                  <div class="shot shot-breakdown">
+                    <span class="shot-label">Revenue and breakdowns</span>
+                    <div class="shot-head"></div>
+                    <div class="shot-surface shot-surface-bars"></div>
+                    <div class="shot-footer">Reserved for scope rankings, outliers, and validator economics.</div>
+                  </div>
+                  <div class="slide-copy">
+                    <strong>Add economics without leaving Grafana</strong>
+                    <span>Jito revenue, Harmonic revenue, and base revenue per block belong next to health signals.</span>
+                  </div>
+                </article>
+
+                <article class="carousel-slide" data-slide>
+                  <div class="shot shot-watched">
+                    <span class="shot-label">Watched validators</span>
+                    <div class="shot-head"></div>
+                    <div class="shot-surface shot-surface-table"></div>
+                    <div class="shot-footer">Ideal slot for the per-validator table and later screenshot carousel.</div>
+                  </div>
+                  <div class="slide-copy">
+                    <strong>Ready for real screenshots</strong>
+                    <span>The layout already has room for Grafana captures, operator tables, and dashboard walkthroughs.</span>
+                  </div>
+                </article>
+              </div>
+
+              <div class="carousel-controls">
+                <button type="button" class="carousel-button" data-carousel-action="prev" aria-label="Previous slide">
+                  Prev
+                </button>
+                <div class="carousel-dots" aria-label="Carousel pagination">
+                  <button type="button" class="carousel-dot is-active" data-carousel-dot="0" aria-label="Go to slide 1"></button>
+                  <button type="button" class="carousel-dot" data-carousel-dot="1" aria-label="Go to slide 2"></button>
+                  <button type="button" class="carousel-dot" data-carousel-dot="2" aria-label="Go to slide 3"></button>
+                </div>
+                <button type="button" class="carousel-button" data-carousel-action="next" aria-label="Next slide">
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="why" class="feature-grid">
-        <article class="feature-card">
-          <p class="card-kicker">Compare with context</p>
-          <h2>Watched validators against the network, not in isolation</h2>
-          <p>
-            Track watched validators next to the rest of the network and the full network, then slice fleets with your
-            own `category:value` labels for operator, region, or customer views.
-          </p>
+      <section class="summary-grid">
+        <article class="summary-card">
+          <p class="card-kicker">Visibility</p>
+          <h2>Watch validators with network context</h2>
+          <p>Compare watched validators, fleet slices, and whole-network baselines without building separate dashboards.</p>
         </article>
 
-        <article class="feature-card">
-          <p class="card-kicker">Unify economics</p>
-          <h2>Bring Jito, Harmonic, and base block revenue into the same Grafana</h2>
-          <p>
-            The pitch is bigger than health checks. The goal is a single operator cockpit where node health, validator
-            performance, MEV-related revenue, and per-block economics are visible without jumping across interfaces.
-          </p>
+        <article class="summary-card">
+          <p class="card-kicker">Economics</p>
+          <h2>Move revenue into the same operator surface</h2>
+          <p>Jito, Harmonic, and base revenue per block should sit beside performance signals instead of in a second tool.</p>
         </article>
 
-        <article class="feature-card">
-          <p class="card-kicker">Ship faster</p>
-          <h2>Profiles, dashboards, config split, and Pages already wired</h2>
-          <p>
-            Devnet, Surfpool, and external-validator profiles are included. Grafana dashboards are provisioned. Config
-            is split with Figment and TOML. The Pages workflow publishes both the homepage and the coverage report.
-          </p>
+        <article class="summary-card">
+          <p class="card-kicker">Shipping</p>
+          <h2>Ship metrics, dashboards, coverage, and the image together</h2>
+          <p>The site keeps product proof and engineering proof in one place, from the Grafana story to the coverage report.</p>
         </article>
       </section>
 
       <section id="product-tabs" class="product-tabs">
         <div class="section-header">
-          <p class="eyebrow">Explore the project</p>
-          <h2>A unified operator product surface with room for economics</h2>
+          <p class="eyebrow">Project surface</p>
+          <h2>Coverage, containers, and dashboards stay close to the product story.</h2>
           <p>
-            Coverage is not buried. Container usage is not hidden in CI. Dashboard previews already have a place in the
-            layout, and the roadmap now clearly points toward Jito, Harmonic, and per-block revenue views.
+            The marketing site is also the operator entry point. Coverage is visible, the container path is obvious,
+            and the dashboard area is ready for the screenshots you want to add next.
           </p>
         </div>
 
@@ -187,40 +186,34 @@
         <div class="tab-panels">
           <section id="panel-overview" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
             <div class="panel-intro">
-              <h3>What the watcher gives you out of the box</h3>
-              <p>
-                Today it covers the operational core. The direction is to widen that same surface into an operator
-                cockpit for both technical and economic performance.
-              </p>
+              <h3>What the project already gives operators</h3>
+              <p>The core is in place today, and the economics roadmap extends the same surface rather than adding a separate product.</p>
             </div>
 
             <div class="panel-grid">
               <article>
-                <strong>Watched-validator metrics</strong>
-                <span>Vote lag, root lag, commission, blocks produced, blocks missed, and future leader slots.</span>
+                <strong>Watched-validator signals</strong>
+                <span>Vote lag, root lag, commission, leader slots, blocks produced, and blocks missed.</span>
               </article>
               <article>
                 <strong>Scope-aware fleet views</strong>
-                <span>Track `scope:watched`, `scope:network`, `scope:all-network`, and your own custom slices.</span>
+                <span>Track watched validators, customer slices, regional groups, and the full network with the same exporter.</span>
               </article>
               <article>
                 <strong>Graceful degradation</strong>
-                <span>Core metrics keep flowing even when optional provider methods like `getBlockProduction` are unavailable.</span>
+                <span>Optional RPC gaps do not take down the whole surface when provider methods are unavailable.</span>
               </article>
               <article>
-                <strong>Economics roadmap</strong>
-                <span>Next metrics should include Jito revenue, Harmonic revenue, base revenue per block, and normalized block economics.</span>
+                <strong>Economics next</strong>
+                <span>Add Jito, Harmonic, and base revenue per block directly into the same Grafana flow.</span>
               </article>
             </div>
           </section>
 
           <section id="panel-coverage" class="tab-panel" role="tabpanel" aria-labelledby="tab-coverage" data-panel="coverage" hidden>
             <div class="panel-intro">
-              <h3>Coverage lives inside the product site</h3>
-              <p>
-                The Pages build publishes the landing page at the root and the generated `cargo llvm-cov` report under
-                <code>/coverage/</code>, so engineering hygiene stays visible without taking over the homepage.
-              </p>
+              <h3>Coverage is part of the site</h3>
+              <p>The Pages build publishes the landing page at the root and the generated <code>cargo llvm-cov</code> report under <code>/coverage/</code>.</p>
               <div class="inline-actions">
                 <a class="button button-solid" href="coverage/">Open full coverage report</a>
               </div>
@@ -239,10 +232,7 @@
           <section id="panel-container" class="tab-panel" role="tabpanel" aria-labelledby="tab-container" data-panel="container" hidden>
             <div class="panel-intro">
               <h3>Pull the image from GHCR</h3>
-              <p>
-                The container workflow publishes branch, tag, SHA, and `latest` tags to GitHub Container Registry on
-                pushes to the default branch and release tags.
-              </p>
+              <p>The container workflow publishes branch, tag, SHA, and <code>latest</code> tags to GitHub Container Registry.</p>
             </div>
 
             <div class="snippet-layout">
@@ -272,29 +262,26 @@ v&lt;release-tag&gt;</code></pre>
 
           <section id="panel-dashboards" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboards" data-panel="dashboards" hidden>
             <div class="panel-intro">
-              <h3>A reserved space for Grafana screenshots</h3>
-              <p>
-                The carousel above is already structured for upcoming screenshots. When you are ready, swap the
-                placeholders for real captures from the overview, breakdown, revenue, and watched-validator dashboards.
-              </p>
+              <h3>Keep a home for Grafana screenshots</h3>
+              <p>The preview stage is already structured for overview, breakdown, revenue, and watched-validator screenshots.</p>
             </div>
 
             <div class="panel-grid">
               <article>
                 <strong>Overview dashboard</strong>
-                <span>The first screenshot slot for fleet health, watched-validator context, and top-line operator signals.</span>
+                <span>Use this slot for top-line operator health, validator comparisons, and network context.</span>
               </article>
               <article>
-                <strong>Breakdown and revenue dashboard</strong>
-                <span>The second slot for scope ranking, outlier scans, and revenue slices across operators or customers.</span>
+                <strong>Breakdown and revenue</strong>
+                <span>Reserve it for scope rankings, outlier scans, and revenue slices by operator or customer.</span>
               </article>
               <article>
                 <strong>Watched validators table</strong>
-                <span>The third slot for the per-validator operations view with lag, skip rate, stake, leader pressure, and revenue columns.</span>
+                <span>Show the row-level operations view with lag, skip rate, stake, leader pressure, and revenue columns.</span>
               </article>
               <article>
-                <strong>Later additions</strong>
-                <span>Add the real carousel captions and screenshots without changing the surrounding site structure.</span>
+                <strong>Carousel-ready</strong>
+                <span>Swap placeholders for real captures later without changing the page structure.</span>
               </article>
             </div>
           </section>
@@ -305,7 +292,7 @@ v&lt;release-tag&gt;</code></pre>
     <footer class="site-footer">
       <div>
         <strong>Solana Validator Watcher</strong>
-        <span>Rust exporter, Grafana dashboards, GHCR image, and Pages-hosted coverage in one repository.</span>
+        <span>Rust exporter, Grafana dashboards, GHCR image, and Pages-hosted coverage.</span>
       </div>
 
       <div class="footer-links">
