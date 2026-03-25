@@ -1,5 +1,5 @@
 use crate::{
-    collector::{Snapshot, ValidatorStatus, WatchedValidatorMetrics},
+    collector::{Snapshot, WatchedValidatorMetrics},
     config::Config,
 };
 use anyhow::{Context, Result};
@@ -428,9 +428,7 @@ impl Metrics {
 
             self.sol_activated_stake_sol
                 .with_label_values(&[scope, network])
-                .set(lamports_to_sol(
-                    metrics.current_stake_lamports + metrics.delinquent_stake_lamports,
-                ));
+                .set(lamports_to_sol(metrics.activated_stake_lamports()));
             self.sol_delinquent_validator_count
                 .with_label_values(&[scope, network])
                 .set(metrics.delinquent_count as f64);
@@ -501,46 +499,40 @@ impl Metrics {
     }
 
     fn update_watched_validator_metrics(&self, network: &str, validator: &WatchedValidatorMetrics) {
-        let status = validator_status_label(validator.status);
-        let labels = &[
-            network,
-            validator.identity.as_str(),
-            validator.vote_account.as_str(),
-            status,
-        ];
+        let labels = watched_validator_labels(network, validator);
 
         self.sol_watched_validator_info
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(1);
         self.sol_watched_validator_activated_stake_sol
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(lamports_to_sol(validator.activated_stake_lamports));
         self.sol_watched_validator_vote_credits_latest_epoch
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.latest_epoch_vote_credits as f64);
         self.sol_watched_validator_vote_efficiency_pct
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.vote_efficiency_pct);
         self.sol_watched_validator_last_vote_slot_lag
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.last_vote_slot_lag as f64);
         self.sol_watched_validator_root_slot_lag
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.root_slot_lag as f64);
         self.sol_watched_validator_commission_pct
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(f64::from(validator.commission_pct));
         self.sol_watched_validator_blocks_produced
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.blocks_produced as f64);
         self.sol_watched_validator_blocks_missed
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.blocks_missed as f64);
         self.sol_watched_validator_block_production_rate
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.block_production_rate);
         self.sol_watched_validator_future_leader_slots
-            .with_label_values(labels)
+            .with_label_values(&labels)
             .set(validator.future_leader_slots as f64);
 
         for scope in &validator.scopes {
@@ -569,13 +561,6 @@ fn lamports_to_sol(lamports: u64) -> f64 {
     lamports as f64 / LAMPORTS_PER_SOL
 }
 
-fn validator_status_label(status: ValidatorStatus) -> &'static str {
-    match status {
-        ValidatorStatus::Current => "current",
-        ValidatorStatus::Delinquent => "delinquent",
-    }
-}
-
 fn bool_label(value: bool) -> &'static str {
     if value {
         "true"
@@ -584,9 +569,21 @@ fn bool_label(value: bool) -> &'static str {
     }
 }
 
+fn watched_validator_labels<'a>(
+    network: &'a str,
+    validator: &'a WatchedValidatorMetrics,
+) -> [&'a str; 4] {
+    [
+        network,
+        validator.identity.as_str(),
+        validator.vote_account.as_str(),
+        validator.status.as_str(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{bool_label, validator_status_label, Metrics};
+    use super::{bool_label, Metrics};
     use crate::{
         collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics},
         config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
@@ -730,11 +727,8 @@ mod tests {
 
     #[test]
     fn helper_labels_return_expected_values() {
-        assert_eq!(validator_status_label(ValidatorStatus::Current), "current");
-        assert_eq!(
-            validator_status_label(ValidatorStatus::Delinquent),
-            "delinquent"
-        );
+        assert_eq!(ValidatorStatus::Current.as_str(), "current");
+        assert_eq!(ValidatorStatus::Delinquent.as_str(), "delinquent");
         assert_eq!(bool_label(true), "true");
         assert_eq!(bool_label(false), "false");
     }

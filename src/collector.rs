@@ -5,11 +5,11 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashMap},
     time::Duration,
 };
+use tracing::warn;
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -35,15 +35,15 @@ impl RpcClient {
     async fn get_epoch_info(&self) -> Result<EpochInfo> {
         self.call(
             "getEpochInfo",
-            json!([CommitmentOnly {
+            [CommitmentOnly {
                 commitment: &self.commitment,
-            }]),
+            }],
         )
         .await
     }
 
     async fn get_health(&self) -> Result<String> {
-        self.call("getHealth", json!([])).await
+        self.call("getHealth", [(); 0]).await
     }
 
     async fn get_vote_accounts(
@@ -52,11 +52,11 @@ impl RpcClient {
     ) -> Result<VoteAccounts> {
         self.call(
             "getVoteAccounts",
-            json!([GetVoteAccountsConfig {
+            [GetVoteAccountsConfig {
                 commitment: &self.commitment,
                 keep_unstaked_delinquents: true,
                 delinquent_slot_distance,
-            }]),
+            }],
         )
         .await
     }
@@ -69,13 +69,13 @@ impl RpcClient {
         let response: RpcValueResponse<BlockProduction> = self
             .call(
                 "getBlockProduction",
-                json!([GetBlockProductionConfig {
+                [GetBlockProductionConfig {
                     commitment: &self.commitment,
                     range: SlotRange {
                         first_slot,
                         last_slot,
                     },
-                }]),
+                }],
             )
             .await?;
 
@@ -85,12 +85,12 @@ impl RpcClient {
     async fn get_leader_schedule(&self, slot: u64) -> Result<Option<HashMap<String, Vec<u64>>>> {
         self.call_optional(
             "getLeaderSchedule",
-            json!([
+            (
                 slot,
                 CommitmentOnly {
                     commitment: &self.commitment,
-                }
-            ]),
+                },
+            ),
         )
         .await
     }
@@ -112,28 +112,25 @@ impl RpcClient {
         Ok(())
     }
 
-    async fn call<T>(&self, method: &str, params: Value) -> Result<T>
+    async fn call<T, P>(&self, method: &'static str, params: P) -> Result<T>
     where
         T: DeserializeOwned,
+        P: Serialize,
     {
         self.call_optional(method, params)
             .await?
             .with_context(|| format!("{} returned no result", method))
     }
 
-    async fn call_optional<T>(&self, method: &str, params: Value) -> Result<Option<T>>
+    async fn call_optional<T, P>(&self, method: &'static str, params: P) -> Result<Option<T>>
     where
         T: DeserializeOwned,
+        P: Serialize,
     {
         let response = self
             .http
             .post(&self.url)
-            .json(&json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": method,
-                "params": params,
-            }))
+            .json(&JsonRpcRequest::new(method, params))
             .send()
             .await
             .with_context(|| format!("{} request failed", method))?
@@ -162,6 +159,15 @@ impl RpcClient {
 pub enum ValidatorStatus {
     Current,
     Delinquent,
+}
+
+impl ValidatorStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Current => "current",
+            Self::Delinquent => "delinquent",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -204,6 +210,47 @@ pub struct ValidatorRecord {
     pub scopes: Vec<String>,
 }
 
+impl ValidatorRecord {
+    fn is_watched(&self) -> bool {
+        self.scopes.iter().any(|scope| scope == LABEL_SCOPE_WATCHED)
+    }
+
+    fn last_vote_slot_lag(&self, current_slot: u64) -> u64 {
+        current_slot.saturating_sub(self.last_vote)
+    }
+
+    fn root_slot_lag(&self, current_slot: u64) -> u64 {
+        current_slot.saturating_sub(self.root_slot)
+    }
+
+    fn matching_epoch_credits(&self, sample_epoch: Option<u64>) -> Option<u64> {
+        self.latest_epoch_credits
+            .as_ref()
+            .filter(|credits| Some(credits.epoch) == sample_epoch)
+            .map(|credits| credits.earned)
+    }
+
+    fn vote_efficiency_pct(
+        &self,
+        ideal_epoch_credits: Option<u64>,
+        sample_epoch: Option<u64>,
+    ) -> f64 {
+        let Some(credits) = self.matching_epoch_credits(sample_epoch) else {
+            return 0.0;
+        };
+        let Some(ideal) = ideal_epoch_credits.filter(|ideal| *ideal > 0) else {
+            return 0.0;
+        };
+
+        ratio(credits, ideal)
+    }
+
+    fn blocks_missed(&self) -> u64 {
+        self.current_epoch_leader_slots
+            .saturating_sub(self.current_epoch_blocks_produced)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScopeMetrics {
     pub current_count: u64,
@@ -219,6 +266,12 @@ pub struct ScopeMetrics {
     pub blocks_missed: u64,
     pub block_production_rate: f64,
     pub future_leader_slots: u64,
+}
+
+impl ScopeMetrics {
+    pub(crate) fn activated_stake_lamports(&self) -> u64 {
+        self.current_stake_lamports + self.delinquent_stake_lamports
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -270,29 +323,18 @@ impl ScopeAccumulator {
         let weight = record.activated_stake_lamports.max(1) as f64;
         self.weight_sum += weight;
         self.weighted_last_vote_slot_lag_sum +=
-            weight * current_slot.saturating_sub(record.last_vote) as f64;
-        self.weighted_root_slot_lag_sum +=
-            weight * current_slot.saturating_sub(record.root_slot) as f64;
+            weight * record.last_vote_slot_lag(current_slot) as f64;
+        self.weighted_root_slot_lag_sum += weight * record.root_slot_lag(current_slot) as f64;
         self.weighted_commission_sum += weight * f64::from(record.commission);
 
-        if let (Some(credits), Some(expected_epoch), Some(ideal)) = (
-            &record.latest_epoch_credits,
-            sample_epoch,
-            ideal_epoch_credits,
-        ) {
-            if credits.epoch == expected_epoch {
-                self.latest_epoch_vote_credits += credits.earned;
-                if ideal > 0 {
-                    self.weighted_vote_efficiency_sum +=
-                        weight * ((credits.earned as f64 / ideal as f64) * 100.0).clamp(0.0, 100.0);
-                }
-            }
+        if let Some(credits) = record.matching_epoch_credits(sample_epoch) {
+            self.latest_epoch_vote_credits += credits;
+            self.weighted_vote_efficiency_sum +=
+                weight * record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch);
         }
 
         self.blocks_produced += record.current_epoch_blocks_produced;
-        self.blocks_missed += record
-            .current_epoch_leader_slots
-            .saturating_sub(record.current_epoch_blocks_produced);
+        self.blocks_missed += record.blocks_missed();
         self.future_leader_slots += record.future_leader_slots;
     }
 
@@ -337,20 +379,32 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         .await
         .context("getVoteAccounts failed")?;
 
-    let block_production = client
-        .get_block_production(epoch_start_slot, current_slot)
-        .await
-        .context("getBlockProduction failed")?;
+    let block_production = optional_rpc_or_default(
+        client
+            .get_block_production(epoch_start_slot, current_slot)
+            .await
+            .context("getBlockProduction failed"),
+        &config.validator_connection.rpc_url,
+        "getBlockProduction",
+    );
 
-    let current_schedule = client
-        .get_leader_schedule(current_slot)
-        .await
-        .context("getLeaderSchedule for current epoch failed")?;
+    let current_schedule = optional_rpc_or_default(
+        client
+            .get_leader_schedule(current_slot)
+            .await
+            .context("getLeaderSchedule for current epoch failed"),
+        &config.validator_connection.rpc_url,
+        "getLeaderSchedule(current epoch)",
+    );
 
-    let next_schedule = client
-        .get_leader_schedule(next_epoch_start_slot)
-        .await
-        .context("getLeaderSchedule for next epoch failed")?;
+    let next_schedule = optional_rpc_or_default(
+        client
+            .get_leader_schedule(next_epoch_start_slot)
+            .await
+            .context("getLeaderSchedule for next epoch failed"),
+        &config.validator_connection.rpc_url,
+        "getLeaderSchedule(next epoch)",
+    );
 
     let matcher = LabelMatcher::from_config(config);
     let build_context = RecordBuildContext {
@@ -495,12 +549,7 @@ pub fn aggregate_records(
 
     let mut watched_validators = records
         .iter()
-        .filter(|record| {
-            record
-                .scopes
-                .iter()
-                .any(|scope| scope == LABEL_SCOPE_WATCHED)
-        })
+        .filter(|record| record.is_watched())
         .map(|record| {
             build_watched_validator_metrics(record, slot, ideal_epoch_credits, sample_epoch)
         })
@@ -531,21 +580,9 @@ fn build_watched_validator_metrics(
     sample_epoch: Option<u64>,
 ) -> WatchedValidatorMetrics {
     let latest_epoch_vote_credits = record
-        .latest_epoch_credits
-        .as_ref()
-        .filter(|credits| Some(credits.epoch) == sample_epoch)
-        .map(|credits| credits.earned)
-        .map_or(0, |earned| earned);
-    let vote_efficiency_pct = if latest_epoch_vote_credits > 0 {
-        ideal_epoch_credits
-            .filter(|ideal| *ideal > 0)
-            .map(|ideal| {
-                ((latest_epoch_vote_credits as f64 / ideal as f64) * 100.0).clamp(0.0, 100.0)
-            })
-            .map_or(0.0, |efficiency| efficiency)
-    } else {
-        0.0
-    };
+        .matching_epoch_credits(sample_epoch)
+        .unwrap_or_default();
+    let vote_efficiency_pct = record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch);
 
     WatchedValidatorMetrics {
         identity: record.identity.clone(),
@@ -555,13 +592,11 @@ fn build_watched_validator_metrics(
         activated_stake_lamports: record.activated_stake_lamports,
         latest_epoch_vote_credits,
         vote_efficiency_pct,
-        last_vote_slot_lag: current_slot.saturating_sub(record.last_vote),
-        root_slot_lag: current_slot.saturating_sub(record.root_slot),
+        last_vote_slot_lag: record.last_vote_slot_lag(current_slot),
+        root_slot_lag: record.root_slot_lag(current_slot),
         commission_pct: record.commission,
         blocks_produced: record.current_epoch_blocks_produced,
-        blocks_missed: record
-            .current_epoch_leader_slots
-            .saturating_sub(record.current_epoch_blocks_produced),
+        blocks_missed: record.blocks_missed(),
         block_production_rate: ratio(
             record.current_epoch_blocks_produced,
             record.current_epoch_leader_slots,
@@ -570,11 +605,48 @@ fn build_watched_validator_metrics(
     }
 }
 
+fn optional_rpc_or_default<T>(result: Result<T>, rpc_url: &str, component: &str) -> T
+where
+    T: Default,
+{
+    match result {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(
+                rpc_url = %rpc_url,
+                component,
+                error = ?err,
+                "optional RPC data unavailable; continuing with default values"
+            );
+            T::default()
+        }
+    }
+}
+
 fn ratio(numerator: u64, denominator: u64) -> f64 {
     if denominator == 0 {
         return 0.0;
     }
     (numerator as f64 / denominator as f64) * 100.0
+}
+
+#[derive(Serialize)]
+struct JsonRpcRequest<'a, P> {
+    jsonrpc: &'static str,
+    id: u64,
+    method: &'a str,
+    params: P,
+}
+
+impl<'a, P> JsonRpcRequest<'a, P> {
+    fn new(method: &'a str, params: P) -> Self {
+        Self {
+            jsonrpc: "2.0",
+            id: 1,
+            method,
+            params,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -651,7 +723,7 @@ struct VoteAccountInfo {
     root_slot: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BlockProduction {
     by_identity: HashMap<String, (u64, u64)>,
@@ -660,10 +732,18 @@ struct BlockProduction {
 #[cfg(test)]
 mod tests {
     use super::{
-        aggregate_records, build_watched_validator_metrics, ratio, EpochCreditsSample,
-        ScopeMetrics, ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics,
+        aggregate_records, build_record, build_watched_validator_metrics, optional_rpc_or_default,
+        ratio, EpochCreditsSample, RecordBuildContext, ScopeMetrics, ValidatorRecord,
+        ValidatorStatus, VoteAccountInfo, WatchedValidatorMetrics,
+    };
+    use crate::{
+        config::{
+            Config, TransportMode, ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig,
+        },
+        labels::LabelMatcher,
     };
     use anyhow::{anyhow, Result};
+    use std::collections::HashMap;
 
     #[test]
     fn aggregates_by_scope() -> Result<()> {
@@ -808,6 +888,130 @@ mod tests {
         assert_eq!(ratio(0, 0), 0.0);
         assert_eq!(ratio(5, 0), 0.0);
         assert_eq!(ratio(3, 4), 75.0);
+    }
+
+    #[test]
+    fn optional_rpc_or_default_preserves_successful_values() {
+        let value = optional_rpc_or_default(Ok(vec![1_u8, 2_u8]), "https://rpc.invalid", "test");
+        assert_eq!(value, vec![1_u8, 2_u8]);
+    }
+
+    #[test]
+    fn optional_rpc_or_default_falls_back_to_default_on_error() {
+        let value: Vec<u8> =
+            optional_rpc_or_default(Err(anyhow!("boom")), "https://rpc.invalid", "test");
+        assert!(value.is_empty());
+    }
+
+    #[test]
+    fn build_record_uses_block_production_schedules_and_labels() {
+        let config = Config {
+            network: "devnet".to_string(),
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://rpc.example".to_string(),
+                transport_mode: TransportMode::PollHttpAndWs,
+                ws_url: Some("wss://rpc.example".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
+            validator_mode: ValidatorMode::Rpc,
+            validator_websocket_enabled: true,
+            delinquent_slot_distance: Some(128),
+            watched_validators: vec![WatchedValidatorConfig {
+                identity: None,
+                vote_account: Some("vote-1".to_string()),
+                labels: vec!["operator:test".to_string()],
+            }],
+            ..Config::default()
+        };
+        let matcher = LabelMatcher::from_config(&config);
+        let mut by_identity = HashMap::new();
+        let mut current_schedule = HashMap::new();
+        let mut next_schedule = HashMap::new();
+
+        by_identity.insert("id-1".to_string(), (5, 4));
+        current_schedule.insert("id-1".to_string(), vec![5, 10, 15]);
+        next_schedule.insert("id-1".to_string(), vec![1, 2]);
+
+        let context = RecordBuildContext {
+            matcher: &matcher,
+            current_slot: 110,
+            epoch_start_slot: 100,
+            by_identity: &by_identity,
+            current_schedule: Some(&current_schedule),
+            next_schedule: Some(&next_schedule),
+        };
+
+        let record = build_record(
+            VoteAccountInfo {
+                vote_pubkey: "vote-1".to_string(),
+                node_pubkey: "id-1".to_string(),
+                activated_stake: 42,
+                commission: 7,
+                epoch_credits: vec![(8, 20, 12), (9, 35, 20)],
+                last_vote: 109,
+                root_slot: 108,
+            },
+            ValidatorStatus::Current,
+            &context,
+        );
+
+        assert_eq!(record.current_epoch_leader_slots, 5);
+        assert_eq!(record.current_epoch_blocks_produced, 4);
+        assert_eq!(record.future_leader_slots, 4);
+        assert_eq!(
+            record.latest_epoch_credits,
+            Some(EpochCreditsSample {
+                epoch: 9,
+                earned: 15,
+            })
+        );
+        assert!(record.scopes.contains(&"scope:watched".to_string()));
+        assert!(record.scopes.contains(&"operator:test".to_string()));
+    }
+
+    #[test]
+    fn build_record_defaults_missing_block_data_to_zero() {
+        let config = Config {
+            network: "devnet".to_string(),
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://rpc.example".to_string(),
+                transport_mode: TransportMode::PollHttp,
+                ..ValidatorConnectionConfig::default()
+            },
+            validator_mode: ValidatorMode::Observer,
+            ..Config::default()
+        };
+        let matcher = LabelMatcher::from_config(&config);
+        let by_identity = HashMap::new();
+
+        let context = RecordBuildContext {
+            matcher: &matcher,
+            current_slot: 50,
+            epoch_start_slot: 40,
+            by_identity: &by_identity,
+            current_schedule: None,
+            next_schedule: None,
+        };
+
+        let record = build_record(
+            VoteAccountInfo {
+                vote_pubkey: "vote-2".to_string(),
+                node_pubkey: "id-2".to_string(),
+                activated_stake: 0,
+                commission: 0,
+                epoch_credits: vec![],
+                last_vote: 49,
+                root_slot: 48,
+            },
+            ValidatorStatus::Delinquent,
+            &context,
+        );
+
+        assert_eq!(record.current_epoch_leader_slots, 0);
+        assert_eq!(record.current_epoch_blocks_produced, 0);
+        assert_eq!(record.future_leader_slots, 0);
+        assert_eq!(record.latest_epoch_credits, None);
+        assert!(record.scopes.contains(&"scope:network".to_string()));
     }
 
     #[test]
