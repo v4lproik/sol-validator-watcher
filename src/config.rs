@@ -49,7 +49,33 @@ impl ValidatorMode {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EconomicsMode {
+    #[default]
+    Disabled,
+    SingleValidator,
+}
+
+impl EconomicsMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::SingleValidator => "single-validator",
+        }
+    }
+}
+
+pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct EconomicsConfig {
+    pub mode: EconomicsMode,
+    pub validator: Option<WatchedValidatorConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WatchedValidatorConfig {
     pub identity: Option<String>,
     pub vote_account: Option<String>,
@@ -188,6 +214,7 @@ pub struct Config {
     pub validator_connection: ValidatorConnectionConfig,
     pub validator_connection_file: Option<PathBuf>,
     pub validator_mode: ValidatorMode,
+    pub economics: EconomicsConfig,
     pub validator_websocket_enabled: bool,
     pub metrics_port: u16,
     pub poll_interval_sec: u64,
@@ -203,6 +230,7 @@ impl Default for Config {
             validator_connection: ValidatorConnectionConfig::default(),
             validator_connection_file: None,
             validator_mode: ValidatorMode::default(),
+            economics: EconomicsConfig::default(),
             validator_websocket_enabled: false,
             metrics_port: default_metrics_port(),
             poll_interval_sec: default_poll_interval_sec(),
@@ -284,22 +312,41 @@ impl Config {
         }
 
         for watched in &mut self.watched_validators {
-            if watched.identity.is_none() && watched.vote_account.is_none() {
-                bail!("each watched validator entry must define identity and/or vote_account");
-            }
+            normalize_watched_validator(watched, "watched_validators entry")?;
+        }
 
-            if let Some(identity) = watched.identity.as_ref() {
-                watched.identity = Some(normalize_pubkey(identity, "identity")?);
-            }
-            if let Some(vote_account) = watched.vote_account.as_ref() {
-                watched.vote_account = Some(normalize_pubkey(vote_account, "vote_account")?);
-            }
+        self.validate_economics()?;
+        Ok(())
+    }
 
-            for label in &watched.labels {
-                validate_label(label)?;
+    fn validate_economics(&mut self) -> Result<()> {
+        match self.economics.mode {
+            EconomicsMode::Disabled => {
+                if self.economics.validator.is_some() {
+                    bail!("economics.validator requires economics.mode: single-validator");
+                }
             }
-            watched.labels.sort();
-            watched.labels.dedup();
+            EconomicsMode::SingleValidator => {
+                let validator = self.economics.validator.as_mut().with_context(|| {
+                    "economics.mode single-validator requires economics.validator"
+                })?;
+                normalize_watched_validator(validator, "economics.validator")?;
+                validator.labels.push(ECONOMICS_TARGET_LABEL.to_string());
+                validator.labels.sort();
+                validator.labels.dedup();
+
+                if let Some(existing) = self
+                    .watched_validators
+                    .iter_mut()
+                    .find(|watched| watched_validators_match(watched, validator))
+                {
+                    existing.labels.extend(validator.labels.iter().cloned());
+                    existing.labels.sort();
+                    existing.labels.dedup();
+                } else {
+                    self.watched_validators.push(validator.clone());
+                }
+            }
         }
 
         Ok(())
@@ -404,6 +451,40 @@ fn normalize_pubkey(value: &str, field_name: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
+fn normalize_watched_validator(
+    watched: &mut WatchedValidatorConfig,
+    field_name: &str,
+) -> Result<()> {
+    if watched.identity.is_none() && watched.vote_account.is_none() {
+        bail!("{field_name} must define identity and/or vote_account");
+    }
+
+    if let Some(identity) = watched.identity.as_ref() {
+        watched.identity = Some(normalize_pubkey(
+            identity,
+            &format!("{field_name}.identity"),
+        )?);
+    }
+    if let Some(vote_account) = watched.vote_account.as_ref() {
+        watched.vote_account = Some(normalize_pubkey(
+            vote_account,
+            &format!("{field_name}.vote_account"),
+        )?);
+    }
+
+    for label in &watched.labels {
+        validate_label(label)?;
+    }
+    watched.labels.sort();
+    watched.labels.dedup();
+    Ok(())
+}
+
+fn watched_validators_match(left: &WatchedValidatorConfig, right: &WatchedValidatorConfig) -> bool {
+    left.identity.is_some() && left.identity == right.identity
+        || left.vote_account.is_some() && left.vote_account == right.vote_account
+}
+
 fn validate_label(label: &str) -> Result<()> {
     let trimmed = label.trim();
     let Some((category, value)) = trimmed.split_once(':') else {
@@ -428,7 +509,8 @@ fn validate_ws_url(url: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_env_vars_with, Config, TransportMode, ValidatorConnectionConfig, ValidatorMode,
+        expand_env_vars_with, Config, EconomicsConfig, EconomicsMode, TransportMode,
+        ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
     };
     use anyhow::{Context, Result};
     use std::{
@@ -588,6 +670,102 @@ ws_url = "wss://api.devnet.solana.com"
     }
 
     #[test]
+    fn economics_single_validator_is_merged_into_watched_validators() -> Result<()> {
+        let mut cfg = Config {
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ..ValidatorConnectionConfig::default()
+            },
+            watched_validators: vec![WatchedValidatorConfig {
+                identity: Some("11111111111111111111111111111111".to_string()),
+                vote_account: None,
+                labels: vec!["region:sbg".to_string()],
+            }],
+            economics: EconomicsConfig {
+                mode: EconomicsMode::SingleValidator,
+                validator: Some(WatchedValidatorConfig {
+                    identity: Some("11111111111111111111111111111111".to_string()),
+                    vote_account: None,
+                    labels: vec!["team:ops".to_string()],
+                }),
+            },
+            ..Config::default()
+        };
+
+        cfg.validate(Path::new("config.yaml"))?;
+
+        assert_eq!(cfg.economics.mode, EconomicsMode::SingleValidator);
+        assert_eq!(cfg.watched_validators.len(), 1);
+        assert_eq!(
+            cfg.watched_validators[0].identity.as_deref(),
+            Some("11111111111111111111111111111111")
+        );
+        assert!(cfg.watched_validators[0]
+            .labels
+            .contains(&"region:sbg".to_string()));
+        assert!(cfg.watched_validators[0]
+            .labels
+            .contains(&"team:ops".to_string()));
+        assert!(cfg.watched_validators[0]
+            .labels
+            .contains(&ECONOMICS_TARGET_LABEL.to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_economics_validator_without_single_validator_mode() -> Result<()> {
+        let mut cfg = Config {
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ..ValidatorConnectionConfig::default()
+            },
+            economics: EconomicsConfig {
+                mode: EconomicsMode::Disabled,
+                validator: Some(WatchedValidatorConfig {
+                    identity: None,
+                    vote_account: Some("vote-1".to_string()),
+                    labels: vec![],
+                }),
+            },
+            ..Config::default()
+        };
+
+        match cfg.validate(Path::new("config.yaml")) {
+            Ok(()) => anyhow::bail!("config should be rejected"),
+            Err(err) => assert!(err
+                .to_string()
+                .contains("economics.validator requires economics.mode: single-validator")),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> {
+        let mut cfg = Config {
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ..ValidatorConnectionConfig::default()
+            },
+            economics: EconomicsConfig {
+                mode: EconomicsMode::SingleValidator,
+                validator: None,
+            },
+            ..Config::default()
+        };
+
+        match cfg.validate(Path::new("config.yaml")) {
+            Ok(()) => anyhow::bail!("config should be rejected"),
+            Err(err) => assert!(err
+                .to_string()
+                .contains("economics.mode single-validator requires economics.validator")),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn expands_env_variables_with_defaults() -> Result<()> {
         let expanded = expand_env_vars_with(
             r#"
@@ -656,6 +834,8 @@ validator_websocket_enabled: ${WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-true}
         assert_eq!(ValidatorMode::ConsensusAndRpc.as_str(), "consensus-and-rpc");
         assert_eq!(ValidatorMode::NonVoting.as_str(), "non-voting");
         assert_eq!(ValidatorMode::Observer.as_str(), "observer");
+        assert_eq!(EconomicsMode::Disabled.as_str(), "disabled");
+        assert_eq!(EconomicsMode::SingleValidator.as_str(), "single-validator");
     }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {

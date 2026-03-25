@@ -55,6 +55,7 @@ struct RuntimeState {
     ws_client: Option<WebsocketProbeClient>,
     config_modified: SystemTime,
     metrics_port: u16,
+    economics_capabilities_verified: bool,
 }
 
 impl RuntimeState {
@@ -72,6 +73,7 @@ impl RuntimeState {
             ws_client,
             config_modified,
             metrics_port,
+            economics_capabilities_verified: false,
         })
     }
 
@@ -110,11 +112,13 @@ impl RuntimeState {
             watched_validators = next.watched_validators.len(),
             transport_mode = next.validator_connection.transport_mode.as_str(),
             validator_mode = next.validator_mode.as_str(),
+            economics_mode = next.economics.mode.as_str(),
             "reloaded configuration"
         );
 
         self.config = next;
         self.config_modified = modified;
+        self.economics_capabilities_verified = false;
         Ok(())
     }
 }
@@ -166,6 +170,7 @@ async fn run_watcher_loop(
         watched_validators = runtime.config.watched_validators.len(),
         transport_mode = runtime.config.validator_connection.transport_mode.as_str(),
         validator_mode = runtime.config.validator_mode.as_str(),
+        economics_mode = runtime.config.economics.mode.as_str(),
         "starting Solana validator watcher"
     );
 
@@ -177,6 +182,7 @@ async fn run_watcher_loop(
         metrics.set_watcher_up(&runtime.config.network, true);
         metrics.update_runtime_config(&runtime.config);
         guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
+        ensure_economics_capabilities_ready(&mut runtime).await?;
 
         let snapshot = collect_snapshot(&runtime.client, &runtime.config)
             .await
@@ -244,6 +250,41 @@ async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -
     }
 
     Ok(())
+}
+
+async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Result<()> {
+    if !economics_capability_check_required(runtime) {
+        return Ok(());
+    }
+
+    info!(
+        rpc_url = runtime.config.validator_connection.rpc_url,
+        economics_mode = runtime.config.economics.mode.as_str(),
+        "validating economics RPC capabilities"
+    );
+
+    runtime
+        .client
+        .ensure_economics_supported(&runtime.config)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to validate economics RPC capabilities for endpoint {}",
+                runtime.config.validator_connection.rpc_url
+            )
+        })?;
+
+    runtime.economics_capabilities_verified = true;
+    info!(
+        rpc_url = runtime.config.validator_connection.rpc_url,
+        "validated economics RPC capabilities"
+    );
+    Ok(())
+}
+
+fn economics_capability_check_required(runtime: &RuntimeState) -> bool {
+    !runtime.economics_capabilities_verified
+        && runtime.config.economics.mode != crate::config::EconomicsMode::Disabled
 }
 
 async fn run_http_server(
@@ -366,13 +407,19 @@ fn init_tracing() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_mtime, new_ws_probe_client, update_liveness_file};
-    use crate::config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode};
+    use super::{
+        config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
+        new_rpc_client, new_ws_probe_client, update_liveness_file, RuntimeState,
+    };
+    use crate::config::{
+        Config, EconomicsConfig, EconomicsMode, TransportMode, ValidatorConnectionConfig,
+        ValidatorMode, WatchedValidatorConfig,
+    };
     use anyhow::{Context, Result};
     use std::{
         env, fs,
         path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     #[test]
@@ -435,6 +482,117 @@ mod tests {
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
 
         Ok(())
+    }
+
+    #[test]
+    fn economics_capability_check_required_depends_on_mode_and_verification_flag() -> Result<()> {
+        let mut runtime = disabled_economics_runtime()?;
+        assert!(!economics_capability_check_required(&runtime));
+
+        runtime.config.economics = EconomicsConfig {
+            mode: EconomicsMode::SingleValidator,
+            validator: Some(WatchedValidatorConfig {
+                identity: Some("11111111111111111111111111111111".to_string()),
+                vote_account: Some("vote-1".to_string()),
+                labels: vec![],
+            }),
+        };
+        assert!(economics_capability_check_required(&runtime));
+
+        runtime.economics_capabilities_verified = true;
+        assert!(!economics_capability_check_required(&runtime));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ensure_economics_capabilities_ready_is_noop_when_disabled() -> Result<()> {
+        let mut runtime = disabled_economics_runtime()?;
+
+        ensure_economics_capabilities_ready(&mut runtime).await?;
+
+        assert!(!runtime.economics_capabilities_verified);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ensure_economics_capabilities_ready_skips_preverified_runtime() -> Result<()> {
+        let mut runtime = disabled_economics_runtime()?;
+        runtime.config.economics = EconomicsConfig {
+            mode: EconomicsMode::SingleValidator,
+            validator: Some(WatchedValidatorConfig {
+                identity: Some("11111111111111111111111111111111".to_string()),
+                vote_account: Some("vote-1".to_string()),
+                labels: vec![],
+            }),
+        };
+        runtime.economics_capabilities_verified = true;
+
+        ensure_economics_capabilities_ready(&mut runtime).await?;
+
+        assert!(runtime.economics_capabilities_verified);
+        Ok(())
+    }
+
+    #[test]
+    fn reload_if_needed_resets_economics_capabilities_flag() -> Result<()> {
+        let test_dir = unique_test_dir("reload");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.yaml");
+        fs::write(
+            &config_path,
+            r#"
+network: mainnet-beta
+rpc_url: https://api.mainnet-beta.solana.com
+validator_mode: consensus
+poll_interval_sec: 15
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let mut runtime = RuntimeState::load(config_path.clone())?;
+        runtime.economics_capabilities_verified = true;
+
+        std::thread::sleep(Duration::from_millis(20));
+        fs::write(
+            &config_path,
+            r#"
+network: mainnet-beta
+rpc_url: https://api.mainnet-beta.solana.com
+validator_mode: rpc
+poll_interval_sec: 15
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        runtime.reload_if_needed()?;
+
+        assert!(!runtime.economics_capabilities_verified);
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        Ok(())
+    }
+
+    fn disabled_economics_runtime() -> Result<RuntimeState> {
+        let config = Config {
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ..ValidatorConnectionConfig::default()
+            },
+            ..Config::default()
+        };
+        let client = new_rpc_client(&config)?;
+
+        Ok(RuntimeState {
+            config_path: PathBuf::from("config.yaml"),
+            config,
+            client,
+            ws_client: None,
+            config_modified: UNIX_EPOCH,
+            metrics_port: 8000,
+            economics_capabilities_verified: false,
+        })
     }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {

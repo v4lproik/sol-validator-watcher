@@ -6,10 +6,11 @@ use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
-use tracing::warn;
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -95,6 +96,10 @@ impl RpcClient {
         .await
     }
 
+    async fn get_minimum_ledger_slot(&self) -> Result<u64> {
+        self.call("minimumLedgerSlot", [(); 0]).await
+    }
+
     async fn get_inflation_rewards(
         &self,
         addresses: &[String],
@@ -159,6 +164,69 @@ impl RpcClient {
                 health
             );
         }
+
+        Ok(())
+    }
+
+    pub(crate) async fn ensure_economics_supported(&self, config: &Config) -> Result<()> {
+        if config.economics.mode == crate::config::EconomicsMode::Disabled {
+            return Ok(());
+        }
+
+        let epoch_info = self
+            .get_epoch_info()
+            .await
+            .with_context(|| format!("RPC endpoint {} failed getEpochInfo", self.url))?;
+        let vote_accounts = self
+            .get_vote_accounts(config.delinquent_slot_distance)
+            .await
+            .with_context(|| format!("RPC endpoint {} failed getVoteAccounts", self.url))?;
+
+        let current_slot = epoch_info.absolute_slot;
+        let epoch_start_slot = current_slot.saturating_sub(epoch_info.slot_index);
+        self.get_block_production(epoch_start_slot, current_slot)
+            .await
+            .with_context(|| {
+                format!(
+                    "economics mode requires RPC method getBlockProduction on endpoint {}",
+                    self.url
+                )
+            })?;
+
+        let reward_epoch = match epoch_info.epoch.checked_sub(1) {
+            Some(epoch) => epoch,
+            None => return Ok(()),
+        };
+        let reward_addresses = economics_preflight_reward_addresses(config, &vote_accounts);
+        self.get_inflation_rewards(&reward_addresses, reward_epoch)
+            .await
+            .with_context(|| {
+                format!(
+                    "economics mode requires RPC method getInflationReward on endpoint {}",
+                    self.url
+                )
+            })?;
+
+        let minimum_ledger_slot = self.get_minimum_ledger_slot().await.ok();
+        let range = reward_epoch_block_range(
+            epoch_start_slot,
+            epoch_info.slots_in_epoch,
+            minimum_ledger_slot,
+        )
+        .with_context(|| {
+            format!(
+                "economics mode requires reward-epoch block production history on endpoint {}",
+                self.url
+            )
+        })?;
+        self.get_block_production(range.first_slot, range.last_slot)
+            .await
+            .with_context(|| {
+                format!(
+                    "economics mode requires RPC method getBlockProduction for reward epoch on endpoint {}",
+                    self.url
+                )
+            })?;
 
         Ok(())
     }
@@ -464,8 +532,6 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
     let epoch_start_slot = current_slot.saturating_sub(epoch_info.slot_index);
     let next_epoch_start_slot = epoch_start_slot + epoch_info.slots_in_epoch;
     let reward_epoch = epoch_info.epoch.checked_sub(1);
-    let reward_epoch_start_slot = epoch_start_slot.saturating_sub(epoch_info.slots_in_epoch);
-    let reward_epoch_end_slot = epoch_start_slot.saturating_sub(1);
     let reward_vote_accounts = vote_accounts
         .current
         .iter()
@@ -477,7 +543,7 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         block_production_result,
         current_schedule_result,
         next_schedule_result,
-        reward_epoch_block_production_result,
+        minimum_ledger_slot_result,
         inflation_rewards_result,
     ) = tokio::join!(
         async {
@@ -499,13 +565,10 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
                 .context("getLeaderSchedule for next epoch failed")
         },
         async {
-            match reward_epoch {
-                Some(_) => client
-                    .get_block_production(reward_epoch_start_slot, reward_epoch_end_slot)
-                    .await
-                    .context("getBlockProduction for reward epoch failed"),
-                None => Ok(BlockProduction::default()),
-            }
+            client
+                .get_minimum_ledger_slot()
+                .await
+                .context("minimumLedgerSlot failed")
         },
         async {
             match reward_epoch {
@@ -518,11 +581,13 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         },
     );
 
-    let block_production = optional_rpc_or_default(
+    let economics_required = config.economics.mode != crate::config::EconomicsMode::Disabled;
+    let (block_production, block_production_supported) = block_production_or_required(
         block_production_result,
         &config.validator_connection.rpc_url,
         "getBlockProduction",
-    );
+        economics_required,
+    )?;
 
     let current_schedule = optional_rpc_or_default(
         current_schedule_result,
@@ -535,16 +600,46 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         &config.validator_connection.rpc_url,
         "getLeaderSchedule(next epoch)",
     );
-    let reward_epoch_block_production = optional_rpc_or_default(
-        reward_epoch_block_production_result,
+    let _minimum_ledger_slot = optional_rpc_or_none(
+        minimum_ledger_slot_result,
         &config.validator_connection.rpc_url,
-        "getBlockProduction(reward epoch)",
+        "minimumLedgerSlot",
     );
-    let inflation_rewards = optional_rpc_or_default(
+    let reward_epoch_block_production = if block_production_supported {
+        match reward_epoch_block_range(
+            epoch_start_slot,
+            epoch_info.slots_in_epoch,
+            _minimum_ledger_slot,
+        ) {
+            Some(range) => {
+                block_production_or_required(
+                    client
+                        .get_block_production(range.first_slot, range.last_slot)
+                        .await
+                        .context("getBlockProduction for reward epoch failed"),
+                    &config.validator_connection.rpc_url,
+                    "getBlockProduction(reward epoch)",
+                    economics_required,
+                )?
+                .0
+            }
+            None if economics_required && reward_epoch.is_some() => bail!(
+                "economics mode requires reward-epoch block production history, but slots {}..={} are unavailable from RPC endpoint {}",
+                epoch_start_slot.saturating_sub(epoch_info.slots_in_epoch),
+                epoch_start_slot.saturating_sub(1),
+                config.validator_connection.rpc_url
+            ),
+            None => BlockProduction::default(),
+        }
+    } else {
+        BlockProduction::default()
+    };
+    let inflation_rewards = optional_rpc_or_required(
         inflation_rewards_result,
         &config.validator_connection.rpc_url,
         "getInflationReward",
-    );
+        economics_required,
+    )?;
 
     let matcher = LabelMatcher::from_config(config);
     let build_context = RecordBuildContext {
@@ -802,6 +897,167 @@ where
     }
 }
 
+fn optional_rpc_or_required<T>(
+    result: Result<T>,
+    rpc_url: &str,
+    component: &str,
+    required: bool,
+) -> Result<T>
+where
+    T: Default,
+{
+    if required {
+        return result.with_context(|| {
+            format!(
+                "economics mode requires RPC method {} on endpoint {}",
+                component, rpc_url
+            )
+        });
+    }
+
+    Ok(optional_rpc_or_default(result, rpc_url, component))
+}
+
+fn block_production_or_required(
+    result: Result<BlockProduction>,
+    rpc_url: &str,
+    component: &str,
+    required: bool,
+) -> Result<(BlockProduction, bool)> {
+    if required {
+        let value = result.with_context(|| {
+            format!(
+                "economics mode requires RPC method {} on endpoint {}",
+                component, rpc_url
+            )
+        })?;
+        return Ok((value, true));
+    }
+
+    Ok(optional_block_production_or_default(
+        result, rpc_url, component,
+    ))
+}
+
+fn optional_block_production_or_default(
+    result: Result<BlockProduction>,
+    rpc_url: &str,
+    component: &str,
+) -> (BlockProduction, bool) {
+    match result {
+        Ok(value) => (value, true),
+        Err(err) if is_unsupported_block_production_error(&err) => {
+            log_optional_rpc_capability_unavailable_once(rpc_url, component, &err);
+            (BlockProduction::default(), false)
+        }
+        Err(err) => {
+            warn!(
+                rpc_url = %rpc_url,
+                component,
+                error = ?err,
+                "optional RPC data unavailable; continuing with default values"
+            );
+            (BlockProduction::default(), true)
+        }
+    }
+}
+
+fn optional_rpc_or_none<T>(result: Result<T>, rpc_url: &str, component: &str) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(err) => {
+            warn!(
+                rpc_url = %rpc_url,
+                component,
+                error = ?err,
+                "optional RPC data unavailable; continuing without it"
+            );
+            None
+        }
+    }
+}
+
+fn is_unsupported_block_production_error(err: &anyhow::Error) -> bool {
+    error_chain_contains(err, "400 Bad Request")
+        || error_chain_contains(err, "failed with code -32601")
+        || error_chain_contains(err, "failed with code -32602")
+}
+
+fn error_chain_contains(err: &anyhow::Error, needle: &str) -> bool {
+    err.chain().any(|cause| cause.to_string().contains(needle))
+}
+
+fn log_optional_rpc_capability_unavailable_once(
+    rpc_url: &str,
+    component: &str,
+    err: &anyhow::Error,
+) {
+    static LOGGED_UNAVAILABLE_OPTIONAL_RPC_CAPABILITIES: OnceLock<Mutex<HashSet<String>>> =
+        OnceLock::new();
+
+    let key = format!("{rpc_url}|{component}");
+    let should_log = LOGGED_UNAVAILABLE_OPTIONAL_RPC_CAPABILITIES
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .map(|mut seen| seen.insert(key))
+        .unwrap_or(true);
+
+    if should_log {
+        info!(
+            rpc_url = %rpc_url,
+            component,
+            error = ?err,
+            "optional RPC capability unavailable on this endpoint; continuing without it"
+        );
+    }
+}
+
+fn reward_epoch_block_range(
+    epoch_start_slot: u64,
+    slots_in_epoch: u64,
+    minimum_ledger_slot: Option<u64>,
+) -> Option<SlotRange> {
+    if epoch_start_slot == 0 || slots_in_epoch == 0 {
+        return None;
+    }
+
+    let first_slot = epoch_start_slot.checked_sub(slots_in_epoch)?;
+    let last_slot = epoch_start_slot.checked_sub(1)?;
+
+    if let Some(minimum_ledger_slot) = minimum_ledger_slot {
+        if first_slot < minimum_ledger_slot {
+            return None;
+        }
+    }
+
+    Some(SlotRange {
+        first_slot,
+        last_slot,
+    })
+}
+
+fn economics_preflight_reward_addresses(
+    config: &Config,
+    vote_accounts: &VoteAccounts,
+) -> Vec<String> {
+    if let Some(vote_account) = config
+        .economics
+        .validator
+        .as_ref()
+        .and_then(|validator| validator.vote_account.clone())
+    {
+        return vec![vote_account];
+    }
+
+    vote_accounts
+        .current
+        .iter()
+        .chain(vote_accounts.delinquent.iter())
+        .take(1)
+        .map(|info| info.vote_pubkey.clone())
+        .collect()
+}
+
 fn ratio(numerator: u64, denominator: u64) -> f64 {
     if denominator == 0 {
         return 0.0;
@@ -925,9 +1181,12 @@ struct InflationRewardValue {
 #[cfg(test)]
 mod tests {
     use super::{
-        aggregate_records, build_record, build_watched_validator_metrics, optional_rpc_or_default,
-        ratio, EpochCreditsSample, RecordBuildContext, RewardSample, ScopeMetrics, ValidatorRecord,
-        ValidatorStatus, VoteAccountInfo, WatchedValidatorMetrics,
+        aggregate_records, block_production_or_required, build_record,
+        build_watched_validator_metrics, economics_preflight_reward_addresses,
+        optional_block_production_or_default, optional_rpc_or_default, optional_rpc_or_required,
+        ratio, reward_epoch_block_range, EpochCreditsSample, RecordBuildContext, RewardSample,
+        ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts,
+        WatchedValidatorMetrics,
     };
     use crate::{
         config::{
@@ -1116,6 +1375,66 @@ mod tests {
     }
 
     #[test]
+    fn optional_rpc_or_required_reports_missing_economics_method() {
+        let err = match optional_rpc_or_required::<Vec<u8>>(
+            Err(anyhow!("boom")),
+            "https://rpc.invalid",
+            "getInflationReward",
+            true,
+        ) {
+            Ok(_) => panic!("economics mode should require the RPC method"),
+            Err(err) => err,
+        };
+
+        assert!(err
+            .to_string()
+            .contains("economics mode requires RPC method getInflationReward"));
+    }
+
+    #[test]
+    fn block_production_or_required_reports_missing_economics_method() {
+        let err = match block_production_or_required(
+            Err(anyhow!("boom")),
+            "https://rpc.invalid",
+            "getBlockProduction",
+            true,
+        ) {
+            Ok(_) => panic!("economics mode should require block production support"),
+            Err(err) => err,
+        };
+
+        assert!(err
+            .to_string()
+            .contains("economics mode requires RPC method getBlockProduction"));
+    }
+
+    #[test]
+    fn optional_block_production_or_default_marks_unsupported_responses() {
+        let (value, supported) = optional_block_production_or_default(
+            Err(anyhow!(
+                "getBlockProduction failed with code -32601: method not found"
+            )),
+            "https://rpc.invalid",
+            "getBlockProduction",
+        );
+
+        assert!(value.by_identity.is_empty());
+        assert!(!supported);
+    }
+
+    #[test]
+    fn optional_block_production_or_default_keeps_related_calls_enabled_for_generic_errors() {
+        let (value, supported) = optional_block_production_or_default(
+            Err(anyhow!("boom")),
+            "https://rpc.invalid",
+            "getBlockProduction",
+        );
+
+        assert!(value.by_identity.is_empty());
+        assert!(supported);
+    }
+
+    #[test]
     fn build_record_uses_block_production_schedules_and_labels() {
         let config = Config {
             network: "devnet".to_string(),
@@ -1249,6 +1568,83 @@ mod tests {
         assert_eq!(record.latest_epoch_credits, None);
         assert_eq!(record.latest_epoch_reward, None);
         assert!(record.scopes.contains(&"scope:network".to_string()));
+    }
+
+    #[test]
+    fn reward_epoch_block_range_skips_pruned_history() {
+        assert!(reward_epoch_block_range(100, 20, Some(81)).is_none());
+        assert!(matches!(
+            reward_epoch_block_range(100, 20, Some(80)),
+            Some(SlotRange {
+                first_slot: 80,
+                last_slot: 99,
+            })
+        ));
+        assert!(reward_epoch_block_range(0, 20, Some(0)).is_none());
+    }
+
+    #[test]
+    fn economics_preflight_prefers_configured_vote_account() {
+        let config = Config {
+            economics: crate::config::EconomicsConfig {
+                mode: crate::config::EconomicsMode::SingleValidator,
+                validator: Some(crate::config::WatchedValidatorConfig {
+                    identity: Some("id-1".to_string()),
+                    vote_account: Some("vote-configured".to_string()),
+                    labels: vec![],
+                }),
+            },
+            ..Config::default()
+        };
+        let vote_accounts = VoteAccounts {
+            current: vec![VoteAccountInfo {
+                vote_pubkey: "vote-cluster".to_string(),
+                node_pubkey: "id-cluster".to_string(),
+                activated_stake: 0,
+                commission: 0,
+                epoch_credits: vec![],
+                last_vote: 0,
+                root_slot: 0,
+            }],
+            delinquent: vec![],
+        };
+
+        assert_eq!(
+            economics_preflight_reward_addresses(&config, &vote_accounts),
+            vec!["vote-configured".to_string()]
+        );
+    }
+
+    #[test]
+    fn economics_preflight_falls_back_to_cluster_vote_account() {
+        let config = Config {
+            economics: crate::config::EconomicsConfig {
+                mode: crate::config::EconomicsMode::SingleValidator,
+                validator: Some(crate::config::WatchedValidatorConfig {
+                    identity: Some("id-1".to_string()),
+                    vote_account: None,
+                    labels: vec![],
+                }),
+            },
+            ..Config::default()
+        };
+        let vote_accounts = VoteAccounts {
+            current: vec![],
+            delinquent: vec![VoteAccountInfo {
+                vote_pubkey: "vote-cluster".to_string(),
+                node_pubkey: "id-cluster".to_string(),
+                activated_stake: 0,
+                commission: 0,
+                epoch_credits: vec![],
+                last_vote: 0,
+                root_slot: 0,
+            }],
+        };
+
+        assert_eq!(
+            economics_preflight_reward_addresses(&config, &vote_accounts),
+            vec!["vote-cluster".to_string()]
+        );
     }
 
     #[test]

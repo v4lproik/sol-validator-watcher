@@ -11,3 +11,10 @@ liveness_file: /tmp/sol-validator-watcher.liveness
 watched_validators:
   - vote_account: FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f
     labels: ["operator:kiln", "validator:kiln-devnet"]
+
+# economics:
+#   mode: single-validator
+#   validator:
+#     vote_account: FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f
+#     labels: ["operator:kiln", "validator:kiln-devnet"]
+# Economics mode requires RPC support for getInflationReward and getBlockProduction.

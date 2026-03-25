@@ -95,12 +95,13 @@ impl Metrics {
         let sol_watcher_config_info = IntGaugeVec::new(
             Opts::new(
                 "sol_watcher_config_info",
-                "Watcher transport and validator mode configuration",
+                "Watcher transport, validator mode, and economics mode configuration",
             ),
             &[
                 "network",
                 "transport_mode",
                 "validator_mode",
+                "economics_mode",
                 "validator_websocket_enabled",
                 "ws_configured",
             ],
@@ -459,6 +460,7 @@ impl Metrics {
                 &config.network,
                 connection.transport_mode.as_str(),
                 config.validator_mode.as_str(),
+                config.economics.mode.as_str(),
                 bool_label(config.validator_websocket_enabled),
                 bool_label(connection.ws_configured()),
             ])
@@ -777,7 +779,7 @@ mod tests {
         metrics.update_snapshot(&snapshot);
         let rendered = metrics.render()?;
 
-        assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",validator_mode=\"consensus-and-rpc\",validator_websocket_enabled=\"true\",ws_configured=\"true\"} 1"));
+        assert!(rendered.contains("sol_watcher_config_info{economics_mode=\"disabled\",network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",validator_mode=\"consensus-and-rpc\",validator_websocket_enabled=\"true\",ws_configured=\"true\"} 1"));
         assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_reward_sample_epoch{network=\"mainnet-beta\"} 41"));
         assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));

@@ -83,6 +83,7 @@ Set at least:
 - `rpc_url` inside the referenced TOML file
 - `ws_url` inside the referenced TOML file if `transport_mode = "poll-http-and-ws"`
 - `watched_validators` if you want watched-validator and custom-scope dashboards
+- `economics.mode: single-validator` if you want a dedicated economics target
 
 Minimal example:
 
@@ -102,6 +103,20 @@ rpc_url = "${SOL_DEVNET_RPC_URL}"
 transport_mode = "poll-http-and-ws"
 ws_url = "${SOL_DEVNET_WS_URL}"
 ```
+
+Single-validator economics target:
+
+```yaml
+economics:
+  mode: single-validator
+  validator:
+    vote_account: FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f
+    labels: ["operator:kiln", "validator:kiln-devnet"]
+```
+
+That target is merged into `watched_validators` automatically and tagged with `focus:economics`.
+
+When `economics.mode: single-validator` is enabled, the watcher runs a startup capability check and treats `getInflationReward` and `getBlockProduction` as required RPC methods. If the endpoint does not support them, the watcher fails before entering the polling loop instead of exporting partial economics.
 
 Start the stack:
 
