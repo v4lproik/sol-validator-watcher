@@ -34,7 +34,7 @@ body {
     radial-gradient(circle at top, rgba(124, 137, 255, 0.22), transparent 28%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-secondary) 54%, var(--bg) 100%);
   color: var(--text);
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: "Geist", sans-serif;
   line-height: 1.6;
 }
 
@@ -50,7 +50,7 @@ img {
 
 code,
 pre {
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Geist Mono", monospace;
 }
 
 .page-aura {
@@ -65,7 +65,6 @@ pre {
 
 .topbar,
 .hero,
-.summary-grid,
 .product-tabs,
 .site-footer,
 .not-found-shell {
@@ -98,7 +97,6 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-family: "Space Grotesk", sans-serif;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -175,7 +173,6 @@ pre {
 
 .launch-pill,
 .eyebrow,
-.card-kicker,
 .shot-label {
   display: inline-flex;
   align-items: center;
@@ -194,8 +191,7 @@ pre {
   padding: 10px 14px;
 }
 
-.eyebrow,
-.card-kicker {
+.eyebrow {
   margin: 0 0 16px;
   padding: 8px 12px;
 }
@@ -204,7 +200,6 @@ h1,
 h2,
 h3 {
   margin: 0;
-  font-family: "Space Grotesk", sans-serif;
   letter-spacing: -0.04em;
   line-height: 1.04;
 }
@@ -234,7 +229,6 @@ h3 {
 .section-header p,
 .panel-intro p,
 .slide-copy span,
-.summary-card p,
 .panel-grid span,
 .snippet-card,
 .site-footer span,
@@ -243,9 +237,9 @@ h3 {
 }
 
 .hero-subtext {
-  max-width: 62ch;
+  max-width: 48ch;
   margin: 18px auto 0;
-  font-size: 1.02rem;
+  font-size: 1rem;
 }
 
 .cta-row {
@@ -275,7 +269,6 @@ h3 {
 }
 
 .stage-shell,
-.summary-card,
 .product-tabs,
 .tab-panel,
 .coverage-frame-shell,
@@ -509,25 +502,8 @@ h3 {
   background: var(--brand);
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  padding: 28px 0 18px;
-}
-
-.summary-card {
-  padding: 28px;
-  border-radius: var(--radius-lg);
-}
-
-.summary-card h2 {
-  margin-bottom: 14px;
-  font-size: clamp(1.36rem, 2vw, 1.72rem);
-}
-
 .product-tabs {
-  margin-top: 28px;
+  margin-top: 40px;
   padding: 32px;
   border-radius: var(--radius-xl);
 }
@@ -676,7 +652,6 @@ h3 {
     min-height: 740px;
   }
 
-  .summary-grid,
   .panel-grid,
   .snippet-layout {
     grid-template-columns: 1fr;
