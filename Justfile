@@ -3,7 +3,10 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
   @just --list
 
-doctor:
+ensure-rust-components:
+  mise exec -- rustup component add rustfmt clippy llvm-tools
+
+doctor: ensure-rust-components
   command -v mise >/dev/null 2>&1
   command -v just >/dev/null 2>&1
   mise exec -- cargo --version
@@ -21,13 +24,13 @@ doctor-surfpool:
   command -v surfpool >/dev/null 2>&1
   surfpool --version
 
-fmt:
+fmt: ensure-rust-components
   mise exec -- cargo fmt
 
 check:
   mise exec -- cargo check
 
-clippy:
+clippy: ensure-rust-components
   mise exec -- cargo clippy --all-targets --all-features -- -D warnings
 
 test:
@@ -41,16 +44,16 @@ test-surfpool-all:
   if ! command -v surfpool >/dev/null 2>&1; then echo "surfpool CLI not found. Install it with: curl -sL https://run.surfpool.run/ | bash" >&2; exit 1; fi
   SURFPOOL_E2E=1 mise exec -- cargo test
 
-coverage:
+coverage: ensure-rust-components
   mise exec -- cargo llvm-cov --workspace --all-features --summary-only --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
 
-coverage-html:
+coverage-html: ensure-rust-components
   mise exec -- cargo llvm-cov --workspace --all-features --html --output-dir coverage --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
 
-coverage-lcov:
+coverage-lcov: ensure-rust-components
   mise exec -- cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
 
-coverage-ci threshold="80":
+coverage-ci threshold="80": ensure-rust-components
   mise exec -- cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines {{threshold}} --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
 
 build:
