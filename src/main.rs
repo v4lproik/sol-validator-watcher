@@ -88,12 +88,14 @@ impl RuntimeState {
             );
         }
 
-        let rpc_settings_changed = self.config.rpc_url != next.rpc_url
-            || self.config.rpc_timeout_sec != next.rpc_timeout_sec
-            || self.config.commitment != next.commitment;
-        let ws_settings_changed = self.config.transport_mode != next.transport_mode
-            || self.config.ws_url != next.ws_url
-            || self.config.ws_timeout_sec != next.ws_timeout_sec;
+        let rpc_settings_changed = self
+            .config
+            .validator_connection
+            .rpc_settings_changed(&next.validator_connection);
+        let ws_settings_changed = self
+            .config
+            .validator_connection
+            .ws_settings_changed(&next.validator_connection);
 
         if rpc_settings_changed {
             self.client = new_rpc_client(&next)?;
@@ -104,7 +106,7 @@ impl RuntimeState {
 
         info!(
             watched_validators = next.watched_validators.len(),
-            transport_mode = next.transport_mode.as_str(),
+            transport_mode = next.validator_connection.transport_mode.as_str(),
             validator_mode = next.validator_mode.as_str(),
             "reloaded configuration"
         );
@@ -165,9 +167,9 @@ async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
 async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
     info!(
         network = runtime.config.network,
-        rpc_url = runtime.config.rpc_url,
+        rpc_url = runtime.config.validator_connection.rpc_url,
         watched_validators = runtime.config.watched_validators.len(),
-        transport_mode = runtime.config.transport_mode.as_str(),
+        transport_mode = runtime.config.validator_connection.transport_mode.as_str(),
         validator_mode = runtime.config.validator_mode.as_str(),
         "starting Solana validator watcher"
     );
@@ -186,7 +188,7 @@ async fn run_watcher_loop(mut runtime: RuntimeState, metrics: Arc<Metrics>) -> R
             .with_context(|| {
                 format!(
                     "failed to collect snapshot from RPC endpoint {}",
-                    runtime.config.rpc_url
+                    runtime.config.validator_connection.rpc_url
                 )
             })?;
         metrics.update_snapshot(&snapshot);
@@ -215,24 +217,24 @@ async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -
     runtime.client.ensure_healthy().await.with_context(|| {
         format!(
             "RPC health guard failed for endpoint {}",
-            runtime.config.rpc_url
+            runtime.config.validator_connection.rpc_url
         )
     })?;
     metrics.set_rpc_up(&runtime.config.network, true);
 
     metrics.set_ws_up(&runtime.config.network, false);
-    if let Some(ws_client) = runtime.ws_client.as_ref() {
-        let ws_url = runtime
-            .config
-            .ws_url
-            .as_deref()
-            .unwrap_or("<missing-ws-url>");
-        ws_client
-            .probe()
-            .await
-            .with_context(|| format!("websocket health guard failed for endpoint {}", ws_url))?;
-        metrics.set_ws_up(&runtime.config.network, true);
-    }
+    let Some(ws_client) = runtime.ws_client.as_ref() else {
+        return Ok(());
+    };
+    let Some(ws_url) = runtime.config.validator_connection.ws_url.as_deref() else {
+        return Ok(());
+    };
+
+    ws_client
+        .probe()
+        .await
+        .with_context(|| format!("websocket health guard failed for endpoint {}", ws_url))?;
+    metrics.set_ws_up(&runtime.config.network, true);
 
     Ok(())
 }
@@ -272,16 +274,18 @@ async fn health_handler() -> &'static str {
 }
 
 fn new_rpc_client(config: &Config) -> Result<RpcClient> {
+    let connection = &config.validator_connection;
     RpcClient::new(
-        config.rpc_url.clone(),
-        Duration::from_secs(config.rpc_timeout_sec),
-        config.commitment_config()?,
+        connection.rpc_url.clone(),
+        Duration::from_secs(connection.rpc_timeout_sec),
+        connection.commitment_config()?,
     )
 }
 
 fn new_ws_probe_client(config: &Config) -> Option<WebsocketProbeClient> {
-    config.ws_url.as_ref().map(|url| {
-        WebsocketProbeClient::new(url.clone(), Duration::from_secs(config.ws_timeout_sec))
+    let connection = &config.validator_connection;
+    connection.ws_url.as_ref().map(|url| {
+        WebsocketProbeClient::new(url.clone(), Duration::from_secs(connection.ws_timeout_sec))
     })
 }
 
@@ -339,7 +343,7 @@ fn init_tracing() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{config_mtime, new_ws_probe_client, update_liveness_file};
-    use crate::config::{Config, TransportMode, ValidatorMode};
+    use crate::config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode};
     use anyhow::{Context, Result};
     use std::{
         env, fs,
@@ -350,24 +354,22 @@ mod tests {
     #[test]
     fn new_ws_probe_client_respects_ws_configuration() {
         let with_ws = Config {
-            network: "mainnet-beta".to_string(),
-            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttpAndWs,
-            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-            ws_timeout_sec: 10,
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                transport_mode: TransportMode::PollHttpAndWs,
+                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
             validator_mode: ValidatorMode::ConsensusAndRpc,
             validator_websocket_enabled: true,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
-            watched_validators: vec![],
+            ..Config::default()
         };
         let without_ws = Config {
-            ws_url: None,
-            transport_mode: TransportMode::PollHttp,
+            validator_connection: ValidatorConnectionConfig {
+                ws_url: None,
+                transport_mode: TransportMode::PollHttp,
+                ..with_ws.validator_connection.clone()
+            },
             validator_websocket_enabled: false,
             ..with_ws.clone()
         };

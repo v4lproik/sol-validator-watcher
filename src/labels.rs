@@ -67,29 +67,17 @@ impl LabelMatcher {
 #[cfg(test)]
 mod tests {
     use super::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED};
-    use crate::config::{Config, TransportMode, ValidatorMode, WatchedValidatorConfig};
+    use crate::config::{Config, WatchedValidatorConfig};
 
     #[test]
     fn resolves_built_in_and_custom_labels() {
         let cfg = Config {
-            network: "mainnet-beta".to_string(),
-            rpc_url: "http://127.0.0.1:8899".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttp,
-            ws_url: None,
-            ws_timeout_sec: 10,
-            validator_mode: ValidatorMode::Consensus,
-            validator_websocket_enabled: false,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
             watched_validators: vec![WatchedValidatorConfig {
                 identity: Some("11111111111111111111111111111111".to_string()),
                 vote_account: None,
                 labels: vec!["region:sbg".to_string(), "vc:validator-1".to_string()],
             }],
+            ..Config::default()
         };
 
         let matcher = LabelMatcher::from_config(&cfg);

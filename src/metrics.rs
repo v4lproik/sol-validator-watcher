@@ -379,14 +379,15 @@ impl Metrics {
     }
 
     pub fn update_runtime_config(&self, config: &Config) {
+        let connection = &config.validator_connection;
         self.sol_watcher_config_info.reset();
         self.sol_watcher_config_info
             .with_label_values(&[
                 &config.network,
-                config.transport_mode.as_str(),
+                connection.transport_mode.as_str(),
                 config.validator_mode.as_str(),
                 bool_label(config.validator_websocket_enabled),
-                bool_label(config.ws_url.is_some()),
+                bool_label(connection.ws_configured()),
             ])
             .set(1);
     }
@@ -588,7 +589,7 @@ mod tests {
     use super::{bool_label, validator_status_label, Metrics};
     use crate::{
         collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics},
-        config::{Config, TransportMode, ValidatorMode},
+        config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
     };
     use anyhow::Result;
     use std::collections::BTreeMap;
@@ -646,19 +647,15 @@ mod tests {
         metrics.set_ws_up("mainnet-beta", true);
         metrics.update_runtime_config(&Config {
             network: "mainnet-beta".to_string(),
-            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttpAndWs,
-            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-            ws_timeout_sec: 10,
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                transport_mode: TransportMode::PollHttpAndWs,
+                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
             validator_mode: ValidatorMode::ConsensusAndRpc,
             validator_websocket_enabled: true,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
-            watched_validators: vec![],
+            ..Config::default()
         });
         metrics.update_snapshot(&snapshot);
         let rendered = metrics.render()?;
@@ -681,19 +678,15 @@ mod tests {
 
         metrics.update_runtime_config(&Config {
             network: network.to_string(),
-            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttpAndWs,
-            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-            ws_timeout_sec: 10,
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                transport_mode: TransportMode::PollHttpAndWs,
+                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
             validator_mode: ValidatorMode::Consensus,
             validator_websocket_enabled: true,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
-            watched_validators: vec![],
+            ..Config::default()
         });
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),

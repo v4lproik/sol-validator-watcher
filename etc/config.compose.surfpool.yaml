@@ -1,14 +1,9 @@
 network: surfpool-localnet
-rpc_url: http://surfpool:8899
-rpc_timeout_sec: 5
-transport_mode: poll-http-and-ws
-ws_url: ws://surfpool:8900
-ws_timeout_sec: 5
+validator_connection_file: validator.compose.surfpool.toml
 validator_mode: consensus-and-rpc
 validator_websocket_enabled: true
 metrics_port: 8000
 poll_interval_sec: 5
-commitment: confirmed
 delinquent_slot_distance: 128
 liveness_file: /tmp/sol-validator-watcher.liveness
 

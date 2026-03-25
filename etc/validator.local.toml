@@ -1,0 +1,5 @@
+rpc_url = "http://127.0.0.1:8899"
+rpc_timeout_sec = 30
+transport_mode = "poll-http"
+ws_timeout_sec = 10
+commitment = "confirmed"

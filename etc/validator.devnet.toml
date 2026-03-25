@@ -1,0 +1,6 @@
+rpc_url = "${SOL_DEVNET_RPC_URL}"
+rpc_timeout_sec = 30
+transport_mode = "poll-http-and-ws"
+ws_url = "${SOL_DEVNET_WS_URL}"
+ws_timeout_sec = 10
+commitment = "confirmed"

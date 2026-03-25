@@ -1,6 +1,6 @@
 use crate::{
     collector::{collect_snapshot, RpcClient},
-    config::{Config, TransportMode, ValidatorMode},
+    config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
     metrics::Metrics,
     websocket::WebsocketProbeClient,
 };
@@ -25,31 +25,33 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     let harness = SurfpoolHarness::spawn()?;
     let config = Config {
         network: "localnet".to_string(),
-        rpc_url: harness.rpc_url(),
-        rpc_timeout_sec: 5,
-        transport_mode: TransportMode::PollHttpAndWs,
-        ws_url: Some(harness.ws_url()),
-        ws_timeout_sec: 5,
+        validator_connection: ValidatorConnectionConfig {
+            rpc_url: harness.rpc_url(),
+            rpc_timeout_sec: 5,
+            transport_mode: TransportMode::PollHttpAndWs,
+            ws_url: Some(harness.ws_url()),
+            ws_timeout_sec: 5,
+            ..ValidatorConnectionConfig::default()
+        },
         validator_mode: ValidatorMode::ConsensusAndRpc,
         validator_websocket_enabled: true,
-        metrics_port: 8000,
         poll_interval_sec: 1,
-        commitment: "confirmed".to_string(),
         delinquent_slot_distance: Some(128),
-        liveness_file: None,
-        watched_validators: vec![],
+        ..Config::default()
     };
+    let connection = &config.validator_connection;
     let client = RpcClient::new(
-        config.rpc_url.clone(),
-        Duration::from_secs(config.rpc_timeout_sec),
-        config.commitment_config()?,
+        connection.rpc_url.clone(),
+        Duration::from_secs(connection.rpc_timeout_sec),
+        connection.commitment_config()?,
     )?;
     let ws_client = WebsocketProbeClient::new(
         config
+            .validator_connection
             .ws_url
             .clone()
             .context("transport_mode requires ws_url")?,
-        Duration::from_secs(config.ws_timeout_sec),
+        Duration::from_secs(connection.ws_timeout_sec),
     );
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;

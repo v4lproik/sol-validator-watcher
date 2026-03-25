@@ -1,11 +1,15 @@
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use figment::{
+    providers::{Format, Serialized, Toml},
+    Figment,
+};
+use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TransportMode {
     #[default]
@@ -14,7 +18,7 @@ pub enum TransportMode {
 }
 
 impl TransportMode {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::PollHttp => "poll-http",
             Self::PollHttpAndWs => "poll-http-and-ws",
@@ -22,7 +26,7 @@ impl TransportMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ValidatorMode {
     #[default]
@@ -34,7 +38,7 @@ pub enum ValidatorMode {
 }
 
 impl ValidatorMode {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Consensus => "consensus",
             Self::Rpc => "rpc",
@@ -53,33 +57,160 @@ pub struct WatchedValidatorConfig {
     pub labels: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct Config {
-    #[serde(default = "default_network")]
-    pub network: String,
-    #[serde(default = "default_rpc_url")]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct ValidatorConnectionConfig {
     pub rpc_url: String,
-    #[serde(default = "default_rpc_timeout_sec")]
     pub rpc_timeout_sec: u64,
-    #[serde(default)]
     pub transport_mode: TransportMode,
     pub ws_url: Option<String>,
-    #[serde(default = "default_ws_timeout_sec")]
     pub ws_timeout_sec: u64,
-    #[serde(default)]
-    pub validator_mode: ValidatorMode,
-    #[serde(default)]
-    pub validator_websocket_enabled: bool,
-    #[serde(default = "default_metrics_port")]
-    pub metrics_port: u16,
-    #[serde(default = "default_poll_interval_sec")]
-    pub poll_interval_sec: u64,
-    #[serde(default = "default_commitment")]
     pub commitment: String,
+}
+
+impl Default for ValidatorConnectionConfig {
+    fn default() -> Self {
+        Self {
+            rpc_url: default_rpc_url(),
+            rpc_timeout_sec: default_rpc_timeout_sec(),
+            transport_mode: TransportMode::default(),
+            ws_url: None,
+            ws_timeout_sec: default_ws_timeout_sec(),
+            commitment: default_commitment(),
+        }
+    }
+}
+
+impl ValidatorConnectionConfig {
+    fn load_from_toml(path: &Path, defaults: Self) -> Result<Self> {
+        let raw = fs::read_to_string(path).with_context(|| {
+            format!(
+                "failed to read validator connection TOML file {}",
+                path.display()
+            )
+        })?;
+        let expanded = expand_env_vars(&raw).with_context(|| {
+            format!(
+                "failed to expand environment variables in validator connection TOML {}",
+                path.display()
+            )
+        })?;
+
+        Figment::from(Serialized::defaults(defaults))
+            .merge(Toml::string(&expanded))
+            .extract::<Self>()
+            .with_context(|| {
+                format!(
+                    "failed to parse validator connection TOML {}",
+                    path.display()
+                )
+            })
+    }
+
+    pub fn commitment_config(&self) -> Result<String> {
+        match self.commitment.as_str() {
+            "processed" | "confirmed" | "finalized" => Ok(self.commitment.clone()),
+            other => bail!(
+                "unsupported commitment {:?}, expected one of processed|confirmed|finalized",
+                other
+            ),
+        }
+    }
+
+    pub fn rpc_settings_changed(&self, next: &Self) -> bool {
+        self.rpc_url != next.rpc_url
+            || self.rpc_timeout_sec != next.rpc_timeout_sec
+            || self.commitment != next.commitment
+    }
+
+    pub fn ws_settings_changed(&self, next: &Self) -> bool {
+        self.transport_mode != next.transport_mode
+            || self.ws_url != next.ws_url
+            || self.ws_timeout_sec != next.ws_timeout_sec
+    }
+
+    pub fn ws_configured(&self) -> bool {
+        self.ws_url.is_some()
+    }
+
+    fn validate(&mut self) -> Result<()> {
+        self.normalize();
+
+        if self.rpc_url.is_empty() {
+            bail!("rpc_url must not be empty");
+        }
+        if self.rpc_timeout_sec == 0 {
+            bail!("rpc_timeout_sec must be greater than 0");
+        }
+        if self.ws_timeout_sec == 0 {
+            bail!("ws_timeout_sec must be greater than 0");
+        }
+
+        self.commitment_config()?;
+        self.validate_transport()?;
+        Ok(())
+    }
+
+    fn normalize(&mut self) {
+        self.rpc_url = self.rpc_url.trim().to_string();
+        self.commitment = self.commitment.trim().to_lowercase();
+        self.ws_url = self
+            .ws_url
+            .as_ref()
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty());
+    }
+
+    fn validate_transport(&self) -> Result<()> {
+        match self.transport_mode {
+            TransportMode::PollHttp => {
+                if self.ws_url.is_some() {
+                    bail!("ws_url requires transport_mode: poll-http-and-ws");
+                }
+            }
+            TransportMode::PollHttpAndWs => {
+                let ws_url = self.ws_url.as_ref().with_context(|| {
+                    "transport_mode poll-http-and-ws requires a non-empty ws_url"
+                })?;
+                validate_ws_url(ws_url)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    pub network: String,
+    #[serde(flatten)]
+    pub validator_connection: ValidatorConnectionConfig,
+    pub validator_connection_file: Option<PathBuf>,
+    pub validator_mode: ValidatorMode,
+    pub validator_websocket_enabled: bool,
+    pub metrics_port: u16,
+    pub poll_interval_sec: u64,
     pub delinquent_slot_distance: Option<u64>,
     pub liveness_file: Option<PathBuf>,
-    #[serde(default)]
     pub watched_validators: Vec<WatchedValidatorConfig>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            network: default_network(),
+            validator_connection: ValidatorConnectionConfig::default(),
+            validator_connection_file: None,
+            validator_mode: ValidatorMode::default(),
+            validator_websocket_enabled: false,
+            metrics_port: default_metrics_port(),
+            poll_interval_sec: default_poll_interval_sec(),
+            delinquent_slot_distance: None,
+            liveness_file: None,
+            watched_validators: vec![],
+        }
+    }
 }
 
 fn default_network() -> String {
@@ -124,54 +255,33 @@ impl Config {
         let mut config = match path.extension().and_then(|ext| ext.to_str()) {
             Some("json") => serde_json::from_str::<Self>(&expanded)
                 .with_context(|| format!("failed to parse JSON config {}", path.display()))?,
+            Some("toml") => Figment::new()
+                .merge(Toml::string(&expanded))
+                .extract::<Self>()
+                .with_context(|| format!("failed to parse TOML config {}", path.display()))?,
             _ => serde_yaml::from_str::<Self>(&expanded)
                 .with_context(|| format!("failed to parse YAML config {}", path.display()))?,
         };
 
-        config.validate()?;
+        config.validate(path)?;
         Ok(config)
     }
 
-    pub fn commitment_config(&self) -> Result<String> {
-        match self.commitment.as_str() {
-            "processed" | "confirmed" | "finalized" => Ok(self.commitment.clone()),
-            other => bail!(
-                "unsupported commitment {:?}, expected one of processed|confirmed|finalized",
-                other
-            ),
-        }
-    }
-
-    fn validate(&mut self) -> Result<()> {
+    fn validate(&mut self, config_path: &Path) -> Result<()> {
         self.network = self.network.trim().to_string();
-        self.rpc_url = self.rpc_url.trim().to_string();
-        self.commitment = self.commitment.trim().to_lowercase();
-        self.ws_url = self
-            .ws_url
-            .as_ref()
-            .map(|url| url.trim().to_string())
-            .filter(|url| !url.is_empty());
-
         if self.network.is_empty() {
             bail!("network must not be empty");
         }
-        if self.rpc_url.is_empty() {
-            bail!("rpc_url must not be empty");
-        }
-        if self.rpc_timeout_sec == 0 {
-            bail!("rpc_timeout_sec must be greater than 0");
-        }
-        if self.ws_timeout_sec == 0 {
-            bail!("ws_timeout_sec must be greater than 0");
-        }
+
+        self.resolve_validator_connection(config_path)?;
+        self.validator_connection.validate()?;
+
         if self.metrics_port == 0 {
             bail!("metrics_port must be greater than 0");
         }
         if self.poll_interval_sec == 0 {
             bail!("poll_interval_sec must be greater than 0");
         }
-        self.commitment_config()?;
-        self.validate_transport()?;
 
         for watched in &mut self.watched_validators {
             if watched.identity.is_none() && watched.vote_account.is_none() {
@@ -195,21 +305,17 @@ impl Config {
         Ok(())
     }
 
-    fn validate_transport(&self) -> Result<()> {
-        match self.transport_mode {
-            TransportMode::PollHttp => {
-                if self.ws_url.is_some() {
-                    bail!("ws_url requires transport_mode: poll-http-and-ws");
-                }
-            }
-            TransportMode::PollHttpAndWs => {
-                let ws_url = self.ws_url.as_ref().with_context(|| {
-                    "transport_mode poll-http-and-ws requires a non-empty ws_url"
-                })?;
-                validate_ws_url(ws_url)?;
-            }
-        }
+    fn resolve_validator_connection(&mut self, config_path: &Path) -> Result<()> {
+        let Some(connection_path) = self.validator_connection_file.as_ref() else {
+            return Ok(());
+        };
 
+        let resolved_path = resolve_config_relative_path(config_path, connection_path);
+        let mut defaults = self.validator_connection.clone();
+        defaults.normalize();
+        self.validator_connection =
+            ValidatorConnectionConfig::load_from_toml(&resolved_path, defaults)?;
+        self.validator_connection_file = Some(resolved_path);
         Ok(())
     }
 }
@@ -279,6 +385,17 @@ where
     Ok(output)
 }
 
+fn resolve_config_relative_path(config_path: &Path, relative_path: &Path) -> PathBuf {
+    if relative_path.is_absolute() {
+        return relative_path.to_path_buf();
+    }
+
+    config_path.parent().map_or_else(
+        || relative_path.to_path_buf(),
+        |parent| parent.join(relative_path),
+    )
+}
+
 fn normalize_pubkey(value: &str, field_name: &str) -> Result<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -310,8 +427,15 @@ fn validate_ws_url(url: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_env_vars_with, Config, TransportMode, ValidatorMode};
-    use anyhow::Result;
+    use super::{
+        expand_env_vars_with, Config, TransportMode, ValidatorConnectionConfig, ValidatorMode,
+    };
+    use anyhow::{Context, Result};
+    use std::{
+        env, fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn parses_and_validates_yaml() -> Result<()> {
@@ -330,10 +454,13 @@ watched_validators:
 "#;
 
         let mut cfg: Config = serde_yaml::from_str(raw)?;
-        cfg.validate()?;
+        cfg.validate(Path::new("config.yaml"))?;
         assert_eq!(cfg.network, "testnet");
         assert_eq!(cfg.watched_validators.len(), 1);
-        assert_eq!(cfg.transport_mode, TransportMode::PollHttpAndWs);
+        assert_eq!(
+            cfg.validator_connection.transport_mode,
+            TransportMode::PollHttpAndWs
+        );
         assert_eq!(cfg.validator_mode, ValidatorMode::ConsensusAndRpc);
         assert!(cfg.validator_websocket_enabled);
 
@@ -341,25 +468,71 @@ watched_validators:
     }
 
     #[test]
+    fn loads_validator_connection_from_relative_toml() -> Result<()> {
+        let test_dir = unique_test_dir("validator-connection");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.yaml");
+        let connection_path = test_dir.join("validator.toml");
+
+        fs::write(
+            &config_path,
+            r#"
+network: devnet
+validator_connection_file: validator.toml
+rpc_timeout_sec: 45
+validator_mode: rpc
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+        fs::write(
+            &connection_path,
+            r#"
+rpc_url = "https://api.devnet.solana.com"
+transport_mode = "poll-http-and-ws"
+ws_url = "wss://api.devnet.solana.com"
+"#,
+        )
+        .with_context(|| format!("failed to write {}", connection_path.display()))?;
+
+        let cfg = Config::load(&config_path)?;
+
+        assert_eq!(cfg.network, "devnet");
+        assert_eq!(
+            cfg.validator_connection.rpc_url,
+            "https://api.devnet.solana.com"
+        );
+        assert_eq!(cfg.validator_connection.rpc_timeout_sec, 45);
+        assert_eq!(
+            cfg.validator_connection.transport_mode,
+            TransportMode::PollHttpAndWs
+        );
+        assert_eq!(
+            cfg.validator_connection.ws_url.as_deref(),
+            Some("wss://api.devnet.solana.com")
+        );
+        assert_eq!(
+            cfg.validator_connection_file.as_deref(),
+            Some(connection_path.as_path())
+        );
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn rejects_ws_url_without_ws_transport_mode() -> Result<()> {
         let mut cfg = Config {
-            network: "mainnet-beta".to_string(),
-            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttp,
-            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-            ws_timeout_sec: 10,
-            validator_mode: ValidatorMode::Consensus,
-            validator_websocket_enabled: false,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
-            watched_validators: vec![],
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
+            ..Config::default()
         };
 
-        match cfg.validate() {
+        match cfg.validate(Path::new("config.yaml")) {
             Ok(()) => anyhow::bail!("config should be rejected"),
             Err(err) => assert!(err
                 .to_string()
@@ -372,23 +545,16 @@ watched_validators:
     #[test]
     fn rejects_invalid_ws_scheme() -> Result<()> {
         let mut cfg = Config {
-            network: "mainnet-beta".to_string(),
-            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttpAndWs,
-            ws_url: Some("https://api.mainnet-beta.solana.com".to_string()),
-            ws_timeout_sec: 10,
-            validator_mode: ValidatorMode::Consensus,
-            validator_websocket_enabled: true,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
-            watched_validators: vec![],
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                transport_mode: TransportMode::PollHttpAndWs,
+                ws_url: Some("https://api.mainnet-beta.solana.com".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
+            ..Config::default()
         };
 
-        match cfg.validate() {
+        match cfg.validate(Path::new("config.yaml")) {
             Ok(()) => anyhow::bail!("config should be rejected"),
             Err(err) => assert!(err
                 .to_string()
@@ -401,26 +567,22 @@ watched_validators:
     #[test]
     fn trims_blank_ws_url_when_ws_transport_is_disabled() -> Result<()> {
         let mut cfg = Config {
-            network: "mainnet-beta".to_string(),
-            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-            rpc_timeout_sec: 30,
-            transport_mode: TransportMode::PollHttp,
-            ws_url: Some("   ".to_string()),
-            ws_timeout_sec: 10,
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ws_url: Some("   ".to_string()),
+                ..ValidatorConnectionConfig::default()
+            },
             validator_mode: ValidatorMode::Observer,
-            validator_websocket_enabled: false,
-            metrics_port: 8000,
-            poll_interval_sec: 15,
-            commitment: "confirmed".to_string(),
-            delinquent_slot_distance: None,
-            liveness_file: None,
-            watched_validators: vec![],
+            ..Config::default()
         };
 
-        cfg.validate()?;
-        assert!(cfg.ws_url.is_none());
+        cfg.validate(Path::new("config.yaml"))?;
+        assert!(cfg.validator_connection.ws_url.is_none());
         assert_eq!(cfg.validator_mode.as_str(), "observer");
-        assert_eq!(cfg.transport_mode.as_str(), "poll-http");
+        assert_eq!(
+            cfg.validator_connection.transport_mode.as_str(),
+            "poll-http"
+        );
 
         Ok(())
     }
@@ -494,5 +656,18 @@ validator_websocket_enabled: ${WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-true}
         assert_eq!(ValidatorMode::ConsensusAndRpc.as_str(), "consensus-and-rpc");
         assert_eq!(ValidatorMode::NonVoting.as_str(), "non-voting");
         assert_eq!(ValidatorMode::Observer.as_str(), "observer");
+    }
+
+    fn unique_test_dir(prefix: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        env::temp_dir().join(format!(
+            "sol-validator-watcher-config-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nonce
+        ))
     }
 }
