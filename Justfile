@@ -80,8 +80,11 @@ stack-config-surfpool:
 stack-config-validator:
   docker compose -f compose.yaml -f compose.validator.yaml config
 
+stack-config-devnet:
+  docker compose -f compose.yaml -f compose.devnet.yaml config
+
 stack-config-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml config
+  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml config
 
 stack-up-surfpool:
   docker compose -f compose.yaml -f compose.surfpool.yaml up -d --build
@@ -89,8 +92,11 @@ stack-up-surfpool:
 stack-up-validator:
   docker compose -f compose.yaml -f compose.validator.yaml up -d --build
 
+stack-up-devnet:
+  docker compose -f compose.yaml -f compose.devnet.yaml up -d --build
+
 stack-up-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml up -d --build
+  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml up -d --build
 
 stack-logs-surfpool:
   docker compose -f compose.yaml -f compose.surfpool.yaml logs -f
@@ -98,8 +104,11 @@ stack-logs-surfpool:
 stack-logs-validator:
   docker compose -f compose.yaml -f compose.validator.yaml logs -f
 
+stack-logs-devnet:
+  docker compose -f compose.yaml -f compose.devnet.yaml logs -f
+
 stack-logs-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml logs -f
+  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml logs -f
 
 stack-ps-surfpool:
   docker compose -f compose.yaml -f compose.surfpool.yaml ps
@@ -107,11 +116,14 @@ stack-ps-surfpool:
 stack-ps-validator:
   docker compose -f compose.yaml -f compose.validator.yaml ps
 
+stack-ps-devnet:
+  docker compose -f compose.yaml -f compose.devnet.yaml ps
+
 stack-ps-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml ps
+  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml ps
 
 stack-down:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml down --remove-orphans
+  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml down --remove-orphans
 
 clean:
   cargo clean
