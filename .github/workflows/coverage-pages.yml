@@ -19,27 +19,75 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      PAGES_ENABLEMENT_TOKEN: ${{ secrets.PAGES_ENABLEMENT_TOKEN }}
+    outputs:
+      pages_should_run: ${{ steps.pages.outputs.should_run }}
 
     steps:
+      - name: Check Pages availability
+        id: pages
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const enablementTokenConfigured =
+              (process.env.PAGES_ENABLEMENT_TOKEN || '').trim() !== '';
+
+            try {
+              await github.request('GET /repos/{owner}/{repo}/pages', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              core.setOutput('should_run', 'true');
+              core.setOutput('enablement', 'false');
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+
+              if (enablementTokenConfigured) {
+                core.notice(
+                  'GitHub Pages is not enabled; configure-pages will attempt enablement.'
+                );
+                core.setOutput('should_run', 'true');
+                core.setOutput('enablement', 'true');
+              } else {
+                core.notice(
+                  'Skipping coverage-pages because GitHub Pages is not enabled and PAGES_ENABLEMENT_TOKEN is not configured.'
+                );
+                core.setOutput('should_run', 'false');
+                core.setOutput('enablement', 'false');
+              }
+            }
+
       - name: Check out repository
+        if: ${{ steps.pages.outputs.should_run == 'true' }}
         uses: actions/checkout@v5
 
       - name: Configure GitHub Pages
+        if: ${{ steps.pages.outputs.should_run == 'true' }}
         uses: actions/configure-pages@v5
+        with:
+          token: ${{ env.PAGES_ENABLEMENT_TOKEN != '' && env.PAGES_ENABLEMENT_TOKEN || github.token }}
+          enablement: ${{ steps.pages.outputs.enablement }}
 
       - name: Install toolchain with mise
+        if: ${{ steps.pages.outputs.should_run == 'true' }}
         uses: jdx/mise-action@v2
 
       - name: Build HTML coverage report
+        if: ${{ steps.pages.outputs.should_run == 'true' }}
         run: just coverage-html
 
       - name: Upload Pages artifact
+        if: ${{ steps.pages.outputs.should_run == 'true' }}
         uses: actions/upload-pages-artifact@v4
         with:
           path: coverage
 
   deploy:
     needs: build
+    if: ${{ needs.build.outputs.pages_should_run == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
