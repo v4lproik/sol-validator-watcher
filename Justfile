@@ -5,10 +5,10 @@ default:
 
 doctor:
   command -v mise >/dev/null 2>&1
-  command -v cargo >/dev/null 2>&1
   command -v just >/dev/null 2>&1
-  mise --version
-  cargo --version
+  mise exec -- cargo --version
+  mise exec -- cargo fmt --version
+  mise exec -- cargo clippy --version
   mise exec -- cargo llvm-cov --version
   just --version
 
@@ -22,24 +22,24 @@ doctor-surfpool:
   surfpool --version
 
 fmt:
-  cargo fmt
+  mise exec -- cargo fmt
 
 check:
-  cargo check
+  mise exec -- cargo check
 
 clippy:
-  cargo clippy --all-targets --all-features -- -D warnings
+  mise exec -- cargo clippy --all-targets --all-features -- -D warnings
 
 test:
-  cargo test
+  mise exec -- cargo test
 
 test-surfpool:
   if ! command -v surfpool >/dev/null 2>&1; then echo "surfpool CLI not found. Install it with: curl -sL https://run.surfpool.run/ | bash" >&2; exit 1; fi
-  SURFPOOL_E2E=1 cargo test surfpool_smoke_test_collects_snapshot_and_renders_metrics -- --nocapture
+  SURFPOOL_E2E=1 mise exec -- cargo test surfpool_smoke_test_collects_snapshot_and_renders_metrics -- --nocapture
 
 test-surfpool-all:
   if ! command -v surfpool >/dev/null 2>&1; then echo "surfpool CLI not found. Install it with: curl -sL https://run.surfpool.run/ | bash" >&2; exit 1; fi
-  SURFPOOL_E2E=1 cargo test
+  SURFPOOL_E2E=1 mise exec -- cargo test
 
 coverage:
   mise exec -- cargo llvm-cov --workspace --all-features --summary-only --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
@@ -54,22 +54,22 @@ coverage-ci threshold="80":
   mise exec -- cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines {{threshold}} --ignore-filename-regex '(^|/)src/(main|surfpool_tests)\.rs$'
 
 build:
-  cargo build
+  mise exec -- cargo build
 
 build-release:
-  cargo build --release
+  mise exec -- cargo build --release
 
 run config="etc/config.local.yaml":
   set -a; \
   [ ! -f .env ] || source .env; \
   set +a; \
-  cargo run -- --config '{{config}}'
+  mise exec -- cargo run -- --config '{{config}}'
 
 run-release config="etc/config.local.yaml":
   set -a; \
   [ ! -f .env ] || source .env; \
   set +a; \
-  cargo run --release -- --config '{{config}}'
+  mise exec -- cargo run --release -- --config '{{config}}'
 
 docker-build tag="sol-validator-watcher:local":
   docker build -t '{{tag}}' .
@@ -126,7 +126,7 @@ stack-down:
   docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml down --remove-orphans
 
 clean:
-  cargo clean
+  mise exec -- cargo clean
 
 ci:
   just fmt
