@@ -1,39 +1,51 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">Solana Validator Watcher logo</title>
-  <desc id="desc">A stylized validator signal tower inside a rounded square with signal rings and slot bars.</desc>
+  <desc id="desc">An angular telemetry panel mark with stacked validator metrics connected to a monitoring rail.</desc>
   <defs>
-    <linearGradient id="bg" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#08131F"/>
-      <stop offset="1" stop-color="#15344A"/>
+    <linearGradient id="frame" x1="28" y1="20" x2="228" y2="236" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1420"/>
+      <stop offset="1" stop-color="#132438"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(128 76) rotate(90) scale(120)">
-      <stop stop-color="#27D0D8" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#27D0D8" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="tower" x1="128" y1="84" x2="128" y2="194" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFD166"/>
-      <stop offset="1" stop-color="#F97316"/>
+    <linearGradient id="edge" x1="38" y1="28" x2="214" y2="212" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B97FF" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#4FC3FF" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="barA" x1="56" y1="82" x2="162" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#9FB3FF"/>
+    </linearGradient>
+    <linearGradient id="barB" x1="56" y1="128" x2="188" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#64D2FF"/>
+      <stop offset="1" stop-color="#7C89FF"/>
+    </linearGradient>
+    <linearGradient id="barC" x1="56" y1="174" x2="148" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8BF3D6"/>
+      <stop offset="1" stop-color="#4FC3FF"/>
     </linearGradient>
   </defs>
 
-  <rect x="16" y="16" width="224" height="224" rx="44" fill="url(#bg)"/>
-  <rect x="16" y="16" width="224" height="224" rx="44" fill="url(#glow)"/>
-  <rect x="16.75" y="16.75" width="222.5" height="222.5" rx="43.25" stroke="#4FD1C5" stroke-opacity="0.18" stroke-width="1.5"/>
+  <path d="M40 20H216L236 40V216L216 236H40L20 216V40L40 20Z" fill="url(#frame)"/>
+  <path d="M40.75 20.75H215.25L235.25 40.75V215.25L215.25 235.25H40.75L20.75 215.25V40.75L40.75 20.75Z" stroke="url(#edge)" stroke-width="1.5"/>
+  <path d="M54 46H202V202H54V46Z" fill="#0B1320" fill-opacity="0.55"/>
 
-  <circle cx="128" cy="88" r="14" fill="#F8FAFC"/>
-  <circle cx="128" cy="88" r="26" stroke="#27D0D8" stroke-opacity="0.7" stroke-width="6"/>
-  <circle cx="128" cy="88" r="46" stroke="#27D0D8" stroke-opacity="0.28" stroke-width="6"/>
-  <circle cx="128" cy="88" r="66" stroke="#27D0D8" stroke-opacity="0.12" stroke-width="6"/>
+  <path d="M58 64H194" stroke="#243447" stroke-width="2"/>
+  <path d="M58 192H194" stroke="#243447" stroke-width="2"/>
+  <path d="M194 58V198" stroke="#243447" stroke-width="2"/>
 
-  <path d="M120 102H136V170H120V102Z" fill="url(#tower)"/>
-  <path d="M98 196L128 122L158 196H98Z" fill="url(#tower)"/>
-  <path d="M88 188H168" stroke="#F8FAFC" stroke-opacity="0.85" stroke-width="8" stroke-linecap="round"/>
+  <path d="M56 74H146L158 86H56V74Z" fill="url(#barA)"/>
+  <path d="M56 120H172L188 136H56V120Z" fill="url(#barB)"/>
+  <path d="M56 166H132L148 182H56V166Z" fill="url(#barC)"/>
 
-  <rect x="56" y="164" width="20" height="14" rx="5" fill="#27D0D8" fill-opacity="0.95"/>
-  <rect x="56" y="136" width="32" height="14" rx="5" fill="#27D0D8" fill-opacity="0.72"/>
-  <rect x="56" y="108" width="22" height="14" rx="5" fill="#27D0D8" fill-opacity="0.48"/>
+  <rect x="194" y="70" width="12" height="12" fill="#F8FAFC"/>
+  <rect x="194" y="122" width="12" height="12" fill="#8B97FF"/>
+  <rect x="194" y="174" width="12" height="12" fill="#4FC3FF"/>
 
-  <rect x="180" y="164" width="20" height="14" rx="5" fill="#27D0D8" fill-opacity="0.95"/>
-  <rect x="168" y="136" width="32" height="14" rx="5" fill="#27D0D8" fill-opacity="0.72"/>
-  <rect x="178" y="108" width="22" height="14" rx="5" fill="#27D0D8" fill-opacity="0.48"/>
+  <path d="M178 60H206V196H178" stroke="#5A6D86" stroke-width="6"/>
+  <path d="M160 80H194" stroke="#F8FAFC" stroke-width="4"/>
+  <path d="M188 132H194" stroke="#8B97FF" stroke-width="4"/>
+  <path d="M148 178H194" stroke="#4FC3FF" stroke-width="4"/>
+
+  <path d="M66 102H118" stroke="#243447" stroke-width="2"/>
+  <path d="M66 148H144" stroke="#243447" stroke-width="2"/>
+  <path d="M66 194H106" stroke="#243447" stroke-width="2"/>
 </svg>

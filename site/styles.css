@@ -12,9 +12,9 @@
   --brand-secondary: #4fc3ff;
   --brand-soft: rgba(124, 137, 255, 0.14);
   --shadow: 0 28px 80px rgba(1, 5, 12, 0.48);
-  --radius-xl: 32px;
-  --radius-lg: 24px;
-  --radius-md: 18px;
+  --radius-xl: 18px;
+  --radius-lg: 12px;
+  --radius-md: 8px;
   --content-width: min(1160px, calc(100vw - 40px));
   color-scheme: dark;
 }
@@ -86,7 +86,7 @@ pre {
   gap: 20px;
   min-height: 72px;
   padding: 14px 18px;
-  border-radius: 22px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(8, 16, 26, 0.68);
   box-shadow: 0 18px 40px rgba(1, 5, 12, 0.24);
@@ -100,6 +100,11 @@ pre {
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.03em;
+}
+
+.brand img {
+  width: 38px;
+  height: 38px;
 }
 
 .topnav,
@@ -137,7 +142,7 @@ pre {
   min-height: 44px;
   padding: 0 18px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 10px;
   font-weight: 600;
   transition:
     transform 180ms ease,
@@ -176,7 +181,7 @@ pre {
 .shot-label {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid rgba(129, 140, 248, 0.28);
   background: rgba(124, 137, 255, 0.1);
   color: #dbe5ff;
@@ -257,7 +262,7 @@ h3 {
 .trust-strip li,
 .preview-badges span {
   padding: 10px 14px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.02);
   color: var(--text-muted);
@@ -297,7 +302,7 @@ h3 {
 
 .carousel-shell {
   overflow: hidden;
-  border-radius: 26px;
+  border-radius: 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
 }
 
@@ -332,7 +337,7 @@ h3 {
   min-height: 350px;
   overflow: hidden;
   padding: 20px;
-  border-radius: 24px;
+  border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: linear-gradient(180deg, rgba(12, 18, 30, 0.98), rgba(9, 15, 24, 0.98));
 }
@@ -352,14 +357,14 @@ h3 {
   left: 20px;
   right: 20px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.07);
 }
 
 .shot-surface {
   position: absolute;
   inset: 104px 20px 72px;
-  border-radius: 18px;
+  border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.08);
   background: rgba(6, 10, 18, 0.82);
 }
@@ -384,7 +389,7 @@ h3 {
 .shot-surface-grid::before {
   inset: 18px 18px auto 18px;
   height: 132px;
-  border-radius: 16px;
+  border-radius: 6px;
   background:
     linear-gradient(180deg, rgba(124, 137, 255, 0.18), transparent 75%),
     linear-gradient(90deg, rgba(79, 195, 255, 0.14), rgba(124, 137, 255, 0.04));
@@ -395,7 +400,7 @@ h3 {
   right: 18px;
   bottom: 18px;
   height: 122px;
-  border-radius: 16px;
+  border-radius: 6px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 90%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.16) 22%, transparent 22% 26%, rgba(255, 255, 255, 0.11) 26% 56%, transparent 56% 60%, rgba(255, 255, 255, 0.08) 60% 82%, transparent 82%);
@@ -404,13 +409,13 @@ h3 {
 .shot-surface-bars::before {
   inset: 18px 18px auto 18px;
   height: 14px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
 }
 
 .shot-surface-bars::after {
   inset: 54px 18px 18px;
-  border-radius: 16px;
+  border-radius: 6px;
   background:
     linear-gradient(90deg, rgba(124, 137, 255, 0.22) 18%, transparent 18% 22%, rgba(79, 195, 255, 0.18) 22% 44%, transparent 44% 48%, rgba(124, 137, 255, 0.15) 48% 76%, transparent 76% 80%, rgba(79, 195, 255, 0.18) 80%),
     linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
@@ -420,13 +425,13 @@ h3 {
 .shot-surface-table::before {
   inset: 18px 18px auto 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
 }
 
 .shot-surface-table::after {
   inset: 56px 18px 18px;
-  border-radius: 16px;
+  border-radius: 6px;
   background:
     linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
@@ -439,7 +444,7 @@ h3 {
   right: 20px;
   bottom: 20px;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(6, 10, 18, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.08);
   color: var(--text-muted);
@@ -451,7 +456,7 @@ h3 {
   flex-direction: column;
   justify-content: flex-end;
   padding: 30px;
-  border-radius: 24px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
 }
@@ -480,7 +485,7 @@ h3 {
   min-width: 78px;
   min-height: 40px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--text);
@@ -519,7 +524,7 @@ h3 {
 .tab-buttons {
   margin: 28px 0 22px;
   padding: 6px;
-  border-radius: 999px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
 }
@@ -528,7 +533,7 @@ h3 {
   min-width: 122px;
   min-height: 44px;
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
@@ -571,7 +576,7 @@ h3 {
 .panel-grid article,
 .snippet-card {
   padding: 22px;
-  border-radius: 20px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.02);
 }
@@ -593,14 +598,14 @@ h3 {
 .coverage-frame-shell {
   margin-top: 22px;
   padding: 16px;
-  border-radius: 24px;
+  border-radius: 12px;
 }
 
 .coverage-frame-shell iframe {
   width: 100%;
   min-height: 680px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 8px;
   background: white;
 }
 
@@ -674,7 +679,6 @@ h3 {
   .stage-shell,
   .product-tabs,
   .tab-panel,
-  .summary-card,
   .not-found-shell {
     padding: 20px;
   }
