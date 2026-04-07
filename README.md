@@ -32,6 +32,7 @@ It follows the same core model as [`kilnfi/eth-validator-watcher`](https://githu
 ## What it exports
 
 - network health: epoch, slot, watcher/RPC/websocket status
+- connector inventory and metric-source provenance
 - validator counts and activated stake
 - delinquent validators and stake
 - vote efficiency, commission, vote lag, root lag
@@ -69,19 +70,20 @@ cp .env.example .env
 ```
 
 The files under `etc/` are committed templates. Keep real RPC credentials in `.env` or exported environment variables instead of writing secrets into YAML.
-The watcher config can point at a companion validator-connection TOML file, which is loaded through `figment` and still supports `${VAR}` / `${VAR:-default}` expansion.
+The watcher config can point at one or more companion connector TOML files, which are loaded through `figment` and still support `${VAR}` / `${VAR:-default}` expansion.
 
 Pick a config profile:
 
 - `etc/config.devnet.yaml`
+- `etc/config.mainnet.yaml`
 - `etc/config.compose.validator.yaml`
 - `etc/config.compose.surfpool.yaml`
 
 Set at least:
 
-- `validator_connection_file`
-- `rpc_url` inside the referenced TOML file
-- `ws_url` inside the referenced TOML file if `transport_mode = "poll-http-and-ws"`
+- `connectors`
+- `rpc_url` inside at least one referenced connector TOML file
+- `ws_url` inside a connector TOML file if you want websocket probing
 - `watched_validators` if you want watched-validator and custom-scope dashboards
 - `economics.mode: single-validator` if you want a dedicated economics target
 
@@ -89,9 +91,19 @@ Minimal example:
 
 ```yaml
 network: devnet
-validator_connection_file: validator.devnet.toml
 validator_mode: rpc
 validator_websocket_enabled: true
+
+connectors:
+  - name: local-validator
+    kind: standard-validator+rpc
+    connection_file: validator.devnet.toml
+  - name: helius-fallback
+    kind: helius+enhanced-rpc
+    rpc_url: ${SOL_DEVNET_FALLBACK_RPC_URL}
+  - name: helius-ws
+    kind: helius+enhanced-wss
+    ws_url: ${SOL_DEVNET_WS_URL}
 
 watched_validators:
   - vote_account: FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f
@@ -100,9 +112,13 @@ watched_validators:
 
 ```toml
 rpc_url = "${SOL_DEVNET_RPC_URL}"
-transport_mode = "poll-http-and-ws"
 ws_url = "${SOL_DEVNET_WS_URL}"
 ```
+
+Connectors are ordered. The first connector that can serve a metric wins, so you can declare a local validator first, then a hosted RPC fallback, then a websocket-only connector for probes. The exporter exposes both:
+
+- `sol_connector_info` for the declared connector stack and precedence
+- `sol_metric_source_info` for the connector that actually supplied each metric family in the latest snapshot
 
 Single-validator economics target:
 
@@ -124,10 +140,37 @@ Start the stack:
 just stack-up-devnet
 ```
 
+For a hosted mainnet RPC profile:
+
+```bash
+just run config=etc/config.mainnet.yaml
+```
+
+Or with the local Compose stack:
+
+```bash
+just stack-up-mainnet
+```
+
+If Prometheus was already running before you added or changed a watcher profile, reload it so the
+new scrape target is picked up:
+
+```bash
+just stack-reload-prometheus
+```
+
+The committed `etc/config.mainnet.yaml` uses
+sample watched validators and keeps `economics.mode: disabled` by default. Many hosted RPC
+endpoints do not retain enough reward-epoch block production history for strict economics mode. If
+you enable economics on mainnet, use a vote account you care about and an RPC endpoint that can
+serve both `getInflationReward` and previous-epoch `getBlockProduction`.
+
 Then verify:
 
 - `just stack-ps-devnet`
 - `just stack-logs-devnet`
+- `just stack-ps-mainnet`
+- `just stack-logs-mainnet`
 - `http://127.0.0.1:9090/targets`
 - `http://127.0.0.1:3001`
 
@@ -146,7 +189,10 @@ just test
 just coverage-ci
 just site-build
 just run config=etc/config.devnet.yaml
+just run config=etc/config.mainnet.yaml
 just stack-up-devnet
+just stack-up-mainnet
+just stack-reload-prometheus
 just stack-up-validator
 just stack-up-surfpool
 just stack-down
@@ -164,6 +210,7 @@ The local stack includes:
   - `:8000` for Surfpool
   - `:8001` for external validator mode
   - `:8002` for devnet mode
+  - `:8003` for mainnet mode
 
 Provisioned dashboards:
 

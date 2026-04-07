@@ -1,22 +1,42 @@
 use crate::{
-    config::Config,
+    config::{Config, ConnectorKind},
     labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
 };
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    sync::{Mutex, OnceLock},
+    collections::{BTreeMap, HashMap},
+    future::Future,
+    pin::Pin,
     time::Duration,
 };
-use tracing::{info, warn};
+use tracing::warn;
+
+#[cfg(test)]
+use tracing::info;
+
+#[cfg(test)]
+use std::{
+    collections::HashSet,
+    sync::{Mutex, OnceLock},
+};
+
+const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
+const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
 
 #[derive(Clone)]
 pub struct RpcClient {
     http: Client,
     url: String,
     commitment: String,
+}
+
+#[derive(Clone, Copy)]
+pub struct RpcConnectorRef<'a> {
+    pub name: &'a str,
+    pub kind: ConnectorKind,
+    pub client: &'a RpcClient,
 }
 
 impl RpcClient {
@@ -62,25 +82,63 @@ impl RpcClient {
         .await
     }
 
-    async fn get_block_production(
-        &self,
-        first_slot: u64,
-        last_slot: u64,
-    ) -> Result<BlockProduction> {
+    async fn get_current_epoch_block_production(&self) -> Result<BlockProduction> {
         let response: RpcValueResponse<BlockProduction> = self
             .call(
                 "getBlockProduction",
                 [GetBlockProductionConfig {
                     commitment: &self.commitment,
-                    range: SlotRange {
-                        first_slot,
-                        last_slot,
-                    },
+                    range: None,
                 }],
             )
             .await?;
 
         Ok(response.value)
+    }
+
+    async fn get_block_production_for_range(
+        &self,
+        first_slot: u64,
+        last_slot: u64,
+    ) -> Result<BlockProduction> {
+        if last_slot < first_slot {
+            bail!(
+                "getBlockProduction requires last_slot >= first_slot, got {} < {}",
+                last_slot,
+                first_slot
+            );
+        }
+
+        let mut block_production = BlockProduction::default();
+        let mut next_first_slot = first_slot;
+
+        loop {
+            let next_last_slot = last_slot.min(
+                next_first_slot.saturating_add(MAX_BLOCK_PRODUCTION_RANGE_SLOTS.saturating_sub(1)),
+            );
+            let response: RpcValueResponse<BlockProduction> = self
+                .call(
+                    "getBlockProduction",
+                    [GetBlockProductionConfig {
+                        commitment: &self.commitment,
+                        range: Some(SlotRange {
+                            first_slot: next_first_slot,
+                            last_slot: next_last_slot,
+                        }),
+                    }],
+                )
+                .await?;
+
+            merge_block_production(&mut block_production, response.value);
+
+            if next_last_slot == last_slot {
+                break;
+            }
+
+            next_first_slot = next_last_slot.saturating_add(1);
+        }
+
+        Ok(block_production)
     }
 
     async fn get_leader_schedule(&self, slot: u64) -> Result<Option<HashMap<String, Vec<u64>>>> {
@@ -109,43 +167,45 @@ impl RpcClient {
             return Ok(HashMap::new());
         }
 
-        let rewards: Vec<Option<InflationRewardValue>> = self
-            .call(
-                "getInflationReward",
-                (
-                    addresses,
-                    GetInflationRewardConfig {
-                        commitment: &self.commitment,
-                        epoch,
-                    },
-                ),
-            )
-            .await?;
-
-        if rewards.len() != addresses.len() {
-            bail!(
-                "getInflationReward returned {} rewards for {} addresses",
-                rewards.len(),
-                addresses.len()
-            );
-        }
-
         let mut by_address = HashMap::with_capacity(addresses.len());
-        for (address, reward) in addresses.iter().zip(rewards) {
-            let Some(reward) = reward else {
-                continue;
-            };
-            let Ok(amount_lamports) = u64::try_from(reward.amount) else {
-                continue;
-            };
+        for addresses_chunk in addresses.chunks(MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST) {
+            let rewards: Vec<Option<InflationRewardValue>> = self
+                .call(
+                    "getInflationReward",
+                    (
+                        addresses_chunk,
+                        GetInflationRewardConfig {
+                            commitment: &self.commitment,
+                            epoch,
+                        },
+                    ),
+                )
+                .await?;
 
-            by_address.insert(
-                address.clone(),
-                RewardSample {
-                    epoch: reward.epoch,
-                    amount_lamports,
-                },
-            );
+            if rewards.len() != addresses_chunk.len() {
+                bail!(
+                    "getInflationReward returned {} rewards for {} addresses",
+                    rewards.len(),
+                    addresses_chunk.len()
+                );
+            }
+
+            for (address, reward) in addresses_chunk.iter().zip(rewards) {
+                let Some(reward) = reward else {
+                    continue;
+                };
+                let Ok(amount_lamports) = u64::try_from(reward.amount) else {
+                    continue;
+                };
+
+                by_address.insert(
+                    address.clone(),
+                    RewardSample {
+                        epoch: reward.epoch,
+                        amount_lamports,
+                    },
+                );
+            }
         }
 
         Ok(by_address)
@@ -168,6 +228,7 @@ impl RpcClient {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) async fn ensure_economics_supported(&self, config: &Config) -> Result<()> {
         if config.economics.mode == crate::config::EconomicsMode::Disabled {
             return Ok(());
@@ -184,7 +245,7 @@ impl RpcClient {
 
         let current_slot = epoch_info.absolute_slot;
         let epoch_start_slot = current_slot.saturating_sub(epoch_info.slot_index);
-        self.get_block_production(epoch_start_slot, current_slot)
+        self.get_current_epoch_block_production()
             .await
             .with_context(|| {
                 format!(
@@ -219,7 +280,7 @@ impl RpcClient {
                 self.url
             )
         })?;
-        self.get_block_production(range.first_slot, range.last_slot)
+        self.get_block_production_for_range(range.first_slot, range.last_slot)
             .await
             .with_context(|| {
                 format!(
@@ -252,14 +313,23 @@ impl RpcClient {
             .json(&JsonRpcRequest::new(method, params))
             .send()
             .await
-            .with_context(|| format!("{} request failed", method))?
-            .error_for_status()
-            .with_context(|| format!("{} returned non-success HTTP status", method))?;
-
-        let envelope: JsonRpcEnvelope<T> = response
-            .json()
+            .with_context(|| format!("{} request failed", method))?;
+        let status = response.status();
+        let body = response
+            .text()
             .await
-            .with_context(|| format!("{} returned an invalid JSON-RPC payload", method))?;
+            .with_context(|| format!("{} response body read failed", method))?;
+
+        let envelope: JsonRpcEnvelope<T> = serde_json::from_str(&body).with_context(|| {
+            if status.is_success() {
+                format!("{} returned an invalid JSON-RPC payload", method)
+            } else {
+                format!(
+                    "{} returned non-success HTTP status {} with an invalid JSON-RPC payload",
+                    method, status
+                )
+            }
+        })?;
 
         if let Some(error) = envelope.error {
             bail!(
@@ -268,6 +338,10 @@ impl RpcClient {
                 error.code,
                 error.message
             );
+        }
+
+        if !status.is_success() {
+            bail!("{} returned non-success HTTP status {}", method, status);
         }
 
         Ok(envelope.result)
@@ -421,6 +495,29 @@ pub struct Snapshot {
     pub reward_sample_epoch: Option<u64>,
     pub scopes: BTreeMap<String, ScopeMetrics>,
     pub watched_validators: Vec<WatchedValidatorMetrics>,
+    pub data_sources: Vec<SnapshotDataSource>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotDataSource {
+    pub metric: String,
+    pub connector: String,
+    pub kind: String,
+}
+
+impl SnapshotDataSource {
+    fn new(metric: &str, connector: &RpcConnectorRef<'_>) -> Self {
+        Self {
+            metric: metric.to_string(),
+            connector: connector.name.to_string(),
+            kind: connector.kind.as_str().to_string(),
+        }
+    }
+}
+
+struct ResolvedValue<T> {
+    value: T,
+    source: SnapshotDataSource,
 }
 
 #[derive(Default)]
@@ -514,132 +611,388 @@ impl ScopeAccumulator {
     }
 }
 
-pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Snapshot> {
-    let (epoch_info_result, vote_accounts_result) = tokio::join!(
-        async { client.get_epoch_info().await.context("getEpochInfo failed") },
-        async {
-            client
-                .get_vote_accounts(config.delinquent_slot_distance)
-                .await
-                .context("getVoteAccounts failed")
-        },
+async fn select_required_rpc_value<T, F>(
+    connectors: &[RpcConnectorRef<'_>],
+    metric: &'static str,
+    mut call: F,
+) -> Result<ResolvedValue<T>>
+where
+    F: for<'a> FnMut(&'a RpcClient) -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
+{
+    let mut last_error = None;
+
+    for connector in connectors {
+        match call(connector.client).await {
+            Ok(value) => {
+                return Ok(ResolvedValue {
+                    value,
+                    source: SnapshotDataSource::new(metric, connector),
+                });
+            }
+            Err(err) => {
+                warn!(
+                    connector = connector.name,
+                    connector_kind = connector.kind.as_str(),
+                    component = metric,
+                    error = ?err,
+                    "connector failed for required metric; trying next connector"
+                );
+                last_error = Some((connector.name.to_string(), err));
+            }
+        }
+    }
+
+    let Some((connector_name, err)) = last_error else {
+        bail!(
+            "no RPC connectors configured for required metric {}",
+            metric
+        );
+    };
+
+    Err(err).with_context(|| {
+        format!(
+            "all RPC connectors failed for required metric {}; last connector was {}",
+            metric, connector_name
+        )
+    })
+}
+
+async fn select_optional_rpc_value<T, F>(
+    connectors: &[RpcConnectorRef<'_>],
+    metric: &'static str,
+    mut call: F,
+) -> Option<ResolvedValue<T>>
+where
+    F: for<'a> FnMut(&'a RpcClient) -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
+{
+    for connector in connectors {
+        match call(connector.client).await {
+            Ok(value) => {
+                return Some(ResolvedValue {
+                    value,
+                    source: SnapshotDataSource::new(metric, connector),
+                });
+            }
+            Err(err) => {
+                warn!(
+                    connector = connector.name,
+                    connector_kind = connector.kind.as_str(),
+                    component = metric,
+                    error = ?err,
+                    "connector failed for optional metric; trying next connector"
+                );
+            }
+        }
+    }
+
+    None
+}
+
+async fn select_reward_epoch_block_production(
+    connectors: &[RpcConnectorRef<'_>],
+    epoch_start_slot: u64,
+    slots_in_epoch: u64,
+    required: bool,
+) -> Result<Option<ResolvedValue<BlockProduction>>> {
+    let mut last_error = None;
+
+    for connector in connectors {
+        let minimum_ledger_slot = connector.client.get_minimum_ledger_slot().await.ok();
+        let Some(range) =
+            reward_epoch_block_range(epoch_start_slot, slots_in_epoch, minimum_ledger_slot)
+        else {
+            if required {
+                warn!(
+                    connector = connector.name,
+                    connector_kind = connector.kind.as_str(),
+                    component = "reward-epoch-block-production",
+                    "connector does not retain enough ledger history; trying next connector"
+                );
+                last_error = Some(anyhow::anyhow!(
+                    "reward epoch block production history unavailable on connector {}",
+                    connector.name
+                ));
+            }
+            continue;
+        };
+
+        match connector
+            .client
+            .get_block_production_for_range(range.first_slot, range.last_slot)
+            .await
+        {
+            Ok(value) => {
+                return Ok(Some(ResolvedValue {
+                    value,
+                    source: SnapshotDataSource::new("reward-epoch-block-production", connector),
+                }));
+            }
+            Err(err) => {
+                warn!(
+                    connector = connector.name,
+                    connector_kind = connector.kind.as_str(),
+                    component = "reward-epoch-block-production",
+                    error = ?err,
+                    "connector failed for reward epoch block production; trying next connector"
+                );
+                last_error = Some(err);
+            }
+        }
+    }
+
+    if required {
+        if let Some(err) = last_error {
+            return Err(err).context(
+                "all RPC connectors failed for required metric reward-epoch-block-production",
+            );
+        }
+        bail!("no RPC connectors could provide required metric reward-epoch-block-production");
+    }
+
+    Ok(None)
+}
+
+pub async fn ensure_economics_supported_with_connectors(
+    connectors: &[RpcConnectorRef<'_>],
+    config: &Config,
+) -> Result<()> {
+    if config.economics.mode == crate::config::EconomicsMode::Disabled {
+        return Ok(());
+    }
+
+    let delinquent_slot_distance = config.delinquent_slot_distance;
+    let (epoch_info, vote_accounts) = tokio::join!(
+        select_required_rpc_value(connectors, "epoch-info", |client| {
+            Box::pin(async move { client.get_epoch_info().await.context("getEpochInfo failed") })
+        }),
+        select_required_rpc_value(connectors, "vote-accounts", |client| {
+            Box::pin(async move {
+                client
+                    .get_vote_accounts(delinquent_slot_distance)
+                    .await
+                    .context("getVoteAccounts failed")
+            })
+        }),
     );
 
-    let epoch_info = epoch_info_result?;
-    let vote_accounts = vote_accounts_result?;
+    let epoch_info = epoch_info?;
+    let vote_accounts = vote_accounts?;
+    let current_slot = epoch_info.value.absolute_slot;
+    let epoch_start_slot = current_slot.saturating_sub(epoch_info.value.slot_index);
 
-    let current_slot = epoch_info.absolute_slot;
-    let epoch_start_slot = current_slot.saturating_sub(epoch_info.slot_index);
-    let next_epoch_start_slot = epoch_start_slot + epoch_info.slots_in_epoch;
-    let reward_epoch = epoch_info.epoch.checked_sub(1);
-    let reward_vote_accounts = vote_accounts
-        .current
-        .iter()
-        .chain(vote_accounts.delinquent.iter())
-        .map(|info| info.vote_pubkey.clone())
-        .collect::<Vec<_>>();
-
-    let (
-        block_production_result,
-        current_schedule_result,
-        next_schedule_result,
-        minimum_ledger_slot_result,
-        inflation_rewards_result,
-    ) = tokio::join!(
-        async {
+    select_required_rpc_value(connectors, "current-block-production", |client| {
+        Box::pin(async move {
             client
-                .get_block_production(epoch_start_slot, current_slot)
+                .get_current_epoch_block_production()
                 .await
                 .context("getBlockProduction failed")
+        })
+    })
+    .await?;
+
+    let Some(reward_epoch) = epoch_info.value.epoch.checked_sub(1) else {
+        return Ok(());
+    };
+    let reward_addresses = economics_preflight_reward_addresses(config, &vote_accounts.value);
+    select_required_rpc_value(connectors, "inflation-rewards", |client| {
+        let reward_addresses = reward_addresses.clone();
+        Box::pin(async move {
+            client
+                .get_inflation_rewards(&reward_addresses, reward_epoch)
+                .await
+                .context("getInflationReward failed")
+        })
+    })
+    .await?;
+    let _ = select_reward_epoch_block_production(
+        connectors,
+        epoch_start_slot,
+        epoch_info.value.slots_in_epoch,
+        true,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Snapshot> {
+    let connectors = [RpcConnectorRef {
+        name: "primary",
+        kind: ConnectorKind::StandardValidatorRpc,
+        client,
+    }];
+    collect_snapshot_with_connectors(&connectors, config).await
+}
+
+pub async fn collect_snapshot_with_connectors(
+    connectors: &[RpcConnectorRef<'_>],
+    config: &Config,
+) -> Result<Snapshot> {
+    let delinquent_slot_distance = config.delinquent_slot_distance;
+    let (epoch_info, vote_accounts) = tokio::join!(
+        select_required_rpc_value(connectors, "epoch-info", |client| {
+            Box::pin(async move { client.get_epoch_info().await.context("getEpochInfo failed") })
+        }),
+        select_required_rpc_value(connectors, "vote-accounts", |client| {
+            Box::pin(async move {
+                client
+                    .get_vote_accounts(delinquent_slot_distance)
+                    .await
+                    .context("getVoteAccounts failed")
+            })
+        }),
+    );
+
+    let epoch_info = epoch_info?;
+    let vote_accounts = vote_accounts?;
+    let mut data_sources = vec![epoch_info.source.clone(), vote_accounts.source.clone()];
+
+    let current_slot = epoch_info.value.absolute_slot;
+    let epoch_start_slot = current_slot.saturating_sub(epoch_info.value.slot_index);
+    let next_epoch_start_slot = epoch_start_slot + epoch_info.value.slots_in_epoch;
+    let reward_epoch = epoch_info.value.epoch.checked_sub(1);
+    let reward_vote_accounts = vote_accounts
+        .value
+        .current
+        .iter()
+        .chain(vote_accounts.value.delinquent.iter())
+        .map(|info| info.vote_pubkey.clone())
+        .collect::<Vec<_>>();
+    let economics_required = config.economics.mode != crate::config::EconomicsMode::Disabled;
+
+    let (
+        current_block_production,
+        current_schedule,
+        next_schedule,
+        inflation_rewards,
+        reward_epoch_block_production,
+    ) = tokio::join!(
+        async {
+            if economics_required {
+                select_required_rpc_value(connectors, "current-block-production", |client| {
+                    Box::pin(async move {
+                        client
+                            .get_current_epoch_block_production()
+                            .await
+                            .context("getBlockProduction failed")
+                    })
+                })
+                .await
+                .map(Some)
+            } else {
+                Ok(
+                    select_optional_rpc_value(connectors, "current-block-production", |client| {
+                        Box::pin(async move {
+                            client
+                                .get_current_epoch_block_production()
+                                .await
+                                .context("getBlockProduction failed")
+                        })
+                    })
+                    .await,
+                )
+            }
         },
         async {
-            client
-                .get_leader_schedule(current_slot)
-                .await
-                .context("getLeaderSchedule for current epoch failed")
+            Ok::<_, anyhow::Error>(
+                select_optional_rpc_value(connectors, "current-leader-schedule", |client| {
+                    Box::pin(async move {
+                        client
+                            .get_leader_schedule(current_slot)
+                            .await
+                            .context("getLeaderSchedule for current epoch failed")
+                    })
+                })
+                .await,
+            )
         },
         async {
-            client
-                .get_leader_schedule(next_epoch_start_slot)
-                .await
-                .context("getLeaderSchedule for next epoch failed")
-        },
-        async {
-            client
-                .get_minimum_ledger_slot()
-                .await
-                .context("minimumLedgerSlot failed")
+            Ok::<_, anyhow::Error>(
+                select_optional_rpc_value(connectors, "next-leader-schedule", |client| {
+                    Box::pin(async move {
+                        client
+                            .get_leader_schedule(next_epoch_start_slot)
+                            .await
+                            .context("getLeaderSchedule for next epoch failed")
+                    })
+                })
+                .await,
+            )
         },
         async {
             match reward_epoch {
-                Some(epoch) => client
-                    .get_inflation_rewards(&reward_vote_accounts, epoch)
+                Some(epoch) if economics_required => {
+                    select_required_rpc_value(connectors, "inflation-rewards", |client| {
+                        let reward_vote_accounts = reward_vote_accounts.clone();
+                        Box::pin(async move {
+                            client
+                                .get_inflation_rewards(&reward_vote_accounts, epoch)
+                                .await
+                                .context("getInflationReward failed")
+                        })
+                    })
                     .await
-                    .context("getInflationReward failed"),
-                None => Ok(HashMap::new()),
+                    .map(Some)
+                }
+                Some(epoch) => {
+                    Ok(
+                        select_optional_rpc_value(connectors, "inflation-rewards", |client| {
+                            let reward_vote_accounts = reward_vote_accounts.clone();
+                            Box::pin(async move {
+                                client
+                                    .get_inflation_rewards(&reward_vote_accounts, epoch)
+                                    .await
+                                    .context("getInflationReward failed")
+                            })
+                        })
+                        .await,
+                    )
+                }
+                None => Ok(None),
             }
         },
-    );
-
-    let economics_required = config.economics.mode != crate::config::EconomicsMode::Disabled;
-    let (block_production, block_production_supported) = block_production_or_required(
-        block_production_result,
-        &config.validator_connection.rpc_url,
-        "getBlockProduction",
-        economics_required,
-    )?;
-
-    let current_schedule = optional_rpc_or_default(
-        current_schedule_result,
-        &config.validator_connection.rpc_url,
-        "getLeaderSchedule(current epoch)",
-    );
-
-    let next_schedule = optional_rpc_or_default(
-        next_schedule_result,
-        &config.validator_connection.rpc_url,
-        "getLeaderSchedule(next epoch)",
-    );
-    let _minimum_ledger_slot = optional_rpc_or_none(
-        minimum_ledger_slot_result,
-        &config.validator_connection.rpc_url,
-        "minimumLedgerSlot",
-    );
-    let reward_epoch_block_production = if block_production_supported {
-        match reward_epoch_block_range(
+        select_reward_epoch_block_production(
+            connectors,
             epoch_start_slot,
-            epoch_info.slots_in_epoch,
-            _minimum_ledger_slot,
-        ) {
-            Some(range) => {
-                block_production_or_required(
-                    client
-                        .get_block_production(range.first_slot, range.last_slot)
-                        .await
-                        .context("getBlockProduction for reward epoch failed"),
-                    &config.validator_connection.rpc_url,
-                    "getBlockProduction(reward epoch)",
-                    economics_required,
-                )?
-                .0
-            }
-            None if economics_required && reward_epoch.is_some() => bail!(
-                "economics mode requires reward-epoch block production history, but slots {}..={} are unavailable from RPC endpoint {}",
-                epoch_start_slot.saturating_sub(epoch_info.slots_in_epoch),
-                epoch_start_slot.saturating_sub(1),
-                config.validator_connection.rpc_url
-            ),
-            None => BlockProduction::default(),
-        }
-    } else {
-        BlockProduction::default()
-    };
-    let inflation_rewards = optional_rpc_or_required(
-        inflation_rewards_result,
-        &config.validator_connection.rpc_url,
-        "getInflationReward",
-        economics_required,
-    )?;
+            epoch_info.value.slots_in_epoch,
+            economics_required && reward_epoch.is_some(),
+        ),
+    );
+
+    let current_block_production = current_block_production?;
+    let current_schedule = current_schedule?;
+    let next_schedule = next_schedule?;
+    let inflation_rewards = inflation_rewards?;
+    let reward_epoch_block_production = reward_epoch_block_production?;
+
+    let block_production = current_block_production
+        .as_ref()
+        .map(|resolved| resolved.value.clone())
+        .unwrap_or_default();
+    if let Some(resolved) = current_block_production {
+        data_sources.push(resolved.source);
+    }
+    let current_schedule = current_schedule.and_then(|resolved| {
+        data_sources.push(resolved.source);
+        resolved.value
+    });
+    let next_schedule = next_schedule.and_then(|resolved| {
+        data_sources.push(resolved.source);
+        resolved.value
+    });
+    let inflation_rewards = inflation_rewards
+        .map(|resolved| {
+            data_sources.push(resolved.source);
+            resolved.value
+        })
+        .unwrap_or_default();
+    let reward_epoch_block_production = reward_epoch_block_production
+        .map(|resolved| {
+            data_sources.push(resolved.source);
+            resolved.value
+        })
+        .unwrap_or_default();
 
     let matcher = LabelMatcher::from_config(config);
     let build_context = RecordBuildContext {
@@ -652,14 +1005,15 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         next_schedule: next_schedule.as_ref(),
         latest_epoch_rewards: &inflation_rewards,
     };
-    let mut records =
-        Vec::with_capacity(vote_accounts.current.len() + vote_accounts.delinquent.len());
+    let mut records = Vec::with_capacity(
+        vote_accounts.value.current.len() + vote_accounts.value.delinquent.len(),
+    );
 
-    for info in vote_accounts.current {
+    for info in vote_accounts.value.current {
         records.push(build_record(info, ValidatorStatus::Current, &build_context));
     }
 
-    for info in vote_accounts.delinquent {
+    for info in vote_accounts.value.delinquent {
         records.push(build_record(
             info,
             ValidatorStatus::Delinquent,
@@ -667,12 +1021,14 @@ pub async fn collect_snapshot(client: &RpcClient, config: &Config) -> Result<Sna
         ));
     }
 
-    Ok(aggregate_records(
+    let mut snapshot = aggregate_records(
         config.network.clone(),
-        epoch_info.epoch,
+        epoch_info.value.epoch,
         current_slot,
         &records,
-    ))
+    );
+    snapshot.data_sources = data_sources;
+    Ok(snapshot)
 }
 
 struct RecordBuildContext<'a> {
@@ -834,6 +1190,7 @@ pub fn aggregate_records(
             .map(|(scope, metrics)| (scope, metrics.finish()))
             .collect(),
         watched_validators,
+        data_sources: vec![],
     }
 }
 
@@ -879,6 +1236,7 @@ fn build_watched_validator_metrics(
     }
 }
 
+#[cfg(test)]
 fn optional_rpc_or_default<T>(result: Result<T>, rpc_url: &str, component: &str) -> T
 where
     T: Default,
@@ -897,6 +1255,7 @@ where
     }
 }
 
+#[cfg(test)]
 fn optional_rpc_or_required<T>(
     result: Result<T>,
     rpc_url: &str,
@@ -918,6 +1277,15 @@ where
     Ok(optional_rpc_or_default(result, rpc_url, component))
 }
 
+fn merge_block_production(target: &mut BlockProduction, update: BlockProduction) {
+    for (identity, (leader_slots, blocks_produced)) in update.by_identity {
+        let entry = target.by_identity.entry(identity).or_insert((0, 0));
+        entry.0 = entry.0.saturating_add(leader_slots);
+        entry.1 = entry.1.saturating_add(blocks_produced);
+    }
+}
+
+#[cfg(test)]
 fn block_production_or_required(
     result: Result<BlockProduction>,
     rpc_url: &str,
@@ -939,6 +1307,7 @@ fn block_production_or_required(
     ))
 }
 
+#[cfg(test)]
 fn optional_block_production_or_default(
     result: Result<BlockProduction>,
     rpc_url: &str,
@@ -962,31 +1331,20 @@ fn optional_block_production_or_default(
     }
 }
 
-fn optional_rpc_or_none<T>(result: Result<T>, rpc_url: &str, component: &str) -> Option<T> {
-    match result {
-        Ok(value) => Some(value),
-        Err(err) => {
-            warn!(
-                rpc_url = %rpc_url,
-                component,
-                error = ?err,
-                "optional RPC data unavailable; continuing without it"
-            );
-            None
-        }
-    }
-}
-
+#[cfg(test)]
 fn is_unsupported_block_production_error(err: &anyhow::Error) -> bool {
-    error_chain_contains(err, "400 Bad Request")
-        || error_chain_contains(err, "failed with code -32601")
-        || error_chain_contains(err, "failed with code -32602")
+    error_chain_contains_case_insensitive(err, "method not found")
+        || error_chain_contains_case_insensitive(err, "unsupported")
+        || error_chain_contains_case_insensitive(err, "not available on this endpoint")
 }
 
-fn error_chain_contains(err: &anyhow::Error, needle: &str) -> bool {
-    err.chain().any(|cause| cause.to_string().contains(needle))
+#[cfg(test)]
+fn error_chain_contains_case_insensitive(err: &anyhow::Error, needle: &str) -> bool {
+    err.chain()
+        .any(|cause| cause.to_string().to_ascii_lowercase().contains(needle))
 }
 
+#[cfg(test)]
 fn log_optional_rpc_capability_unavailable_once(
     rpc_url: &str,
     component: &str,
@@ -1103,7 +1461,8 @@ struct GetVoteAccountsConfig<'a> {
 #[serde(rename_all = "camelCase")]
 struct GetBlockProductionConfig<'a> {
     commitment: &'a str,
-    range: SlotRange,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range: Option<SlotRange>,
 }
 
 #[derive(Serialize)]
@@ -1165,7 +1524,7 @@ struct VoteAccountInfo {
     root_slot: u64,
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BlockProduction {
     by_identity: HashMap<String, (u64, u64)>,
@@ -1182,24 +1541,38 @@ struct InflationRewardValue {
 mod tests {
     use super::{
         aggregate_records, block_production_or_required, build_record,
-        build_watched_validator_metrics, collect_snapshot, economics_preflight_reward_addresses,
-        optional_block_production_or_default, optional_rpc_or_default, optional_rpc_or_required,
-        ratio, reward_epoch_block_range, EpochCreditsSample, RecordBuildContext, RewardSample,
-        RpcClient, ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo,
-        VoteAccounts, WatchedValidatorMetrics,
+        build_watched_validator_metrics, collect_snapshot, collect_snapshot_with_connectors,
+        economics_preflight_reward_addresses, optional_block_production_or_default,
+        optional_rpc_or_default, optional_rpc_or_required, ratio, reward_epoch_block_range,
+        BlockProduction, EpochCreditsSample, GetBlockProductionConfig, RecordBuildContext,
+        RewardSample, RpcClient, RpcConnectorRef, RpcValueResponse, ScopeMetrics, SlotRange,
+        ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
+        MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
     };
     use crate::{
         config::{
-            Config, EconomicsConfig, EconomicsMode, TransportMode, ValidatorConnectionConfig,
-            ValidatorMode, WatchedValidatorConfig,
+            Config, ConnectorKind, EconomicsConfig, EconomicsMode, TransportMode,
+            ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig,
         },
         labels::LabelMatcher,
     };
     use anyhow::{anyhow, Context, Result};
-    use axum::{extract::Json, routing::post, Router};
+    use axum::{
+        extract::{Json, State},
+        http::StatusCode,
+        response::IntoResponse,
+        routing::post,
+        Router,
+    };
     use serde_json::{json, Value};
     use std::{collections::HashMap, time::Duration};
     use tokio::{net::TcpListener, task::JoinHandle};
+
+    #[derive(Clone, Copy)]
+    enum MockRpcProfile {
+        Default,
+        NoLeaderSchedule,
+    }
 
     #[test]
     fn aggregates_by_scope() -> Result<()> {
@@ -1439,6 +1812,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
+        let (rpc_url, server_task) = start_mock_rpc_server().await?;
+        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+
+        let block_production = client.get_block_production_for_range(700, 10_799).await?;
+
+        server_task.abort();
+
+        assert_eq!(block_production.by_identity.get("id-1"), Some(&(7, 6)));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
+        let (rpc_url, server_task) = start_mock_rpc_server().await?;
+        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+
+        let err = match client
+            .call_optional::<RpcValueResponse<BlockProduction>, _>(
+                "getBlockProduction",
+                [GetBlockProductionConfig {
+                    commitment: "confirmed",
+                    range: Some(SlotRange {
+                        first_slot: 1,
+                        last_slot: 5_001,
+                    }),
+                }],
+            )
+            .await
+        {
+            Ok(_) => panic!("expected oversized block production request to fail"),
+            Err(err) => err,
+        };
+
+        server_task.abort();
+
+        assert!(err
+            .to_string()
+            .contains("getBlockProduction failed with code -32600"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -> Result<()> {
         let (rpc_url, server_task) = start_mock_rpc_server().await?;
         let config = Config {
@@ -1491,6 +1909,106 @@ mod tests {
         );
         assert_eq!(snapshot.watched_validators[0].blocks_produced, 4);
         assert_eq!(snapshot.watched_validators[0].future_leader_slots, 3);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn collect_snapshot_with_connectors_uses_fallback_connector_for_missing_optional_metric(
+    ) -> Result<()> {
+        let (primary_rpc_url, primary_server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoLeaderSchedule).await?;
+        let (fallback_rpc_url, fallback_server_task) = start_mock_rpc_server().await?;
+        let config = Config {
+            network: "devnet".to_string(),
+            watched_validators: vec![WatchedValidatorConfig {
+                identity: Some("id-1".to_string()),
+                vote_account: Some("vote-1".to_string()),
+                labels: vec!["operator:test".to_string()],
+            }],
+            ..Config::default()
+        };
+        let primary_client = RpcClient::new(
+            primary_rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+        )?;
+        let fallback_client = RpcClient::new(
+            fallback_rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+        )?;
+        let connectors = [
+            RpcConnectorRef {
+                name: "local-validator",
+                kind: ConnectorKind::StandardValidator,
+                client: &primary_client,
+            },
+            RpcConnectorRef {
+                name: "helius-fallback",
+                kind: ConnectorKind::HeliusEnhancedRpc,
+                client: &fallback_client,
+            },
+        ];
+
+        let snapshot = collect_snapshot_with_connectors(&connectors, &config).await?;
+
+        primary_server_task.abort();
+        fallback_server_task.abort();
+
+        let epoch_info_source = snapshot
+            .data_sources
+            .iter()
+            .find(|source| source.metric == "epoch-info")
+            .ok_or_else(|| anyhow!("missing epoch-info source"))?;
+        let current_schedule_source = snapshot
+            .data_sources
+            .iter()
+            .find(|source| source.metric == "current-leader-schedule")
+            .ok_or_else(|| anyhow!("missing current-leader-schedule source"))?;
+        let next_schedule_source = snapshot
+            .data_sources
+            .iter()
+            .find(|source| source.metric == "next-leader-schedule")
+            .ok_or_else(|| anyhow!("missing next-leader-schedule source"))?;
+
+        assert_eq!(epoch_info_source.connector, "local-validator");
+        assert_eq!(epoch_info_source.kind, "standard-validator");
+        assert_eq!(current_schedule_source.connector, "helius-fallback");
+        assert_eq!(current_schedule_source.kind, "helius+enhanced-rpc");
+        assert_eq!(next_schedule_source.connector, "helius-fallback");
+        assert_eq!(snapshot.watched_validators[0].future_leader_slots, 3);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
+        let (rpc_url, server_task) = start_mock_rpc_server().await?;
+        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+        let addresses = (0..205)
+            .map(|index| format!("vote-{index}"))
+            .collect::<Vec<_>>();
+
+        let rewards = client.get_inflation_rewards(&addresses, 8).await?;
+
+        server_task.abort();
+
+        assert_eq!(rewards.len(), 205);
+        assert_eq!(
+            rewards.get("vote-0"),
+            Some(&RewardSample {
+                epoch: 8,
+                amount_lamports: 12_000_000_000,
+            })
+        );
+        assert_eq!(
+            rewards.get("vote-204"),
+            Some(&RewardSample {
+                epoch: 8,
+                amount_lamports: 12_000_000_000,
+            })
+        );
 
         Ok(())
     }
@@ -1709,13 +2227,21 @@ mod tests {
     }
 
     async fn start_mock_rpc_server() -> Result<(String, JoinHandle<()>)> {
+        start_mock_rpc_server_with_profile(MockRpcProfile::Default).await
+    }
+
+    async fn start_mock_rpc_server_with_profile(
+        profile: MockRpcProfile,
+    ) -> Result<(String, JoinHandle<()>)> {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .context("failed to bind mock RPC listener")?;
         let address = listener
             .local_addr()
             .context("failed to read mock RPC listener address")?;
-        let app = Router::new().route("/", post(mock_rpc_handler));
+        let app = Router::new()
+            .route("/", post(mock_rpc_handler))
+            .with_state(profile);
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
@@ -1723,7 +2249,10 @@ mod tests {
         Ok((format!("http://{address}"), task))
     }
 
-    async fn mock_rpc_handler(Json(request): Json<Value>) -> Json<Value> {
+    async fn mock_rpc_handler(
+        State(profile): State<MockRpcProfile>,
+        Json(request): Json<Value>,
+    ) -> impl IntoResponse {
         let method = request
             .get("method")
             .and_then(Value::as_str)
@@ -1734,50 +2263,92 @@ mod tests {
             .cloned()
             .unwrap_or_default();
 
-        let response = match method {
-            "getHealth" => rpc_success(json!("ok")),
-            "getEpochInfo" => rpc_success(json!({
-                "epoch": 9,
-                "slotIndex": 10,
-                "slotsInEpoch": 100,
-                "absoluteSlot": 810
-            })),
-            "getVoteAccounts" => rpc_success(json!({
-                "current": [{
-                    "votePubkey": "vote-1",
-                    "nodePubkey": "id-1",
-                    "activatedStake": 1_500_000_000u64,
-                    "commission": 5,
-                    "epochCredits": [[8, 20, 10]],
-                    "lastVote": 809,
-                    "rootSlot": 808
-                }],
-                "delinquent": []
-            })),
+        match method {
+            "getHealth" => (StatusCode::OK, Json(rpc_success(json!("ok")))).into_response(),
+            "getEpochInfo" => (
+                StatusCode::OK,
+                Json(rpc_success(json!({
+                    "epoch": 9,
+                    "slotIndex": 10,
+                    "slotsInEpoch": 100,
+                    "absoluteSlot": 810
+                }))),
+            )
+                .into_response(),
+            "getVoteAccounts" => (
+                StatusCode::OK,
+                Json(rpc_success(json!({
+                    "current": [{
+                        "votePubkey": "vote-1",
+                        "nodePubkey": "id-1",
+                        "activatedStake": 1_500_000_000u64,
+                        "commission": 5,
+                        "epochCredits": [[8, 20, 10]],
+                        "lastVote": 809,
+                        "rootSlot": 808
+                    }],
+                    "delinquent": []
+                }))),
+            )
+                .into_response(),
             "getBlockProduction" => {
                 let first_slot = params
                     .first()
                     .and_then(|config| config.get("range"))
                     .and_then(|range| range.get("firstSlot"))
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default();
-                let by_identity = if first_slot == 700 {
-                    json!({ "id-1": [4, 3] })
-                } else {
-                    json!({ "id-1": [5, 4] })
+                    .and_then(Value::as_u64);
+                let last_slot = params
+                    .first()
+                    .and_then(|config| config.get("range"))
+                    .and_then(|range| range.get("lastSlot"))
+                    .and_then(Value::as_u64);
+
+                if let (Some(first_slot), Some(last_slot)) = (first_slot, last_slot) {
+                    if last_slot.saturating_sub(first_slot).saturating_add(1)
+                        > MAX_BLOCK_PRODUCTION_RANGE_SLOTS
+                    {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(rpc_error(
+                                -32600,
+                                "Requested slot range too large. Maximum range is 5000 slots.",
+                            )),
+                        )
+                            .into_response();
+                    }
+                }
+
+                let by_identity = match first_slot {
+                    Some(700) => json!({ "id-1": [4, 3] }),
+                    Some(5_700) => json!({ "id-1": [2, 2] }),
+                    Some(10_700) => json!({ "id-1": [1, 1] }),
+                    Some(_) => json!({ "id-1": [5, 4] }),
+                    None => json!({ "id-1": [5, 4] }),
                 };
-                rpc_success(json!({ "value": { "byIdentity": by_identity } }))
+
+                (
+                    StatusCode::OK,
+                    Json(rpc_success(
+                        json!({ "value": { "byIdentity": by_identity } }),
+                    )),
+                )
+                    .into_response()
             }
             "getLeaderSchedule" => {
+                if matches!(profile, MockRpcProfile::NoLeaderSchedule) {
+                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                        .into_response();
+                }
+
                 let slot = params.first().and_then(Value::as_u64).unwrap_or_default();
                 let schedule = if slot == 810 {
                     json!({ "id-1": [0, 2, 5, 10] })
                 } else {
                     json!({ "id-1": [1, 50] })
                 };
-                rpc_success(schedule)
+                (StatusCode::OK, Json(rpc_success(schedule))).into_response()
             }
-            "minimumLedgerSlot" => rpc_success(json!(600)),
+            "minimumLedgerSlot" => (StatusCode::OK, Json(rpc_success(json!(600)))).into_response(),
             "getInflationReward" => {
                 let rewards = params
                     .first()
@@ -1787,12 +2358,10 @@ mod tests {
                     .into_iter()
                     .map(|_| json!({ "amount": 12_000_000_000i64, "epoch": 8 }))
                     .collect::<Vec<_>>();
-                rpc_success(json!(rewards))
+                (StatusCode::OK, Json(rpc_success(json!(rewards)))).into_response()
             }
-            _ => rpc_error(-32601, "method not found"),
-        };
-
-        Json(response)
+            _ => (StatusCode::OK, Json(rpc_error(-32601, "method not found"))).into_response(),
+        }
     }
 
     fn rpc_success(result: Value) -> Value {

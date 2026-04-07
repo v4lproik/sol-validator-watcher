@@ -16,7 +16,10 @@ mod tasks;
 mod websocket;
 
 use crate::{
-    collector::{collect_snapshot, RpcClient},
+    collector::{
+        collect_snapshot_with_connectors, ensure_economics_supported_with_connectors, RpcClient,
+        RpcConnectorRef,
+    },
     config::Config,
     metrics::Metrics,
     tasks::{Shutdown, TaskExit, TaskManager},
@@ -48,11 +51,17 @@ struct AppState {
     metrics: Arc<Metrics>,
 }
 
+struct RuntimeConnector {
+    name: String,
+    kind: crate::config::ConnectorKind,
+    rpc_client: Option<RpcClient>,
+    ws_client: Option<WebsocketProbeClient>,
+}
+
 struct RuntimeState {
     config_path: PathBuf,
     config: Config,
-    client: RpcClient,
-    ws_client: Option<WebsocketProbeClient>,
+    connectors: Vec<RuntimeConnector>,
     config_modified: SystemTime,
     metrics_port: u16,
     economics_capabilities_verified: bool,
@@ -63,14 +72,12 @@ impl RuntimeState {
         let config = Config::load(&config_path)?;
         let config_modified = config_mtime(&config_path)?;
         let metrics_port = config.metrics_port;
-        let client = new_rpc_client(&config)?;
-        let ws_client = new_ws_probe_client(&config);
+        let connectors = build_runtime_connectors(&config)?;
 
         Ok(Self {
             config_path,
             config,
-            client,
-            ws_client,
+            connectors,
             config_modified,
             metrics_port,
             economics_capabilities_verified: false,
@@ -92,25 +99,16 @@ impl RuntimeState {
             );
         }
 
-        let rpc_settings_changed = self
-            .config
-            .validator_connection
-            .rpc_settings_changed(&next.validator_connection);
-        let ws_settings_changed = self
-            .config
-            .validator_connection
-            .ws_settings_changed(&next.validator_connection);
+        let connectors_changed = self.config.connectors != next.connectors
+            || self.config.validator_websocket_enabled != next.validator_websocket_enabled;
 
-        if rpc_settings_changed {
-            self.client = new_rpc_client(&next)?;
-        }
-        if ws_settings_changed {
-            self.ws_client = new_ws_probe_client(&next);
+        if connectors_changed {
+            self.connectors = build_runtime_connectors(&next)?;
         }
 
         info!(
             watched_validators = next.watched_validators.len(),
-            transport_mode = next.validator_connection.transport_mode.as_str(),
+            connectors = next.connectors.len(),
             validator_mode = next.validator_mode.as_str(),
             economics_mode = next.economics.mode.as_str(),
             "reloaded configuration"
@@ -120,6 +118,19 @@ impl RuntimeState {
         self.config_modified = modified;
         self.economics_capabilities_verified = false;
         Ok(())
+    }
+
+    fn rpc_connectors(&self) -> Vec<RpcConnectorRef<'_>> {
+        self.connectors
+            .iter()
+            .filter_map(|connector| {
+                connector.rpc_client.as_ref().map(|client| RpcConnectorRef {
+                    name: connector.name.as_str(),
+                    kind: connector.kind,
+                    client,
+                })
+            })
+            .collect()
     }
 }
 
@@ -154,7 +165,10 @@ async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
         "watcher-loop",
         run_watcher_loop(runtime, metrics, tasks.shutdown_handle()),
     );
-    tasks.spawn("shutdown-signal", wait_for_shutdown_signal());
+    tasks.spawn(
+        "shutdown-signal",
+        wait_for_shutdown_signal(tasks.shutdown_handle()),
+    );
 
     tasks.run().await
 }
@@ -166,9 +180,8 @@ async fn run_watcher_loop(
 ) -> Result<TaskExit> {
     info!(
         network = runtime.config.network,
-        rpc_url = runtime.config.validator_connection.rpc_url,
         watched_validators = runtime.config.watched_validators.len(),
-        transport_mode = runtime.config.validator_connection.transport_mode.as_str(),
+        connectors = runtime.connectors.len(),
         validator_mode = runtime.config.validator_mode.as_str(),
         economics_mode = runtime.config.economics.mode.as_str(),
         "starting Solana validator watcher"
@@ -183,15 +196,18 @@ async fn run_watcher_loop(
         metrics.update_runtime_config(&runtime.config);
         guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
         ensure_economics_capabilities_ready(&mut runtime).await?;
+        let rpc_connectors = runtime.rpc_connectors();
 
-        let snapshot = collect_snapshot(&runtime.client, &runtime.config)
+        let snapshot = collect_snapshot_with_connectors(&rpc_connectors, &runtime.config)
             .await
-            .with_context(|| {
-                format!(
-                    "failed to collect snapshot from RPC endpoint {}",
-                    runtime.config.validator_connection.rpc_url
-                )
-            })?;
+            .context("failed to collect snapshot from configured RPC connectors")?;
+        if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
+            warn!(
+                configured_watched_validators = runtime.config.watched_validators.len(),
+                economics_mode = runtime.config.economics.mode.as_str(),
+                "configured watched validators did not match any vote accounts in the latest snapshot; watched-validator panels will be empty"
+            );
+        }
         metrics.update_snapshot(&snapshot);
         update_liveness_file(runtime.config.liveness_file.as_deref())?;
         info!(
@@ -215,38 +231,53 @@ async fn run_watcher_loop(
 async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
     metrics.set_rpc_up(&runtime.config.network, false);
     metrics.set_ws_up(&runtime.config.network, false);
-    let rpc_url = runtime.config.validator_connection.rpc_url.clone();
-    let ws_url = runtime.config.validator_connection.ws_url.clone();
-
-    let rpc_check = async {
-        runtime
-            .client
-            .ensure_healthy()
-            .await
-            .with_context(|| format!("RPC health guard failed for endpoint {}", rpc_url))
-    };
-    let ws_check = async {
-        let Some(ws_client) = runtime.ws_client.as_ref() else {
-            return Ok::<bool, anyhow::Error>(false);
+    let mut last_rpc_error = None;
+    for connector in &runtime.connectors {
+        let Some(client) = connector.rpc_client.as_ref() else {
+            continue;
         };
-        let ws_url = ws_url
-            .as_deref()
-            .with_context(|| "missing ws_url for configured websocket probe")?;
 
-        ws_client
-            .probe()
-            .await
-            .with_context(|| format!("websocket health guard failed for endpoint {}", ws_url))?;
-        Ok(true)
-    };
+        match client.ensure_healthy().await {
+            Ok(()) => {
+                metrics.set_rpc_up(&runtime.config.network, true);
+                last_rpc_error = None;
+                break;
+            }
+            Err(err) => {
+                warn!(
+                    connector = connector.name,
+                    connector_kind = connector.kind.as_str(),
+                    error = ?err,
+                    "RPC connector health check failed; trying next connector"
+                );
+                last_rpc_error = Some(err);
+            }
+        }
+    }
 
-    let (rpc_result, ws_result) = tokio::join!(rpc_check, ws_check);
+    if let Some(err) = last_rpc_error {
+        return Err(err).context("RPC health guard failed for all configured connectors");
+    }
 
-    rpc_result?;
-    metrics.set_rpc_up(&runtime.config.network, true);
+    for connector in &runtime.connectors {
+        let Some(ws_client) = connector.ws_client.as_ref() else {
+            continue;
+        };
 
-    if ws_result? {
-        metrics.set_ws_up(&runtime.config.network, true);
+        match ws_client.probe().await {
+            Ok(()) => {
+                metrics.set_ws_up(&runtime.config.network, true);
+                break;
+            }
+            Err(err) => {
+                warn!(
+                    connector = connector.name,
+                    connector_kind = connector.kind.as_str(),
+                    error = ?err,
+                    "websocket connector health check failed; trying next connector"
+                );
+            }
+        }
     }
 
     Ok(())
@@ -258,27 +289,17 @@ async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Resu
     }
 
     info!(
-        rpc_url = runtime.config.validator_connection.rpc_url,
         economics_mode = runtime.config.economics.mode.as_str(),
         "validating economics RPC capabilities"
     );
 
-    runtime
-        .client
-        .ensure_economics_supported(&runtime.config)
+    let rpc_connectors = runtime.rpc_connectors();
+    ensure_economics_supported_with_connectors(&rpc_connectors, &runtime.config)
         .await
-        .with_context(|| {
-            format!(
-                "failed to validate economics RPC capabilities for endpoint {}",
-                runtime.config.validator_connection.rpc_url
-            )
-        })?;
+        .context("failed to validate economics RPC capabilities for configured connectors")?;
 
     runtime.economics_capabilities_verified = true;
-    info!(
-        rpc_url = runtime.config.validator_connection.rpc_url,
-        "validated economics RPC capabilities"
-    );
+    info!("validated economics RPC capabilities");
     Ok(())
 }
 
@@ -313,12 +334,15 @@ async fn run_http_server(
     Ok(TaskExit::Finished)
 }
 
-async fn wait_for_shutdown_signal() -> Result<TaskExit> {
-    signal::ctrl_c()
-        .await
-        .context("failed to listen for shutdown signal")?;
-    info!("received shutdown signal");
-    Ok(TaskExit::ShutdownRequested)
+async fn wait_for_shutdown_signal(mut shutdown: Shutdown) -> Result<TaskExit> {
+    tokio::select! {
+        result = signal::ctrl_c() => {
+            result.context("failed to listen for shutdown signal")?;
+            info!("received shutdown signal");
+            Ok(TaskExit::ShutdownRequested)
+        }
+        _ = shutdown.cancelled() => Ok(TaskExit::Finished),
+    }
 }
 
 async fn metrics_handler(
@@ -338,15 +362,42 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
-fn new_rpc_client(config: &Config) -> Result<RpcClient> {
-    let connection = &config.validator_connection;
-    RpcClient::new(
-        connection.rpc_url.clone(),
-        Duration::from_secs(connection.rpc_timeout_sec),
-        connection.commitment_config()?,
-    )
+fn build_runtime_connectors(config: &Config) -> Result<Vec<RuntimeConnector>> {
+    let connector_configs = config.effective_connectors();
+
+    let mut connectors = Vec::with_capacity(connector_configs.len());
+    for connector in connector_configs {
+        let rpc_client = match connector.rpc_url.as_ref() {
+            Some(rpc_url) => Some(RpcClient::new(
+                rpc_url.clone(),
+                Duration::from_secs(connector.rpc_timeout_sec),
+                connector.commitment_config()?,
+            )?),
+            None => None,
+        };
+        let ws_client = if config.validator_websocket_enabled {
+            connector.ws_url.as_ref().map(|url| {
+                WebsocketProbeClient::new(
+                    url.clone(),
+                    Duration::from_secs(connector.ws_timeout_sec),
+                )
+            })
+        } else {
+            None
+        };
+
+        connectors.push(RuntimeConnector {
+            name: connector.name,
+            kind: connector.kind,
+            rpc_client,
+            ws_client,
+        });
+    }
+
+    Ok(connectors)
 }
 
+#[cfg(test)]
 fn new_ws_probe_client(config: &Config) -> Option<WebsocketProbeClient> {
     let connection = &config.validator_connection;
     connection.ws_url.as_ref().map(|url| {
@@ -408,8 +459,9 @@ fn init_tracing() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
-        new_rpc_client, new_ws_probe_client, update_liveness_file, RuntimeState,
+        build_runtime_connectors, config_mtime, economics_capability_check_required,
+        ensure_economics_capabilities_ready, new_ws_probe_client, update_liveness_file,
+        RuntimeState,
     };
     use crate::config::{
         Config, EconomicsConfig, EconomicsMode, TransportMode, ValidatorConnectionConfig,
@@ -447,6 +499,41 @@ mod tests {
 
         assert!(new_ws_probe_client(&with_ws).is_some());
         assert!(new_ws_probe_client(&without_ws).is_none());
+    }
+
+    #[test]
+    fn build_runtime_connectors_preserves_declared_order_and_transport_capabilities() -> Result<()>
+    {
+        let config = Config {
+            validator_websocket_enabled: true,
+            connectors: vec![
+                crate::config::ConnectorConfig {
+                    name: "local-validator".to_string(),
+                    kind: crate::config::ConnectorKind::StandardValidator,
+                    rpc_url: Some("http://127.0.0.1:8899".to_string()),
+                    ..crate::config::ConnectorConfig::default()
+                },
+                crate::config::ConnectorConfig {
+                    name: "helius-ws".to_string(),
+                    kind: crate::config::ConnectorKind::HeliusEnhancedWss,
+                    ws_url: Some("wss://ws.helius.example".to_string()),
+                    ..crate::config::ConnectorConfig::default()
+                },
+            ],
+            ..Config::default()
+        };
+
+        let connectors = build_runtime_connectors(&config)?;
+
+        assert_eq!(connectors.len(), 2);
+        assert_eq!(connectors[0].name, "local-validator");
+        assert!(connectors[0].rpc_client.is_some());
+        assert!(connectors[0].ws_client.is_none());
+        assert_eq!(connectors[1].name, "helius-ws");
+        assert!(connectors[1].rpc_client.is_none());
+        assert!(connectors[1].ws_client.is_some());
+
+        Ok(())
     }
 
     #[test]
@@ -582,13 +669,12 @@ poll_interval_sec: 15
             },
             ..Config::default()
         };
-        let client = new_rpc_client(&config)?;
+        let connectors = build_runtime_connectors(&config)?;
 
         Ok(RuntimeState {
             config_path: PathBuf::from("config.yaml"),
             config,
-            client,
-            ws_client: None,
+            connectors,
             config_modified: UNIX_EPOCH,
             metrics_port: 8000,
             economics_capabilities_verified: false,

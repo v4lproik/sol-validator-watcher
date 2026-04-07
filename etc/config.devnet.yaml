@@ -1,12 +1,16 @@
 # Template only. Keep real RPC credentials in .env or exported environment variables.
 network: devnet
-validator_connection_file: validator.devnet.toml
 validator_mode: rpc
 validator_websocket_enabled: true
 metrics_port: 8000
 poll_interval_sec: 15
 delinquent_slot_distance: 128
 liveness_file: /tmp/sol-validator-watcher.liveness
+
+connectors:
+  - name: devnet-rpc
+    kind: standard-validator+rpc
+    connection_file: validator.devnet.toml
 
 watched_validators:
   - vote_account: FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f

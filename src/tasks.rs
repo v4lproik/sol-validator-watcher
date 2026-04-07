@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use std::future::Future;
 use tokio::{sync::watch, task::JoinSet};
 use tracing::{error, info};
@@ -54,7 +54,7 @@ impl TaskManager {
         F: Future<Output = Result<TaskExit>> + Send + 'static,
     {
         self.tasks.spawn(async move {
-            let exit = task.await?;
+            let exit = task.await.with_context(|| format!("task {name} failed"))?;
             Ok(TaskCompletion { name, exit })
         });
     }
@@ -170,7 +170,9 @@ mod tests {
             Ok(()) => return Err(anyhow!("task error should bubble")),
             Err(err) => err,
         };
-        assert!(err.to_string().contains("boom"));
+        let rendered = format!("{err:#}");
+        assert!(rendered.contains("task broken failed"));
+        assert!(rendered.contains("boom"));
         Ok(())
     }
 

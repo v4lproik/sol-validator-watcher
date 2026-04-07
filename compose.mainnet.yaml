@@ -1,0 +1,17 @@
+services:
+  watcher-mainnet:
+    build:
+      context: .
+    image: sol-validator-watcher:local
+    command:
+      - --config
+      - /app/etc/config.mainnet.yaml
+    environment:
+      RUST_LOG: info
+      SOL_MAINNET_RPC_URL: ${SOL_MAINNET_RPC_URL}
+      SOL_MAINNET_WS_URL: ${SOL_MAINNET_WS_URL}
+    volumes:
+      - ./etc/config.mainnet.yaml:/app/etc/config.mainnet.yaml:ro
+    ports:
+      - "${WATCHER_MAINNET_METRICS_PORT:-8003}:8000"
+    restart: on-failure

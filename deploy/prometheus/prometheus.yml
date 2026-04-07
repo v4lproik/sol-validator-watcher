@@ -18,6 +18,10 @@ scrape_configs:
           - watcher-devnet:8000
         labels:
           deployment: devnet
+      - targets:
+          - watcher-mainnet:8000
+        labels:
+          deployment: mainnet
 
   - job_name: prometheus
     static_configs:

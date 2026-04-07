@@ -18,6 +18,7 @@ pub enum TransportMode {
 }
 
 impl TransportMode {
+    #[cfg(test)]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::PollHttp => "poll-http",
@@ -67,6 +68,58 @@ impl EconomicsMode {
 }
 
 pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ConnectorKind {
+    #[serde(rename = "standard-validator")]
+    StandardValidator,
+    #[serde(
+        rename = "standard-validator+rpc",
+        alias = "validator+rpc",
+        alias = "standard-validator-rpc"
+    )]
+    #[default]
+    StandardValidatorRpc,
+    #[serde(
+        rename = "validator+full-rpc",
+        alias = "validator+full_rpc",
+        alias = "standard-validator+full-rpc",
+        alias = "standard-validator+full_rpc",
+        alias = "standard-validator-full-rpc"
+    )]
+    StandardValidatorFullRpc,
+    #[serde(rename = "helius+rpc", alias = "helius-rpc")]
+    HeliusRpc,
+    #[serde(
+        rename = "helius+enhanced-rpc",
+        alias = "helius+enhanced_rpc",
+        alias = "helius-enhanced-rpc"
+    )]
+    HeliusEnhancedRpc,
+    #[serde(rename = "helius+ws", alias = "helius+wss", alias = "helius-ws")]
+    HeliusWs,
+    #[serde(
+        rename = "helius+enhanced-wss",
+        alias = "helius+enhanced_ws",
+        alias = "helius+enhanced_wss",
+        alias = "helius-enhanced-wss"
+    )]
+    HeliusEnhancedWss,
+}
+
+impl ConnectorKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StandardValidator => "standard-validator",
+            Self::StandardValidatorRpc => "standard-validator+rpc",
+            Self::StandardValidatorFullRpc => "validator+full-rpc",
+            Self::HeliusRpc => "helius+rpc",
+            Self::HeliusEnhancedRpc => "helius+enhanced-rpc",
+            Self::HeliusWs => "helius+ws",
+            Self::HeliusEnhancedWss => "helius+enhanced-wss",
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -143,22 +196,6 @@ impl ValidatorConnectionConfig {
         }
     }
 
-    pub fn rpc_settings_changed(&self, next: &Self) -> bool {
-        self.rpc_url != next.rpc_url
-            || self.rpc_timeout_sec != next.rpc_timeout_sec
-            || self.commitment != next.commitment
-    }
-
-    pub fn ws_settings_changed(&self, next: &Self) -> bool {
-        self.transport_mode != next.transport_mode
-            || self.ws_url != next.ws_url
-            || self.ws_timeout_sec != next.ws_timeout_sec
-    }
-
-    pub fn ws_configured(&self) -> bool {
-        self.ws_url.is_some()
-    }
-
     fn validate(&mut self) -> Result<()> {
         self.normalize();
 
@@ -206,6 +243,156 @@ impl ValidatorConnectionConfig {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct ConnectorConfig {
+    pub name: String,
+    pub kind: ConnectorKind,
+    pub rpc_url: Option<String>,
+    pub rpc_timeout_sec: u64,
+    pub ws_url: Option<String>,
+    pub ws_timeout_sec: u64,
+    pub commitment: String,
+    pub connection_file: Option<PathBuf>,
+}
+
+impl Default for ConnectorConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            kind: ConnectorKind::default(),
+            rpc_url: None,
+            rpc_timeout_sec: default_rpc_timeout_sec(),
+            ws_url: None,
+            ws_timeout_sec: default_ws_timeout_sec(),
+            commitment: default_commitment(),
+            connection_file: None,
+        }
+    }
+}
+
+impl ConnectorConfig {
+    pub(crate) fn from_validator_connection(
+        connection: &ValidatorConnectionConfig,
+        connection_file: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            name: "primary".to_string(),
+            kind: ConnectorKind::StandardValidatorRpc,
+            rpc_url: Some(connection.rpc_url.clone()),
+            rpc_timeout_sec: connection.rpc_timeout_sec,
+            ws_url: connection.ws_url.clone(),
+            ws_timeout_sec: connection.ws_timeout_sec,
+            commitment: connection.commitment.clone(),
+            connection_file,
+        }
+    }
+
+    fn load_from_toml(path: &Path, defaults: Self) -> Result<Self> {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read connector TOML file {}", path.display()))?;
+        let expanded = expand_env_vars(&raw).with_context(|| {
+            format!(
+                "failed to expand environment variables in connector TOML {}",
+                path.display()
+            )
+        })?;
+
+        Figment::from(Serialized::defaults(defaults))
+            .merge(Toml::string(&expanded))
+            .extract::<Self>()
+            .with_context(|| format!("failed to parse connector TOML {}", path.display()))
+    }
+
+    pub fn has_rpc(&self) -> bool {
+        self.rpc_url.is_some()
+    }
+
+    pub fn has_ws(&self) -> bool {
+        self.ws_url.is_some()
+    }
+
+    pub fn commitment_config(&self) -> Result<String> {
+        match self.commitment.as_str() {
+            "processed" | "confirmed" | "finalized" => Ok(self.commitment.clone()),
+            other => bail!(
+                "unsupported commitment {:?}, expected one of processed|confirmed|finalized",
+                other
+            ),
+        }
+    }
+
+    pub fn to_validator_connection(&self) -> Option<ValidatorConnectionConfig> {
+        self.rpc_url
+            .as_ref()
+            .map(|rpc_url| ValidatorConnectionConfig {
+                rpc_url: rpc_url.clone(),
+                rpc_timeout_sec: self.rpc_timeout_sec,
+                transport_mode: if self.ws_url.is_some() {
+                    TransportMode::PollHttpAndWs
+                } else {
+                    TransportMode::PollHttp
+                },
+                ws_url: self.ws_url.clone(),
+                ws_timeout_sec: self.ws_timeout_sec,
+                commitment: self.commitment.clone(),
+            })
+    }
+
+    fn normalize(&mut self) {
+        self.name = self.name.trim().to_string();
+        self.rpc_url = self
+            .rpc_url
+            .as_ref()
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty());
+        self.commitment = self.commitment.trim().to_lowercase();
+        self.ws_url = self
+            .ws_url
+            .as_ref()
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty());
+    }
+
+    fn validate(&mut self, index: usize) -> Result<()> {
+        self.normalize();
+
+        if self.name.is_empty() {
+            bail!("connectors[{index}].name must not be empty");
+        }
+        if self.rpc_url.is_none() && self.ws_url.is_none() {
+            bail!("connectors[{index}] must define rpc_url and/or ws_url");
+        }
+        if self.rpc_timeout_sec == 0 {
+            bail!("connectors[{index}].rpc_timeout_sec must be greater than 0");
+        }
+        if self.ws_timeout_sec == 0 {
+            bail!("connectors[{index}].ws_timeout_sec must be greater than 0");
+        }
+
+        self.commitment_config()?;
+        if let Some(ws_url) = self.ws_url.as_deref() {
+            validate_ws_url(ws_url)?;
+        }
+
+        Ok(())
+    }
+
+    fn resolve_connection_file(&mut self, config_path: &Path) -> Result<()> {
+        let Some(connection_path) = self.connection_file.as_ref() else {
+            return Ok(());
+        };
+
+        let resolved_path = resolve_config_relative_path(config_path, connection_path);
+        let mut defaults = self.clone();
+        defaults.connection_file = None;
+        defaults.normalize();
+        *self = Self::load_from_toml(&resolved_path, defaults)?;
+        self.connection_file = Some(resolved_path);
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -213,6 +400,7 @@ pub struct Config {
     #[serde(flatten)]
     pub validator_connection: ValidatorConnectionConfig,
     pub validator_connection_file: Option<PathBuf>,
+    pub connectors: Vec<ConnectorConfig>,
     pub validator_mode: ValidatorMode,
     pub economics: EconomicsConfig,
     pub validator_websocket_enabled: bool,
@@ -229,6 +417,7 @@ impl Default for Config {
             network: default_network(),
             validator_connection: ValidatorConnectionConfig::default(),
             validator_connection_file: None,
+            connectors: vec![],
             validator_mode: ValidatorMode::default(),
             economics: EconomicsConfig::default(),
             validator_websocket_enabled: false,
@@ -303,6 +492,7 @@ impl Config {
 
         self.resolve_validator_connection(config_path)?;
         self.validator_connection.validate()?;
+        self.resolve_connectors(config_path)?;
 
         if self.metrics_port == 0 {
             bail!("metrics_port must be greater than 0");
@@ -317,6 +507,17 @@ impl Config {
 
         self.validate_economics()?;
         Ok(())
+    }
+
+    pub fn effective_connectors(&self) -> Vec<ConnectorConfig> {
+        if self.connectors.is_empty() {
+            vec![ConnectorConfig::from_validator_connection(
+                &self.validator_connection,
+                self.validator_connection_file.clone(),
+            )]
+        } else {
+            self.connectors.clone()
+        }
     }
 
     fn validate_economics(&mut self) -> Result<()> {
@@ -363,6 +564,36 @@ impl Config {
         self.validator_connection =
             ValidatorConnectionConfig::load_from_toml(&resolved_path, defaults)?;
         self.validator_connection_file = Some(resolved_path);
+        Ok(())
+    }
+
+    fn resolve_connectors(&mut self, config_path: &Path) -> Result<()> {
+        if self.connectors.is_empty() {
+            self.connectors
+                .push(ConnectorConfig::from_validator_connection(
+                    &self.validator_connection,
+                    self.validator_connection_file.clone(),
+                ));
+        }
+
+        for (index, connector) in self.connectors.iter_mut().enumerate() {
+            connector.resolve_connection_file(config_path)?;
+            connector.validate(index)?;
+        }
+
+        let mut seen_names = std::collections::HashSet::new();
+        for connector in &self.connectors {
+            if !seen_names.insert(connector.name.clone()) {
+                bail!("duplicate connector name {:?}", connector.name);
+            }
+        }
+
+        let primary = self
+            .connectors
+            .iter()
+            .find_map(ConnectorConfig::to_validator_connection)
+            .with_context(|| "at least one connector with rpc_url is required")?;
+        self.validator_connection = primary;
         Ok(())
     }
 }
@@ -509,7 +740,7 @@ fn validate_ws_url(url: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_env_vars_with, Config, EconomicsConfig, EconomicsMode, TransportMode,
+        expand_env_vars_with, Config, ConnectorKind, EconomicsConfig, EconomicsMode, TransportMode,
         ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
     };
     use anyhow::{Context, Result};
@@ -711,6 +942,66 @@ ws_url = "wss://api.devnet.solana.com"
             .contains(&ECONOMICS_TARGET_LABEL.to_string()));
 
         Ok(())
+    }
+
+    #[test]
+    fn parses_connector_stack_and_preserves_precedence_order() -> Result<()> {
+        let raw = r#"
+network: mainnet-beta
+validator_websocket_enabled: true
+connectors:
+  - name: local-validator
+    kind: standard-validator
+    rpc_url: http://127.0.0.1:8899
+  - name: helius-rpc
+    kind: helius+enhanced_rpc
+    rpc_url: https://rpc.helius.example
+  - name: helius-ws
+    kind: helius+enhanced_wss
+    ws_url: wss://ws.helius.example
+"#;
+
+        let mut cfg: Config = serde_yaml::from_str(raw)?;
+        cfg.validate(Path::new("config.yaml"))?;
+
+        assert_eq!(cfg.connectors.len(), 3);
+        assert_eq!(cfg.connectors[0].name, "local-validator");
+        assert_eq!(cfg.connectors[0].kind, ConnectorKind::StandardValidator);
+        assert_eq!(cfg.connectors[1].kind, ConnectorKind::HeliusEnhancedRpc);
+        assert_eq!(cfg.connectors[2].kind, ConnectorKind::HeliusEnhancedWss);
+        assert_eq!(
+            cfg.validator_connection.rpc_url,
+            "http://127.0.0.1:8899".to_string()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn effective_connectors_falls_back_to_legacy_validator_connection() {
+        let config = Config {
+            validator_connection: ValidatorConnectionConfig {
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+                transport_mode: TransportMode::PollHttpAndWs,
+                ..ValidatorConnectionConfig::default()
+            },
+            ..Config::default()
+        };
+
+        let connectors = config.effective_connectors();
+
+        assert_eq!(connectors.len(), 1);
+        assert_eq!(connectors[0].name, "primary");
+        assert_eq!(connectors[0].kind, ConnectorKind::StandardValidatorRpc);
+        assert_eq!(
+            connectors[0].rpc_url.as_deref(),
+            Some("https://api.mainnet-beta.solana.com")
+        );
+        assert_eq!(
+            connectors[0].ws_url.as_deref(),
+            Some("wss://api.mainnet-beta.solana.com")
+        );
     }
 
     #[test]

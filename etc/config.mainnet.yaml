@@ -1,0 +1,35 @@
+# Template only. Keep real RPC credentials in .env or exported environment variables.
+network: mainnet-beta
+validator_mode: rpc
+validator_websocket_enabled: true
+metrics_port: 8000
+poll_interval_sec: 15
+delinquent_slot_distance: 128
+liveness_file: /tmp/sol-validator-watcher.liveness
+
+connectors:
+  - name: mainnet-rpc
+    kind: helius+rpc
+    connection_file: validator.mainnet.toml
+
+watched_validators:
+  - vote_account: BeRtYZ7SVQozwTby6ajQzrHtKYkn4qoKyRfb3NDAedtA
+    labels: ["validator:big-berty", "state:delinquent"]
+  - vote_account: 3dXXxEaV4fZqw1PL7VezfDkiJV5W4WTtRjh2EHgKSthF
+    labels: ["validator:hedgehog-spiky", "state:delinquent"]
+  - vote_account: PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp
+    labels: ["validator:puffin", "state:top-voter"]
+  - vote_account: D7WodK26tETSqyWBW35vvMGfige9afLEyTsm1Pvvropd
+    labels: ["validator:litx", "state:top-voter"]
+
+economics:
+  mode: disabled
+  # Enable single-validator economics only on RPC endpoints that can serve:
+  # - getInflationReward
+  # - getBlockProduction for the previous epoch range
+  #
+  # validator:
+  #   vote_account: PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp
+  #   labels: ["validator:puffin", "focus:economics"]
+
+# Economics mode requires RPC support for getInflationReward and reward-epoch block production.
