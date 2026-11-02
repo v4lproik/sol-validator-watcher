@@ -11,6 +11,7 @@
 
 ## Verification
 
+- [ ] every affected module changelog updated under `Unreleased`
 - [ ] `just ci verify`
 - [ ] `just coverage check` if Rust code changed
 - [ ] dashboard JSON validated if dashboards changed

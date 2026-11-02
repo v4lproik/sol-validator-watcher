@@ -9,17 +9,20 @@ boundaries; do not bulk-load unrelated guidance.
 
 1. Identify the behavior being changed and its caller, module, external
    boundary, configuration, metric, test, and operational surface.
-2. Read the matching category resources from the index below.
+2. Read the repository module/changelog resource and every matching category
+   resource from the index below.
 3. Trace the current success and failure paths before editing.
 4. Reuse the existing module owner and `just` workflow. Do not add a second
    client, configuration path, fallback policy, or command convention.
-5. Verify the changed behavior at its real boundary.
-6. Run `just ci verify` on the final revision before every commit or push.
+5. Update the `Unreleased` section of every affected module changelog.
+6. Verify the changed behavior at its real boundary.
+7. Run `just ci verify` on the final revision before every commit or push.
 
 ## Category Index
 
 | Category | Read when changing | Skill resource |
 | --- | --- | --- |
+| Repository modules and changelog | Every change; identify all affected modules and required changelog files | `.omp/skills/sol-validator-watcher/resources/changelog-and-modules.md` |
 | Rust implementation | Rust APIs, ownership, lifetimes, enums, serde models, async code, allocations, or module visibility | `.omp/skills/rust-best-practices/SKILL.md` and `.omp/skills/sol-validator-watcher/resources/rust-code-quality.md` |
 | Rust review | Reviewing a Rust file, module, crate, diff, or pull request | `.omp/skills/rust-review/SKILL.md` and `.omp/skills/sol-validator-watcher/resources/rust-review.md` |
 | Rust porting | Translating or rewriting C, C++, Python, Go, JavaScript, or TypeScript behavior in Rust | `.omp/skills/rust-port/SKILL.md` and `.omp/skills/sol-validator-watcher/resources/rust-porting.md` |
@@ -98,6 +101,8 @@ Additional gates:
   they are authoritative for recipe behavior and accepted arguments.
 - Update the owning skill resource in the same change that modifies a durable
   repository invariant.
+- Keep the README module index, changelog ownership resource, and module
+  changelogs aligned when ownership changes.
 - Keep one rule under one category and link to it instead of duplicating it.
 - Never commit credentials, generated coverage output, `.env`, or endpoint
   secrets.

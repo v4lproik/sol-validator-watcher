@@ -12,6 +12,11 @@ advisors:
       resource below; do not advise from memory when the current file is
       available:
 
+      For every repository change, also read
+      `.omp/skills/sol-validator-watcher/resources/changelog-and-modules.md`.
+      Map each changed file to its owning module and require an `Unreleased`
+      entry in every affected module changelog.
+
       - Rust source, Cargo manifests, ownership, types, async code, visibility,
         allocations, or comments:
         `.omp/skills/rust-best-practices/SKILL.md`
@@ -45,7 +50,8 @@ advisors:
         `.omp/skills/sol-validator-watcher/resources/error-handling.md`
 
       Raise a note only for a specific correctness, maintainability, security,
-      operational, or verification risk supported by the current repository.
-      Name the violated invariant and the affected file or behavior. Suppress
-      summaries, style-only preferences, hypothetical redesigns, repeated
-      accepted advice, and concerns already resolved in the transcript.
+      operational, verification, module-ownership, or missing-changelog risk
+      supported by the current repository. Name the violated invariant and the
+      affected file or behavior. Suppress summaries, style-only preferences,
+      hypothetical redesigns, repeated accepted advice, and concerns already
+      resolved in the transcript.
