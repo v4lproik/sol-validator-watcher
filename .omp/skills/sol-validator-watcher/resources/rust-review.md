@@ -6,10 +6,11 @@ Use this resource when reviewing a Rust file, module, crate, diff, or pull
 request. Review the requested surface and the contracts it can break; do not
 rewrite code unless the user asks for a fix.
 
-This repository is currently an application crate on Rust 1.84.1. Favor
-concrete application types and `anyhow` boundary context over speculative public
-library abstractions. If a change introduces a library API, apply the stricter
-public API rules in [Rust code quality](rust-code-quality.md).
+This repository is an application crate. Review against the Rust version
+pinned in `mise.toml`, and favor concrete application types and `anyhow`
+boundary context over speculative public library abstractions. If a change
+introduces a library API, apply the stricter public API rules in
+[Rust code quality](rust-code-quality.md).
 
 ## Establish the Review Boundary
 
@@ -131,6 +132,6 @@ style notes. Always name two to four concrete strengths.
 
 - Do not invent a defect without a reachable path and repository evidence.
 - Do not demand library-grade generality from application-internal code.
-- Do not recommend language features newer than Rust 1.84.1.
+- Do not recommend language features newer than the version pinned in `mise.toml`.
 - Do not run formatters or modify code during a read-only review.
 - Do not repeat resolved findings or turn personal style into a blocker.

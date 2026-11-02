@@ -84,73 +84,73 @@ run-release config="etc/config.local.yaml":
   mise exec -- cargo run --release -- --config '{{config}}'
 
 docker-build tag="sol-validator-watcher:local":
-  docker build -t '{{tag}}' .
+  docker build --build-arg "RUST_VERSION=$(mise config get tools.rust.version)" -t '{{tag}}' .
 
 stack-config-surfpool:
-  docker compose -f compose.yaml -f compose.surfpool.yaml config
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml config
 
 stack-config-validator:
-  docker compose -f compose.yaml -f compose.validator.yaml config
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.validator.yaml config
 
 stack-config-devnet:
-  docker compose -f compose.yaml -f compose.devnet.yaml config
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.devnet.yaml config
 
 stack-config-mainnet:
-  docker compose -f compose.yaml -f compose.mainnet.yaml config
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.mainnet.yaml config
 
 stack-config-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml config
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml config
 
 stack-up-surfpool:
-  docker compose -f compose.yaml -f compose.surfpool.yaml up -d --build
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml up -d --build
 
 stack-up-validator:
-  docker compose -f compose.yaml -f compose.validator.yaml up -d --build
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.validator.yaml up -d --build
 
 stack-up-devnet:
-  docker compose -f compose.yaml -f compose.devnet.yaml up -d --build
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.devnet.yaml up -d --build
 
 stack-up-mainnet:
-  docker compose -f compose.yaml -f compose.mainnet.yaml up -d --build
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.mainnet.yaml up -d --build
 
 stack-up-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml up -d --build
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml up -d --build
 
 stack-reload-prometheus:
   curl -fsS -X POST http://localhost:9090/-/reload
 
 stack-logs-surfpool:
-  docker compose -f compose.yaml -f compose.surfpool.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml logs -f
 
 stack-logs-validator:
-  docker compose -f compose.yaml -f compose.validator.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.validator.yaml logs -f
 
 stack-logs-devnet:
-  docker compose -f compose.yaml -f compose.devnet.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.devnet.yaml logs -f
 
 stack-logs-mainnet:
-  docker compose -f compose.yaml -f compose.mainnet.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.mainnet.yaml logs -f
 
 stack-logs-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml logs -f
 
 stack-ps-surfpool:
-  docker compose -f compose.yaml -f compose.surfpool.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml ps
 
 stack-ps-validator:
-  docker compose -f compose.yaml -f compose.validator.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.validator.yaml ps
 
 stack-ps-devnet:
-  docker compose -f compose.yaml -f compose.devnet.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.devnet.yaml ps
 
 stack-ps-mainnet:
-  docker compose -f compose.yaml -f compose.mainnet.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.mainnet.yaml ps
 
 stack-ps-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml ps
 
 stack-down:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml down --remove-orphans
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml down --remove-orphans
 
 clean:
   mise exec -- cargo clean

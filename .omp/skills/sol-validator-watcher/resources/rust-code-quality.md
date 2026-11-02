@@ -14,11 +14,11 @@ language, also read [Beautiful Rust porting](../../rust-port/SKILL.md) and
 Repository-specific Rust version, commands, module ownership, and verification
 rules in this resource take precedence when generic upstream advice differs.
 
-This repository is currently an application crate on Rust 1.84.1. Prefer
-concrete types, direct control flow, and `anyhow` context inside the
-application. Do not introduce library-grade genericity without a real
-cross-crate consumer. If a library API is added, its public contracts require
-stricter evolution, documentation, and error-type discipline.
+This repository is an application crate. `mise.toml` is the single source for
+the supported Rust version. Prefer concrete types, direct control flow, and
+`anyhow` context inside the application. Do not introduce library-grade
+genericity without a real cross-crate consumer. If a library API is added, its
+public contracts require stricter evolution, documentation, and error-type discipline.
 
 ## Ownership and Module Boundaries
 
@@ -211,8 +211,9 @@ stricter evolution, documentation, and error-type discipline.
   `Cargo.lock` unless dependency policy is the explicit change.
 - New features are additive and describe capability. Do not use a feature to
   remove public behavior or hide production invariants.
-- The pinned toolchain is Rust 1.84.1. Do not recommend or commit newer language
-  or library features without updating `mise.toml` and verifying the migration.
+- Do not recommend or commit language or library features newer than the Rust
+  version pinned in `mise.toml` without updating the pin and verifying the
+  migration.
 - `just clippy` is the lint contract. Fix lints rather than suppressing them.
   When a narrow exception is real, prefer `#[expect(lint, reason = \"...\")]`
   so stale suppressions become visible. Do not add `#![deny(warnings)]` to
@@ -254,7 +255,8 @@ Do not claim a speedup without before/after evidence on the same workload.
 6. Are concurrent operations genuinely independent and supervised?
 7. Does every error retain its cause and useful boundary context?
 8. Is the API concrete and proportionate to this application?
-9. Does the code use only Rust 1.84.1 features and existing dependency policy?
+9. Does the code use only features supported by the Rust version pinned in
+   `mise.toml` and the existing dependency policy?
 10. Did the change remove obsolete branches, tests, aliases, and comments?
 
 ## Prohibited Shortcuts
