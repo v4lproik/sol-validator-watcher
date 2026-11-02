@@ -22,6 +22,8 @@ image builds, stack inspection, and teardown.
 
 ## Invariants
 
+- Stack recipes source the repository-root `.env` before invoking Compose so
+  exported credentials and profile settings survive the `docker/` relocation.
 - Run `just stack config <target>` before a changed stack is started. Rendered
   config must resolve files, environment interpolation, networks, ports,
   volumes, and dependencies without mutation.
