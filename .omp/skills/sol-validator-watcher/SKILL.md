@@ -4,7 +4,7 @@ description: >-
   Repository-specific Rust engineering invariants and verification gates for
   sol-validator-watcher. Use when changing Rust code, Solana RPC collection,
   runtime lifecycle, configuration, Prometheus/Grafana, tests, local stacks,
-  GitHub Actions, Pages, containers, or repository workflows.
+  GitHub Actions, Pages, containers, module ownership, changelogs, or workflows.
 ---
 
 # Sol Validator Watcher Engineering
@@ -17,20 +17,22 @@ matching resources. Read every matching resource when work crosses categories.
 1. Identify the observable behavior and every boundary it crosses: caller,
    Rust module, RPC or websocket, configuration, metric, task, test, container,
    and workflow.
-2. Read each component-index row whose trigger matches. Do not open unrelated
-   resources.
+2. Read [Repository modules and changelog](resources/changelog-and-modules.md),
+   then read each additional component-index row whose trigger matches.
 3. Trace the current success, failure, fallback, and shutdown paths before
    editing.
 4. Reuse the existing owner and `just` command. Do not create a second client,
    policy map, config path, fallback convention, or ad hoc workflow.
-5. Verify the narrow invariant and then smoke the real boundary.
-6. Run `just ci verify` on the final revision before every commit or push. Run
+5. Update the `Unreleased` section of every affected module changelog.
+6. Verify the narrow invariant and then smoke the real boundary.
+7. Run `just ci verify` on the final revision before every commit or push. Run
    all additional category gates listed in `AGENTS.md`.
 
 ## Component Index
 
 | Component | Read when changing |
 | --- | --- |
+| [Repository modules and changelog](resources/changelog-and-modules.md) | Every repository change; use it to select module ownership and required changelog files before editing |
 | [Rust best practices](../rust-best-practices/SKILL.md) and [repository Rust rules](resources/rust-code-quality.md) | Writing, refactoring, or debugging Rust APIs, ownership, lifetimes, enums, serde models, async sequencing, allocations, comments, visibility, or dead code |
 | [Rust review](../rust-review/SKILL.md) and [repository review rules](resources/rust-review.md) | Reviewing a Rust file, module, crate, diff, or pull request |
 | [Rust porting](../rust-port/SKILL.md) and [repository porting rules](resources/rust-porting.md) | Translating or rewriting C, C++, Python, Go, JavaScript, or TypeScript behavior in Rust |
@@ -67,4 +69,6 @@ matching resources. Read every matching resource when work crosses categories.
    copy pull-request narration.
 4. Keep command names and defaults in `AGENTS.md` and the live `Justfile`, not in
    multiple resources.
-5. Remove stale guidance in the same change that removes the underlying path.
+5. Update the README module index, changelog ownership map, and module
+   changelogs together when ownership changes.
+6. Remove stale guidance in the same change that removes the underlying path.
