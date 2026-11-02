@@ -10,13 +10,13 @@
   Prometheus monitoring and Grafana dashboards for Solana validator operators.
 </p>
 
-Solana Validator Watcher polls ordered RPC and WebSocket connectors, aggregates network and watched-validator health, and exports the result as Prometheus metrics. The repository includes local Surfpool, validator, Devnet, and Mainnet profiles with provisioned Grafana dashboards.
+Solana Validator Watcher executes typed health, consensus, leadership, and economics command chains, aggregates network and watched-validator health, and exports the result as Prometheus metrics. Each command declares its own ordered connector fallback route, so provider choice is explicit rather than inferred from global connector order.
 
 ## Modules
 
 | Module | Owns | Start here | Changelog |
 | --- | --- | --- | --- |
-| Watcher | Solana RPC collection, connector fallback, labels, and validator aggregation | [`src/collector.rs`](src/collector.rs), [`src/labels.rs`](src/labels.rs), [`src/websocket.rs`](src/websocket.rs) | [`changelog/watcher.md`](changelog/watcher.md) |
+| Watcher | Typed mode commands, Solana RPC collection, connector fallback, provenance, labels, and validator aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/), [`src/collector.rs`](src/collector.rs) | [`changelog/watcher.md`](changelog/watcher.md) |
 | Runtime | Process startup, polling, HTTP serving, reload, task supervision, and shutdown | [`src/main.rs`](src/main.rs), [`src/tasks.rs`](src/tasks.rs) | [`changelog/runtime.md`](changelog/runtime.md) |
 | Configuration | TOML loading, environment expansion, validation, and committed profiles | [`src/config.rs`](src/config.rs), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
 | Observability | Prometheus metrics, scraping, Grafana provisioning, dashboards, and the Pages site | [`src/metrics.rs`](src/metrics.rs), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/), [`site/`](site/) | [`changelog/observability.md`](changelog/observability.md) |
@@ -39,7 +39,34 @@ Open Prometheus at <http://127.0.0.1:9090> and Grafana at <http://127.0.0.1:3001
 just stack down
 ```
 
-Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each runnable profile is one ordered TOML file. Keep credentials in the ignored root `.env`.
+Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each runnable profile is one self-contained TOML file. Keep credentials in the ignored root `.env`.
+
+## Command routes
+
+`[[connectors]]` declares reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
+
+```toml
+[[connectors]]
+name = "validator"
+kind = "standard-validator+rpc"
+rpc_url = "http://validator:8899"
+
+[[connectors]]
+name = "hosted"
+kind = "helius+enhanced-rpc"
+rpc_url = "${SOL_MAINNET_RPC_URL}"
+
+[modes.consensus.commands]
+epoch_info = ["validator", "hosted"]
+vote_accounts = ["validator", "hosted"]
+
+[modes.leadership.commands]
+current_block_production = ["hosted", "validator"]
+current_leader_schedule = ["validator", "hosted"]
+next_leader_schedule = ["validator", "hosted"]
+```
+
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects unknown names, duplicate route entries, missing required routes, and RPC commands assigned to connectors without `rpc_url`. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
 
 ## Contributing
 

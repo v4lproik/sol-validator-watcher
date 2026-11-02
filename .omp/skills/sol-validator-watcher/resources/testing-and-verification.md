@@ -61,10 +61,12 @@ then complete the repository's required local gates.
 A behavioral change is not complete until the changed surface runs:
 
 - CLI/runtime: start the watcher with representative config, observe one poll,
-  fetch `/healthz` and `/metrics`, and stop cleanly.
-- RPC fallback/source selection: control each endpoint response and assert the
-  selected connector in `sol_metric_source_info`.
-- Dashboard: load the actual local panel with representative data.
+  fetch `/healthz` and `/metrics`, trigger shutdown, and observe a clean exit.
+- RPC fallback/source selection: control each endpoint response at the local Axum
+  boundary, configure an explicit per-command route, and assert
+  `sol_mode_command_source_info`.
+- Dashboard: load the actual local panel with representative mode, route,
+  source, and domain data.
 - Workflow or script: execute the harmless validation/build path and inspect its
   artifact or output.
 

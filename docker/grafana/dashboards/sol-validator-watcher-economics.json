@@ -1,0 +1,582 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-overview"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Consensus",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-consensus"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Leadership",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-leadership"
+    }
+  ],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "panels": [],
+      "title": "Economics Mode",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Whether the economics mode is disabled, down, or completing successfully.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "DISABLED"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "DOWN"
+                },
+                "2": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"}))) or vector(0)",
+          "instant": true,
+          "legendFormat": "Economics status",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Mode Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Declared connector fallback order. Available reflects whether the configured transport exists in the running profile.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 4,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sol_mode_command_route_info{network=~\"$network\",mode=\"economics\"} == 1",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{mode}} / {{command}} / {{connector}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "deployment": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "available": 0,
+              "network": 1,
+              "mode": 2,
+              "command": 3,
+              "connector": 4,
+              "kind": 5,
+              "precedence": 6
+            },
+            "renameByName": {
+              "network": "Network",
+              "mode": "Mode",
+              "command": "Command",
+              "connector": "Connector",
+              "kind": "Kind",
+              "precedence": "Order",
+              "available": "Available"
+            }
+          }
+        }
+      ],
+      "title": "Economics Command Routes",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Connector that supplied each command's latest successful result.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 14,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sol_mode_command_source_info{network=~\"$network\",mode=\"economics\"} == 1",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{mode}} / {{command}} / {{connector}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "deployment": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "network": 0,
+              "mode": 1,
+              "command": 2,
+              "connector": 3,
+              "kind": 4,
+              "precedence": 5
+            },
+            "renameByName": {
+              "network": "Network",
+              "mode": "Mode",
+              "command": "Command",
+              "connector": "Connector",
+              "kind": "Kind",
+              "precedence": "Order",
+              "available": "Available"
+            }
+          }
+        }
+      ],
+      "title": "Latest Economics Sources",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 5,
+      "panels": [],
+      "title": "Validator Economics",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(sum(sol_epoch_reward_sol{scope=\"scope:network\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "Network",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "(sum(sol_epoch_reward_sol{scope=\"scope:watched\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "Watched",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Latest Epoch Reward",
+      "type": "stat",
+      "description": "Latest completed epoch reward in SOL for the network slice and the watched set."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 9
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(avg(sol_reward_per_block_sol{scope=\"scope:network\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "Network",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "(avg(sol_reward_per_block_sol{scope=\"scope:watched\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "Watched",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Reward / Produced Block",
+      "type": "stat",
+      "description": "Latest completed epoch reward divided by produced blocks."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 9
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:network\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "Network",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "(sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:watched\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "Watched",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Rewarded Blocks",
+      "type": "stat",
+      "description": "Produced blocks counted in the sampled reward epoch."
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "solana",
+    "watcher",
+    "mode",
+    "economics"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(sol_watcher_up, network)",
+        "includeAll": true,
+        "label": "Network",
+        "multi": true,
+        "name": "network",
+        "options": [],
+        "query": {
+          "query": "label_values(sol_watcher_up, network)",
+          "refId": "PrometheusVariableQueryEditor-Network"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Solana Validator Watcher Economics",
+  "uid": "sol-validator-watcher-economics",
+  "version": 1,
+  "weekStart": ""
+}

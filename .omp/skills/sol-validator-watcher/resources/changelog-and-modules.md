@@ -8,10 +8,10 @@ Read this resource for every repository change. It assigns durable ownership and
 
 | Module | Owns | Changelog |
 | --- | --- | --- |
-| Watcher | RPC and WebSocket collection, connector fallback, labels, validator records, aggregation, and economics collection | `changelog/watcher.md` |
-| Runtime | CLI startup, polling, HTTP serving, reload, task supervision, liveness, signals, and shutdown | `changelog/runtime.md` |
-| Configuration | Config parsing, environment expansion, validation, ordered connector profiles, and committed profiles | `changelog/configuration.md` |
-| Observability | Prometheus metrics and scraping, Grafana provisioning and dashboards, and the Pages surface | `changelog/observability.md` |
+| Watcher | Typed mode commands, RPC and WebSocket collection, command fallback, source provenance, labels, validator records, aggregation, and economics collection | `changelog/watcher.md` |
+| Runtime | CLI startup, polling, HTTP serving, transactional source-chain reload, task supervision, liveness, signals, and shutdown | `changelog/runtime.md` |
+| Configuration | Config parsing, environment expansion, connector and command-route validation, and committed profiles | `changelog/configuration.md` |
+| Observability | Prometheus metrics and scraping, mode-focused Grafana provisioning and dashboards, and the Pages surface | `changelog/observability.md` |
 | Operations | Docker image, Compose profiles, Surfpool, local services, and stack lifecycle | `changelog/operations.md` |
 | Tooling | Just recipes, tests and coverage workflows, CI, publishing, scripts, contributor docs, and repository guidance | `changelog/tooling.md` |
 

@@ -6,6 +6,8 @@
 - Removed split-config compatibility fields, relative companion-file loading, YAML parsing, and the obsolete transport-mode environment setting.
 - Replaced the multi-provider parser dependency with direct TOML deserialization and current Serde support.
 - Grouped the self-contained profiles under `config/local/`, `config/compose/`, and `config/remote/`.
-- Preserved environment expansion, connector declaration-order priority, validation, and profile behavior.
+- Preserved environment expansion, normalization, validation, and profile behavior while moving execution priority from connector declaration order to explicit command routes.
 - Rejected unknown top-level and nested fields so misspellings and removed split-config keys fail before runtime construction.
 - Removed the redundant root validator mode and WebSocket toggle; connector URLs now define available transports.
+- Added strict built-in mode command routes whose connector arrays define the complete priority and fallback order for each command.
+- Rejected missing required routes, unknown or duplicate route names, disabled economics routes, and RPC commands assigned to connectors without RPC transport.

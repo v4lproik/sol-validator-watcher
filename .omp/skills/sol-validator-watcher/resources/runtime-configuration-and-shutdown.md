@@ -9,10 +9,12 @@ liveness files, signals, and shutdown.
 ## Ownership and Boundaries
 
 - `config.rs` parses each self-contained TOML profile, expands environment
-  placeholders, normalizes values, and validates the ordered connector list.
-  No other module reads raw environment-backed config policy.
-- `main.rs` builds runtime clients from validated config, owns reload, runs the
-  polling loop, and exposes `/metrics` and `/healthz`.
+  placeholders, normalizes values, and validates connectors plus every built-in
+  mode's command routes. No other module reads raw environment-backed policy.
+- `source.rs` constructs RPC and WebSocket clients once and compiles command
+  routes into immutable connector index chains.
+- `main.rs` owns transactional reload, the polling loop, dependency guards, and
+  the `/metrics` and `/healthz` surfaces.
 - `tasks.rs` owns task registration, first-failure handling, shutdown broadcast,
   and join errors.
 - `websocket.rs` owns websocket connect/probe behavior.
@@ -21,15 +23,19 @@ liveness files, signals, and shutdown.
 
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
   variables fail with the config field/path context; never log resolved secrets.
-- Keep connectors inline in the profile. Declaration order is the runtime
-  priority and fallback order for every metric.
-- Treat each connector's `rpc_url` and `ws_url` as the sole transport
-  configuration. Do not add root-level validator modes or transport toggles.
+- Keep connectors inline in the profile. Each `modes.<mode>.commands.<command>`
+  array is that command's exact priority and fallback order; connector
+  declaration order is not execution policy.
+- Treat each connector's `rpc_url` and `ws_url` as its sole transport
+  configuration. Do not add duplicate transport toggles.
 - Normalize names, URLs, commitments, labels, and public keys once, then validate
   the normalized value.
 - Reject unknown fields, zero ports/timeouts/intervals, duplicate connector
-  names, unsupported commitments, invalid websocket schemes, and impossible
-  economics mode/target combinations before client construction.
+  names, unsupported commitments, invalid websocket schemes, missing required
+  routes, unknown or duplicate route entries, RPC routes without RPC transport,
+  and impossible economics mode/target combinations before client construction.
+- Optional WebSocket routes may contain connectors whose environment-expanded
+  `ws_url` is empty; expose them as unavailable and skip them at execution.
 - Removed split-config and single-connection fields stay unsupported. Do not
   add aliases or a second migration path.
 - Config reload is transactional: load and validate the candidate, build every
@@ -48,8 +54,9 @@ liveness files, signals, and shutdown.
 - Do not spawn detached work whose error or lifetime outlives `TaskManager`.
 - Shutdown waits for supervised tasks to finish. Cancellation must interrupt
   polling sleeps without waiting for the full interval.
-- Dependency guards run before collection. RPC health failure is fatal; every
-  connector with `ws_url` is eligible for WebSocket probing.
+- Dependency guards run before collection. The `health.rpc_health` route is
+  fail-closed; `health.ws_health` is probed only through its explicitly named
+  connectors and remains optional when no named connector has `ws_url`.
 - Update the liveness file only after a complete snapshot has updated metrics.
   A process that is looping but failing collection is not live by this contract.
 - `/healthz` currently proves the HTTP process is serving. Do not silently turn
@@ -58,8 +65,9 @@ liveness files, signals, and shutdown.
 
 ## Reload Review Gates
 
-1. Which config fields changed, and which runtime clients/orderings must rebuild?
-2. Can any fallible step mutate live state before the candidate is fully valid?
+1. Which config fields changed, and must the compiled `SourceChain` rebuild?
+2. Can any fallible step mutate live state before the candidate and its complete
+   source chain are valid?
 3. Which fields cannot reload and require a restart warning?
 4. Does a failed candidate preserve every prior runtime dependency and flag?
 5. Are economics capability checks invalidated when their inputs change?
@@ -89,7 +97,7 @@ liveness files, signals, and shutdown.
 ## Boundary Proof
 
 Use config unit tests for strict parsing/validation, every committed profile,
-canonical connector kinds, and declaration-order preservation. Use task tests
-for completion/error/panic/shutdown outcomes. Smoke the binary with a controlled
-RPC endpoint, fetch `/healthz` and `/metrics`, trigger shutdown, and observe a
-clean exit when runtime wiring changes.
+canonical connector kinds, and exact command-route order. Use task tests for
+completion/error/panic/shutdown outcomes. Smoke the binary with controlled RPC
+endpoints, fetch `/healthz` and `/metrics`, trigger shutdown, and observe a clean
+exit when runtime wiring changes.

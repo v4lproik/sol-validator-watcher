@@ -2,8 +2,10 @@
 
 ## Unreleased
 
-- Added Prometheus network, validator, economics, connector, and selected-source metrics.
-- Added provisioned Grafana overview and breakdown dashboards plus the coverage-backed Pages site.
+- Added Prometheus network, validator, economics, and connector metrics.
+- Added the coverage-backed Pages site.
 - Moved Prometheus and Grafana configuration beside their Compose owners under `docker/`.
-- Read connector metadata directly from the sole ordered configuration list while preserving connector-kind labels and precedence.
+- Published connector inventory, configured command routes, and successful command sources as separate bounded metrics.
 - Removed obsolete validator-mode and WebSocket-toggle labels from watcher configuration metadata; transport labels are derived from connectors.
+- Added bounded mode enablement, health, configured-route, and selected-command-source metrics.
+- Split Grafana into overview, consensus, leadership, and economics dashboards with mode-specific routing and provenance panels.

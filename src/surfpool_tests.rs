@@ -1,8 +1,12 @@
 use crate::{
     collector::{collect_snapshot, RpcClient},
-    config::{Config, ConnectorConfig, ConnectorKind},
+    config::{
+        Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
+        EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
+        LeadershipModeConfig, ModesConfig,
+    },
     metrics::Metrics,
-    websocket::WebsocketProbeClient,
+    source::SourceChain,
 };
 use anyhow::{bail, Context, Result};
 use std::{
@@ -34,40 +38,26 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
             ws_timeout_sec: 5,
             ..ConnectorConfig::default()
         }],
+        modes: surfpool_modes(),
         poll_interval_sec: 1,
         delinquent_slot_distance: Some(128),
         ..Config::default()
     };
-    let connector = &config.connectors[0];
-    let client = RpcClient::new(
-        connector
-            .rpc_url
-            .clone()
-            .context("surfpool connector requires rpc_url")?,
-        Duration::from_secs(connector.rpc_timeout_sec),
-        connector.commitment_config()?,
-    )?;
-    let ws_client = WebsocketProbeClient::new(
-        connector
-            .ws_url
-            .clone()
-            .context("surfpool connector requires ws_url")?,
-        Duration::from_secs(connector.ws_timeout_sec),
-    );
+    let sources = SourceChain::from_config(&config)?;
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
     runtime
-        .block_on(ws_client.probe())
+        .block_on(sources.websocket_healthy())
         .context("failed to probe surfpool websocket")?;
     let snapshot = runtime
-        .block_on(collect_snapshot(&client, &config))
+        .block_on(collect_snapshot(&sources, &config))
         .context("failed to collect snapshot from surfpool")?;
 
     let metrics = Metrics::new()?;
     metrics.set_watcher_up(&config.network, true);
     metrics.set_rpc_up(&config.network, true);
     metrics.set_ws_up(&config.network, true);
-    metrics.update_runtime_config(&config);
+    metrics.update_runtime_config(&config, &sources);
     metrics.update_snapshot(&snapshot);
     let rendered = metrics.render()?;
 
@@ -83,6 +73,32 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     drop(runtime);
     drop(harness);
     Ok(())
+}
+
+fn surfpool_modes() -> ModesConfig {
+    let route = || vec!["surfpool".to_string()];
+    ModesConfig {
+        health: HealthModeConfig {
+            commands: HealthCommands {
+                rpc_health: route(),
+                ws_health: route(),
+            },
+        },
+        consensus: ConsensusModeConfig {
+            commands: ConsensusCommands {
+                epoch_info: route(),
+                vote_accounts: route(),
+            },
+        },
+        leadership: LeadershipModeConfig {
+            commands: LeadershipCommands {
+                current_block_production: route(),
+                current_leader_schedule: route(),
+                next_leader_schedule: route(),
+            },
+        },
+        economics: EconomicsModeConfig::default(),
+    }
 }
 
 fn surfpool_e2e_enabled() -> bool {

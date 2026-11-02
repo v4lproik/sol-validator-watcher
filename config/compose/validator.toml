@@ -4,7 +4,7 @@ poll_interval_sec = ${SOL_WATCHER_POLL_INTERVAL_SEC:-15}
 delinquent_slot_distance = ${SOL_WATCHER_DELINQUENT_SLOT_DISTANCE:-128}
 liveness_file = "/tmp/sol-validator-watcher.liveness"
 
-# Connectors are tried in declaration order for each metric.
+# Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "external-validator"
 kind = "standard-validator+rpc"
@@ -14,5 +14,18 @@ ws_url = "${SOL_VALIDATOR_WS_URL:-}"
 ws_timeout_sec = ${SOL_WATCHER_WS_TIMEOUT_SEC:-10}
 commitment = "${SOL_WATCHER_COMMITMENT:-confirmed}"
 
-[economics]
-mode = "disabled"
+[modes.health.commands]
+rpc_health = ["external-validator"]
+ws_health = ["external-validator"]
+
+[modes.consensus.commands]
+epoch_info = ["external-validator"]
+vote_accounts = ["external-validator"]
+
+[modes.leadership.commands]
+current_block_production = ["external-validator"]
+current_leader_schedule = ["external-validator"]
+next_leader_schedule = ["external-validator"]
+
+[modes.economics]
+enabled = false

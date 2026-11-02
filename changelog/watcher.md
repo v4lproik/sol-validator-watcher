@@ -2,6 +2,6 @@
 
 ## Unreleased
 
-- Added ordered Solana RPC and WebSocket collection, connector fallback, selected-source provenance, watched-validator labels, and network aggregation.
+- Added typed health, consensus, leadership, and economics commands with explicit per-command connector fallback routes and selected-source provenance.
 - Added validator economics collection with explicit capability checks for required reward methods.
-- Migrated collector and Surfpool integration paths to the sole ordered connector list without changing fallback behavior.
+- Migrated collector and Surfpool integration paths to command-specific routes while preserving RPC collection and aggregation behavior.

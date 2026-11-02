@@ -4,7 +4,7 @@ poll_interval_sec = 5
 delinquent_slot_distance = 128
 liveness_file = "/tmp/sol-validator-watcher.liveness"
 
-# Connectors are tried in declaration order for each metric.
+# Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "surfpool"
 kind = "standard-validator+rpc"
@@ -14,5 +14,18 @@ ws_url = "ws://surfpool:8900"
 ws_timeout_sec = 5
 commitment = "confirmed"
 
-[economics]
-mode = "disabled"
+[modes.health.commands]
+rpc_health = ["surfpool"]
+ws_health = ["surfpool"]
+
+[modes.consensus.commands]
+epoch_info = ["surfpool"]
+vote_accounts = ["surfpool"]
+
+[modes.leadership.commands]
+current_block_production = ["surfpool"]
+current_leader_schedule = ["surfpool"]
+next_leader_schedule = ["surfpool"]
+
+[modes.economics]
+enabled = false

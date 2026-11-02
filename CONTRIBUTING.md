@@ -27,7 +27,7 @@ just coverage check
 5. If you changed dashboards, validate them with:
 
 ```bash
-jq empty docker/grafana/dashboards/sol-validator-watcher-overview.json docker/grafana/dashboards/sol-validator-watcher-breakdown.json
+jq empty docker/grafana/dashboards/*.json
 ```
 
 ## Module changelogs

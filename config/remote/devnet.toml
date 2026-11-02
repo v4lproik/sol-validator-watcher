@@ -5,7 +5,7 @@ poll_interval_sec = 15
 delinquent_slot_distance = 128
 liveness_file = "/tmp/sol-validator-watcher.liveness"
 
-# Connectors are tried in declaration order for each metric.
+# Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "devnet-rpc"
 kind = "standard-validator+rpc"
@@ -19,11 +19,28 @@ commitment = "confirmed"
 vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
 labels = ["operator:kiln", "validator:kiln-devnet"]
 
-[economics]
-mode = "disabled"
-# Enable single-validator economics only on RPC endpoints that can serve
-# getInflationReward and previous-epoch getBlockProduction.
+[modes.health.commands]
+rpc_health = ["devnet-rpc"]
+ws_health = ["devnet-rpc"]
+
+[modes.consensus.commands]
+epoch_info = ["devnet-rpc"]
+vote_accounts = ["devnet-rpc"]
+
+[modes.leadership.commands]
+current_block_production = ["devnet-rpc"]
+current_leader_schedule = ["devnet-rpc"]
+next_leader_schedule = ["devnet-rpc"]
+
+[modes.economics]
+enabled = false
+# Enable economics only on RPC endpoints that can serve getInflationReward and
+# previous-epoch getBlockProduction, then add both command routes and a target:
 #
-# [economics.validator]
+# [modes.economics.commands]
+# inflation_rewards = ["devnet-rpc"]
+# reward_epoch_block_production = ["devnet-rpc"]
+#
+# [modes.economics.validator]
 # vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
 # labels = ["operator:kiln", "validator:kiln-devnet"]

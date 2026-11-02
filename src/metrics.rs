@@ -1,6 +1,8 @@
 use crate::{
     collector::{Snapshot, WatchedValidatorMetrics},
     config::{Config, ConnectorConfig},
+    mode::ModeId,
+    source::{SourceChain, SourceSelection},
 };
 use anyhow::{Context, Result};
 use prometheus::{Encoder, GaugeVec, IntGaugeVec, Opts, Registry, TextEncoder};
@@ -19,7 +21,10 @@ pub struct Metrics {
     sol_ws_up: IntGaugeVec,
     sol_watcher_config_info: IntGaugeVec,
     sol_connector_info: IntGaugeVec,
-    sol_metric_source_info: IntGaugeVec,
+    sol_mode_enabled: IntGaugeVec,
+    sol_mode_up: IntGaugeVec,
+    sol_mode_command_route_info: IntGaugeVec,
+    sol_mode_command_source_info: IntGaugeVec,
     sol_validator_status_count: GaugeVec,
     sol_validator_status_stake_sol: GaugeVec,
     sol_activated_stake_sol: GaugeVec,
@@ -95,37 +100,62 @@ impl Metrics {
             &["network"],
         )?;
         let sol_watcher_config_info = IntGaugeVec::new(
-            Opts::new(
-                "sol_watcher_config_info",
-                "Watcher transport and economics mode configuration",
-            ),
-            &[
-                "network",
-                "transport_mode",
-                "economics_mode",
-                "ws_configured",
-            ],
+            Opts::new("sol_watcher_config_info", "Watcher transport configuration"),
+            &["network", "transport_mode", "ws_configured"],
         )?;
         let sol_connector_info = IntGaugeVec::new(
             Opts::new(
                 "sol_connector_info",
-                "Configured connector stack, including precedence order and available transports",
+                "Configured connector inventory and available transports",
             ),
             &[
                 "network",
                 "connector",
                 "kind",
-                "precedence",
+                "declaration_order",
                 "has_rpc",
                 "has_ws",
             ],
         )?;
-        let sol_metric_source_info = IntGaugeVec::new(
+        let sol_mode_enabled = IntGaugeVec::new(
+            Opts::new("sol_mode_enabled", "Whether a collection mode is enabled"),
+            &["network", "mode"],
+        )?;
+        let sol_mode_up = IntGaugeVec::new(
             Opts::new(
-                "sol_metric_source_info",
-                "Connector selected for each collected metric family after precedence resolution",
+                "sol_mode_up",
+                "Whether the latest execution of an enabled collection mode succeeded",
             ),
-            &["network", "metric", "connector", "kind"],
+            &["network", "mode"],
+        )?;
+        let sol_mode_command_route_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_mode_command_route_info",
+                "Configured connector fallback order for each mode command",
+            ),
+            &[
+                "network",
+                "mode",
+                "command",
+                "connector",
+                "kind",
+                "precedence",
+                "available",
+            ],
+        )?;
+        let sol_mode_command_source_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_mode_command_source_info",
+                "Connector that supplied the latest result for each mode command",
+            ),
+            &[
+                "network",
+                "mode",
+                "command",
+                "connector",
+                "kind",
+                "precedence",
+            ],
         )?;
 
         let sol_validator_status_count = GaugeVec::new(
@@ -362,7 +392,10 @@ impl Metrics {
         register(&registry, &sol_ws_up)?;
         register(&registry, &sol_watcher_config_info)?;
         register(&registry, &sol_connector_info)?;
-        register(&registry, &sol_metric_source_info)?;
+        register(&registry, &sol_mode_enabled)?;
+        register(&registry, &sol_mode_up)?;
+        register(&registry, &sol_mode_command_route_info)?;
+        register(&registry, &sol_mode_command_source_info)?;
         register(&registry, &sol_validator_status_count)?;
         register(&registry, &sol_validator_status_stake_sol)?;
         register(&registry, &sol_activated_stake_sol)?;
@@ -410,7 +443,10 @@ impl Metrics {
             sol_ws_up,
             sol_watcher_config_info,
             sol_connector_info,
-            sol_metric_source_info,
+            sol_mode_enabled,
+            sol_mode_up,
+            sol_mode_command_route_info,
+            sol_mode_command_source_info,
             sol_validator_status_count,
             sol_validator_status_stake_sol,
             sol_activated_stake_sol,
@@ -477,7 +513,27 @@ impl Metrics {
             .set(i64::from(is_up));
     }
 
-    pub fn update_runtime_config(&self, config: &Config) {
+    pub fn set_mode_up(&self, network: &str, mode: ModeId, is_up: bool) {
+        self.sol_mode_up
+            .with_label_values(&[network, mode.as_str()])
+            .set(i64::from(is_up));
+    }
+
+    pub fn set_command_source(&self, network: &str, source: &SourceSelection) {
+        let precedence = source.precedence.to_string();
+        self.sol_mode_command_source_info
+            .with_label_values(&[
+                network,
+                source.mode.as_str(),
+                source.command.as_str(),
+                source.connector.as_ref(),
+                source.kind.as_str(),
+                precedence.as_str(),
+            ])
+            .set(1);
+    }
+
+    pub fn update_runtime_config(&self, config: &Config, sources: &SourceChain) {
         let connectors = &config.connectors;
         let ws_configured = connectors.iter().any(ConnectorConfig::has_ws);
         let transport_mode = if ws_configured {
@@ -488,25 +544,49 @@ impl Metrics {
 
         self.sol_watcher_config_info.reset();
         self.sol_connector_info.reset();
+        self.sol_mode_enabled.reset();
+        self.sol_mode_up.reset();
+        self.sol_mode_command_route_info.reset();
+        self.sol_mode_command_source_info.reset();
         self.sol_watcher_config_info
-            .with_label_values(&[
-                &config.network,
-                transport_mode,
-                config.economics.mode.as_str(),
-                bool_label(ws_configured),
-            ])
+            .with_label_values(&[&config.network, transport_mode, bool_label(ws_configured)])
             .set(1);
 
         for (index, connector) in connectors.iter().enumerate() {
-            let precedence = (index + 1).to_string();
+            let declaration_order = (index + 1).to_string();
             self.sol_connector_info
                 .with_label_values(&[
                     &config.network,
                     connector.name.as_str(),
                     connector.kind.as_str(),
-                    precedence.as_str(),
+                    declaration_order.as_str(),
                     bool_label(connector.has_rpc()),
                     bool_label(connector.has_ws()),
+                ])
+                .set(1);
+        }
+
+        for mode in ModeId::ALL {
+            let enabled = config.modes.enabled(mode);
+            self.sol_mode_enabled
+                .with_label_values(&[&config.network, mode.as_str()])
+                .set(i64::from(enabled));
+            if enabled {
+                self.set_mode_up(&config.network, mode, false);
+            }
+        }
+
+        for route in sources.routes() {
+            let precedence = route.precedence.to_string();
+            self.sol_mode_command_route_info
+                .with_label_values(&[
+                    &config.network,
+                    route.mode.as_str(),
+                    route.command.as_str(),
+                    route.connector,
+                    route.kind.as_str(),
+                    precedence.as_str(),
+                    bool_label(route.available),
                 ])
                 .set(1);
         }
@@ -532,13 +612,20 @@ impl Metrics {
             .with_label_values(&[&snapshot.network])
             .set(snapshot.reward_sample_epoch.map_or(0, |epoch| epoch as i64));
 
+        for status in &snapshot.mode_statuses {
+            self.set_mode_up(&snapshot.network, status.mode, status.up);
+        }
+
         for source in &snapshot.data_sources {
-            self.sol_metric_source_info
+            let precedence = source.precedence.to_string();
+            self.sol_mode_command_source_info
                 .with_label_values(&[
                     &snapshot.network,
-                    source.metric.as_str(),
-                    source.connector.as_str(),
+                    source.mode.as_str(),
+                    source.command.as_str(),
+                    source.connector.as_ref(),
                     source.kind.as_str(),
+                    precedence.as_str(),
                 ])
                 .set(1);
         }
@@ -633,7 +720,6 @@ impl Metrics {
         self.sol_blocks_missed.reset();
         self.sol_block_production_rate.reset();
         self.sol_future_leader_slots.reset();
-        self.sol_metric_source_info.reset();
         self.sol_watched_validator_info.reset();
         self.sol_watched_validator_scope_info.reset();
         self.sol_watched_validator_activated_stake_sol.reset();
@@ -759,11 +845,20 @@ fn watched_validator_labels<'a>(
 mod tests {
     use super::{bool_label, Metrics};
     use crate::{
-        collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics},
-        config::{Config, ConnectorConfig, ConnectorKind},
+        collector::{
+            ModeStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
+            WatchedValidatorMetrics,
+        },
+        config::{
+            Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
+            EconomicsCommands, EconomicsModeConfig, HealthCommands, HealthModeConfig,
+            LeadershipCommands, LeadershipModeConfig, ModesConfig,
+        },
+        mode::{CommandId, ModeId},
+        source::SourceChain,
     };
     use anyhow::Result;
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, sync::Arc};
 
     #[test]
     fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
@@ -817,23 +912,40 @@ mod tests {
                 future_leader_slots: 2,
             }],
             data_sources: vec![
-                crate::collector::SnapshotDataSource {
-                    metric: "epoch-info".to_string(),
-                    connector: "local-validator".to_string(),
-                    kind: "standard-validator".to_string(),
+                SnapshotDataSource {
+                    mode: ModeId::Consensus,
+                    command: CommandId::EpochInfo,
+                    connector: Arc::from("local-validator"),
+                    kind: ConnectorKind::StandardValidator,
+                    precedence: 1,
                 },
-                crate::collector::SnapshotDataSource {
-                    metric: "inflation-rewards".to_string(),
-                    connector: "helius-rpc".to_string(),
-                    kind: "helius+enhanced-rpc".to_string(),
+                SnapshotDataSource {
+                    mode: ModeId::Economics,
+                    command: CommandId::InflationRewards,
+                    connector: Arc::from("helius-rpc"),
+                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    precedence: 2,
+                },
+            ],
+            mode_statuses: vec![
+                ModeStatus {
+                    mode: ModeId::Consensus,
+                    up: true,
+                },
+                ModeStatus {
+                    mode: ModeId::Leadership,
+                    up: true,
+                },
+                ModeStatus {
+                    mode: ModeId::Economics,
+                    up: true,
                 },
             ],
         };
-
         metrics.set_watcher_up("mainnet-beta", true);
         metrics.set_rpc_up("mainnet-beta", true);
         metrics.set_ws_up("mainnet-beta", true);
-        metrics.update_runtime_config(&Config {
+        let mut config = Config {
             network: "mainnet-beta".to_string(),
             connectors: vec![
                 ConnectorConfig {
@@ -861,17 +973,32 @@ mod tests {
                     ..ConnectorConfig::default()
                 },
             ],
+            modes: modes_for(
+                &["local-validator", "helius-rpc", "full-rpc"],
+                Some("helius-ws"),
+                true,
+            ),
             ..Config::default()
-        });
+        };
+        config.modes.health.commands.ws_health =
+            vec!["local-validator".to_string(), "helius-ws".to_string()];
+        let sources = SourceChain::from_config(&config)?;
+        metrics.update_runtime_config(&config, &sources);
         metrics.update_snapshot(&snapshot);
         let rendered = metrics.render()?;
 
-        assert!(rendered.contains("sol_watcher_config_info{economics_mode=\"disabled\",network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",has_rpc=\"true\",has_ws=\"false\",kind=\"standard-validator\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",has_rpc=\"false\",has_ws=\"true\",kind=\"helius+enhanced-wss\",network=\"mainnet-beta\",precedence=\"3\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"full-rpc\",has_rpc=\"true\",has_ws=\"false\",kind=\"validator+full-rpc\",network=\"mainnet-beta\",precedence=\"4\"} 1"));
-        assert!(rendered.contains("sol_metric_source_info{connector=\"local-validator\",kind=\"standard-validator\",metric=\"epoch-info\",network=\"mainnet-beta\"} 1"));
-        assert!(rendered.contains("sol_metric_source_info{connector=\"helius-rpc\",kind=\"helius+enhanced-rpc\",metric=\"inflation-rewards\",network=\"mainnet-beta\"} 1"));
+        assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_rpc=\"true\",has_ws=\"false\",kind=\"standard-validator\",network=\"mainnet-beta\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_rpc=\"false\",has_ws=\"true\",kind=\"helius+enhanced-wss\",network=\"mainnet-beta\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",kind=\"standard-validator\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",kind=\"helius+enhanced-wss\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",kind=\"helius+enhanced-rpc\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\"} 1"));
+        assert!(
+            rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1")
+        );
+        assert!(rendered.contains("sol_mode_up{mode=\"leadership\",network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_reward_sample_epoch{network=\"mainnet-beta\"} 41"));
         assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));
@@ -895,7 +1022,7 @@ mod tests {
         let metrics = Metrics::new()?;
         let network = "mainnet-beta";
 
-        metrics.update_runtime_config(&Config {
+        let config = Config {
             network: network.to_string(),
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
@@ -904,8 +1031,11 @@ mod tests {
                 ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
             }],
+            modes: modes_for(&["primary"], Some("primary"), false),
             ..Config::default()
-        });
+        };
+        let sources = SourceChain::from_config(&config)?;
+        metrics.update_runtime_config(&config, &sources);
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
             epoch: 1,
@@ -931,13 +1061,18 @@ mod tests {
                 block_production_rate: 100.0,
                 future_leader_slots: 0,
             }],
-            data_sources: vec![crate::collector::SnapshotDataSource {
-                metric: "epoch-info".to_string(),
-                connector: "primary".to_string(),
-                kind: "standard-validator+rpc".to_string(),
+            data_sources: vec![SnapshotDataSource {
+                mode: ModeId::Consensus,
+                command: CommandId::EpochInfo,
+                connector: Arc::from("primary"),
+                kind: ConnectorKind::StandardValidator,
+                precedence: 1,
+            }],
+            mode_statuses: vec![ModeStatus {
+                mode: ModeId::Consensus,
+                up: true,
             }],
         });
-
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
             epoch: 2,
@@ -947,6 +1082,7 @@ mod tests {
             scopes: BTreeMap::new(),
             watched_validators: vec![],
             data_sources: vec![],
+            mode_statuses: vec![],
         });
 
         let rendered = metrics.render()?;
@@ -954,6 +1090,53 @@ mod tests {
         assert!(!rendered.contains("old-vote"));
 
         Ok(())
+    }
+
+    fn modes_for(
+        rpc_connectors: &[&str],
+        websocket_connector: Option<&str>,
+        economics_enabled: bool,
+    ) -> ModesConfig {
+        let rpc_route = || {
+            rpc_connectors
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect()
+        };
+        ModesConfig {
+            health: HealthModeConfig {
+                commands: HealthCommands {
+                    rpc_health: rpc_route(),
+                    ws_health: websocket_connector
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect(),
+                },
+            },
+            consensus: ConsensusModeConfig {
+                commands: ConsensusCommands {
+                    epoch_info: rpc_route(),
+                    vote_accounts: rpc_route(),
+                },
+            },
+            leadership: LeadershipModeConfig {
+                commands: LeadershipCommands {
+                    current_block_production: rpc_route(),
+                    current_leader_schedule: rpc_route(),
+                    next_leader_schedule: rpc_route(),
+                },
+            },
+            economics: EconomicsModeConfig {
+                enabled: economics_enabled,
+                validator: None,
+                commands: EconomicsCommands {
+                    inflation_rewards: economics_enabled.then(rpc_route).unwrap_or_default(),
+                    reward_epoch_block_production: economics_enabled
+                        .then(rpc_route)
+                        .unwrap_or_default(),
+                },
+            },
+        }
     }
 
     #[test]

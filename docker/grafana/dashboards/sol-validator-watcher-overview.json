@@ -24,9 +24,27 @@
       "includeVars": true,
       "keepTime": true,
       "targetBlank": false,
-      "title": "Scope Breakdown",
+      "title": "Consensus",
       "type": "link",
-      "url": "/d/sol-validator-watcher-breakdown/solana-validator-watcher-breakdown"
+      "url": "/d/sol-validator-watcher-consensus"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Leadership",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-leadership"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Economics",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-economics"
     }
   ],
   "liveNow": true,
@@ -39,9 +57,591 @@
         "x": 0,
         "y": 0
       },
-      "id": 100,
+      "id": 1,
       "panels": [],
-      "title": "\ud83d\udda7 Network \ud83d\udda7",
+      "title": "Collection Modes and Routing",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Whether the health mode is disabled, down, or completing successfully.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "DISABLED"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "DOWN"
+                },
+                "2": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"health\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"health\"}))) or vector(0)",
+          "instant": true,
+          "legendFormat": "Health status",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Health Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Whether the consensus mode is disabled, down, or completing successfully.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "DISABLED"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "DOWN"
+                },
+                "2": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"consensus\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"consensus\"}))) or vector(0)",
+          "instant": true,
+          "legendFormat": "Consensus status",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Consensus Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Whether the leadership mode is disabled, down, or completing successfully.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "DISABLED"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "DOWN"
+                },
+                "2": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"leadership\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"leadership\"}))) or vector(0)",
+          "instant": true,
+          "legendFormat": "Leadership status",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Leadership Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Whether the economics mode is disabled, down, or completing successfully.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "dark-gray",
+                  "index": 0,
+                  "text": "DISABLED"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "DOWN"
+                },
+                "2": {
+                  "color": "green",
+                  "index": 2,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-gray",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"}))) or vector(0)",
+          "instant": true,
+          "legendFormat": "Economics status",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Economics Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Declared connector fallback order. Available reflects whether the configured transport exists in the running profile.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sol_mode_command_route_info{network=~\"$network\"} == 1",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{mode}} / {{command}} / {{connector}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "deployment": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "available": 0,
+              "network": 1,
+              "mode": 2,
+              "command": 3,
+              "connector": 4,
+              "kind": 5,
+              "precedence": 6
+            },
+            "renameByName": {
+              "network": "Network",
+              "mode": "Mode",
+              "command": "Command",
+              "connector": "Connector",
+              "kind": "Kind",
+              "precedence": "Order",
+              "available": "Available"
+            }
+          }
+        }
+      ],
+      "title": "Configured Command Routes",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Connector that supplied each command's latest successful result.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sol_mode_command_source_info{network=~\"$network\"} == 1",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{mode}} / {{command}} / {{connector}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "deployment": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "network": 0,
+              "mode": 1,
+              "command": 2,
+              "connector": 3,
+              "kind": 4,
+              "precedence": 5
+            },
+            "renameByName": {
+              "network": "Network",
+              "mode": "Mode",
+              "command": "Command",
+              "connector": "Connector",
+              "kind": "Kind",
+              "precedence": "Order",
+              "available": "Available"
+            }
+          }
+        }
+      ],
+      "title": "Latest Command Sources",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 8,
+      "panels": [],
+      "title": "Network",
       "type": "row"
     },
     {
@@ -71,9 +671,9 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 13
       },
-      "id": 102,
+      "id": 9,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -137,9 +737,9 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 13
       },
-      "id": 131,
+      "id": 10,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -194,9 +794,9 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 13
       },
-      "id": 103,
+      "id": 11,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -264,9 +864,9 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 13
       },
-      "id": 104,
+      "id": 12,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -333,9 +933,9 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 13
       },
-      "id": 105,
+      "id": 13,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -402,9 +1002,9 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 13
       },
-      "id": 106,
+      "id": 14,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -437,89 +1037,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 17
       },
-      "id": 141,
+      "id": 15,
       "panels": [],
-      "title": "\ud83d\udea8 Operator State \ud83d\udea8",
+      "title": "Operator State",
       "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Down means a transport component is failing. Stale means slot samples have stopped refreshing even if the process is still up.",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "text": "Healthy"
-                },
-                "1": {
-                  "text": "Stale"
-                },
-                "2": {
-                  "text": "Down"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 2
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 6
-      },
-      "id": 142,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "value"
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "clamp_max(((1 - min(sol_watcher_up{network=~\"$network\"})) * 2) + ((1 - min(sol_rpc_up{network=~\"$network\"})) * 2) + (((max(sol_watcher_config_info{network=~\"$network\",ws_configured=\"true\"}) or vector(0)) * (1 - min(sol_ws_up{network=~\"$network\"}))) * 2) + (clamp_min(time() - min(timestamp(sol_slot{network=~\"$network\"})), 0) > bool 60), 2)",
-          "instant": true,
-          "legendFormat": "data_path_state",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Data Path State",
-      "type": "stat"
     },
     {
       "datasource": {
@@ -567,11 +1090,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 6
+        "w": 8,
+        "x": 0,
+        "y": 18
       },
-      "id": 143,
+      "id": 16,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -644,11 +1167,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 6
+        "w": 8,
+        "x": 8,
+        "y": 18
       },
-      "id": 144,
+      "id": 17,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -709,11 +1232,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 6
+        "w": 8,
+        "x": 16,
+        "y": 18
       },
-      "id": 145,
+      "id": 18,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -740,2215 +1263,6 @@
       ],
       "title": "Validators Needing Attention",
       "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 10
-      },
-      "id": 107,
-      "panels": [],
-      "title": "\ud83e\uddf1 Validator Performance \ud83e\uddf1",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "locale"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 0,
-        "y": 11
-      },
-      "id": 108,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_validator_status_count{scope=\"scope:all-network\",status=\"current\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_validator_status_count{scope=\"scope:watched\",status=\"current\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Active Validators",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: SOL"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 4,
-        "y": 11
-      },
-      "id": 109,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_activated_stake_sol{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_activated_stake_sol{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Activated Stake",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 90
-              },
-              {
-                "color": "green",
-                "value": 97
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 8,
-        "y": 11
-      },
-      "id": 110,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_vote_efficiency_pct{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_vote_efficiency_pct{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Vote Efficiency",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "locale"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 12,
-        "y": 11
-      },
-      "id": 111,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_delinquent_validator_count{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_delinquent_validator_count{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Delinquent Validators",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: SOL"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 16,
-        "y": 11
-      },
-      "id": 112,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_delinquent_stake_sol{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_delinquent_stake_sol{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Delinquent Stake",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 80
-              },
-              {
-                "color": "green",
-                "value": 95
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 20,
-        "y": 11
-      },
-      "id": 113,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_block_production_rate{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_block_production_rate{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Block Production Rate",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 0,
-        "y": 16
-      },
-      "id": 114,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_activated_stake_sol{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_activated_stake_sol{scope=\"scope:all-network\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Share of Network Stake",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "locale"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 4,
-        "y": 16
-      },
-      "id": 115,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_future_leader_slots{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_future_leader_slots{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Future Leader Slots",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Use the gap series to see whether watched validators are outperforming or underperforming the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 8,
-        "y": 16
-      },
-      "id": 116,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_average_commission_pct{scope=\"scope:all-network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_average_commission_pct{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Average Commission",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 5
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 12,
-        "y": 16
-      },
-      "id": 132,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_delinquent_validator_count{scope=\"scope:all-network\",network=~\"$network\"}) / clamp_min(sum(sol_validator_status_count{scope=\"scope:all-network\",status=~\"current|delinquent\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_delinquent_validator_count{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_validator_status_count{scope=\"scope:watched\",status=~\"current|delinquent\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Delinquent Validator Ratio",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 5
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 16,
-        "y": 16
-      },
-      "id": 133,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_delinquent_stake_sol{scope=\"scope:all-network\",network=~\"$network\"}) / clamp_min(sum(sol_activated_stake_sol{scope=\"scope:all-network\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_delinquent_stake_sol{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_activated_stake_sol{scope=\"scope:watched\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Delinquent Stake Ratio",
-      "type": "gauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 10
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 20,
-        "y": 16
-      },
-      "id": 134,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_blocks_missed{scope=\"scope:all-network\",network=~\"$network\"}) / clamp_min(sum(sol_blocks_missed{scope=\"scope:all-network\",network=~\"$network\"}) + sum(sol_blocks_produced{scope=\"scope:all-network\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "All Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_blocks_missed{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_blocks_missed{scope=\"scope:watched\",network=~\"$network\"}) + sum(sol_blocks_produced{scope=\"scope:watched\",network=~\"$network\"}), 1e-9)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Skip Rate",
-      "type": "gauge"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 21
-      },
-      "id": 146,
-      "panels": [],
-      "title": "\ud83d\udcb8 Validator Economics \ud83d\udcb8",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: SOL",
-          "decimals": 2
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 0,
-        "y": 22
-      },
-      "id": 147,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_epoch_reward_sol{scope=\"scope:network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_epoch_reward_sol{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Latest Epoch Reward",
-      "type": "stat",
-      "description": "Latest completed epoch reward in SOL for the network slice and the watched set."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: SOL",
-          "decimals": 4
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 8,
-        "y": 22
-      },
-      "id": 148,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_reward_per_block_sol{scope=\"scope:network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_reward_per_block_sol{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Reward / Produced Block",
-      "type": "stat",
-      "description": "Latest completed epoch reward divided by produced blocks."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "locale",
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 22
-      },
-      "id": 149,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:network\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Network",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:watched\",network=~\"$network\"})",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
-        }
-      ],
-      "title": "Rewarded Blocks",
-      "type": "stat",
-      "description": "Produced blocks counted in the sampled reward epoch."
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 27
-      },
-      "id": 119,
-      "panels": [],
-      "title": "\ud83d\udd0e Watched validators compared to the rest of the network \ud83d\udd0e",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Use the gap series to see whether watched validators are outperforming or underperforming the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 28
-      },
-      "id": 120,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_vote_efficiency_pct{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_vote_efficiency_pct{scope=\"scope:watched\",network=~\"$network\"})",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_vote_efficiency_pct{scope=\"scope:watched\",network=~\"$network\"}) - avg(sol_vote_efficiency_pct{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Vote Efficiency Trend",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Positive gap means watched validators are producing a higher share of their leader slots than the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 28
-      },
-      "id": 121,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_block_production_rate{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_block_production_rate{scope=\"scope:watched\",network=~\"$network\"})",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_block_production_rate{scope=\"scope:watched\",network=~\"$network\"}) - avg(sol_block_production_rate{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Block Production Trend",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Positive gap means watched validators are skipping more leader opportunities than the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 28
-      },
-      "id": 135,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_blocks_missed{scope=\"scope:network\",network=~\"$network\"}) / clamp_min(sum(sol_blocks_missed{scope=\"scope:network\",network=~\"$network\"}) + sum(sol_blocks_produced{scope=\"scope:network\",network=~\"$network\"}), 1e-9)",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_blocks_missed{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_blocks_missed{scope=\"scope:watched\",network=~\"$network\"}) + sum(sol_blocks_produced{scope=\"scope:watched\",network=~\"$network\"}), 1e-9)",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "(100 * sum(sol_blocks_missed{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_blocks_missed{scope=\"scope:watched\",network=~\"$network\"}) + sum(sol_blocks_produced{scope=\"scope:watched\",network=~\"$network\"}), 1e-9)) - (100 * sum(sol_blocks_missed{scope=\"scope:network\",network=~\"$network\"}) / clamp_min(sum(sol_blocks_missed{scope=\"scope:network\",network=~\"$network\"}) + sum(sol_blocks_produced{scope=\"scope:network\",network=~\"$network\"}), 1e-9))",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Skip Rate Trend",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "locale"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 28
-      },
-      "id": 136,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_future_leader_slots{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum(sol_future_leader_slots{scope=\"scope:watched\",network=~\"$network\"})",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Leader Pressure",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Positive gap means watched validators are falling further behind the current slot than the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 36
-      },
-      "id": 122,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_last_vote_slot_lag{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_last_vote_slot_lag{scope=\"scope:watched\",network=~\"$network\"})",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_last_vote_slot_lag{scope=\"scope:watched\",network=~\"$network\"}) - avg(sol_last_vote_slot_lag{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Vote Lag Trend",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Positive gap means watched validators are rooting more slowly than the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 36
-      },
-      "id": 123,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_root_slot_lag{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_root_slot_lag{scope=\"scope:watched\",network=~\"$network\"})",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_root_slot_lag{scope=\"scope:watched\",network=~\"$network\"}) - avg(sol_root_slot_lag{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Root Lag Trend",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Positive gap means a larger share of watched validators is delinquent than in the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 36
-      },
-      "id": 137,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_delinquent_validator_count{scope=\"scope:network\",network=~\"$network\"}) / clamp_min(sum(sol_validator_status_count{scope=\"scope:network\",status=~\"current|delinquent\",network=~\"$network\"}), 1e-9)",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * sum(sol_delinquent_validator_count{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_validator_status_count{scope=\"scope:watched\",status=~\"current|delinquent\",network=~\"$network\"}), 1e-9)",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "(100 * sum(sol_delinquent_validator_count{scope=\"scope:watched\",network=~\"$network\"}) / clamp_min(sum(sol_validator_status_count{scope=\"scope:watched\",status=~\"current|delinquent\",network=~\"$network\"}), 1e-9)) - (100 * sum(sol_delinquent_validator_count{scope=\"scope:network\",network=~\"$network\"}) / clamp_min(sum(sol_validator_status_count{scope=\"scope:network\",status=~\"current|delinquent\",network=~\"$network\"}), 1e-9))",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Delinquency Trend",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Positive gap means watched validators are charging a higher average commission than the rest of the network.",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 36
-      },
-      "id": 125,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_average_commission_pct{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Rest of Network",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_average_commission_pct{scope=\"scope:watched\",network=~\"$network\"})",
-          "legendFormat": "Watched",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "avg(sol_average_commission_pct{scope=\"scope:watched\",network=~\"$network\"}) - avg(sol_average_commission_pct{scope=\"scope:network\",network=~\"$network\"})",
-          "legendFormat": "Gap (Watched - Rest)",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Commission Trend",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 44
-      },
-      "id": 126,
-      "panels": [],
-      "title": "\ud83d\udc40 Watched validator leaders \ud83d\udc40",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 45
-      },
-      "id": 127,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "topk(10, max by (network, identity) (sol_watched_validator_vote_efficiency_pct{network=~\"$network\"}))",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Top Watched Vote Efficiency",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 45
-      },
-      "id": 138,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "bottomk(10, max by (network, identity) (sol_watched_validator_vote_efficiency_pct{network=~\"$network\"}))",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Lowest Watched Vote Efficiency",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 45
-      },
-      "id": 139,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "topk(10, max by (network, identity) (sol_watched_validator_blocks_missed{network=~\"$network\"}))",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Most Missed Leader Slots",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 45
-      },
-      "id": 130,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "topk(10, max by (network, identity) (sol_watched_validator_last_vote_slot_lag{network=~\"$network\"}))",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Worst Watched Last Vote Lag",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Sortable operator view for watched validators. Includes latest epoch rewards and reward per produced block alongside health and performance signals.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": false
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Status"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "current": {
-                        "color": "green",
-                        "index": 0,
-                        "text": "Current"
-                      },
-                      "delinquent": {
-                        "color": "red",
-                        "index": 1,
-                        "text": "Delinquent"
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              },
-              {
-                "id": "custom.align",
-                "value": "center"
-              },
-              {
-                "id": "custom.width",
-                "value": 120
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Stake (SOL)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "suffix: SOL"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              },
-              {
-                "id": "custom.width",
-                "value": 120
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Vote Efficiency"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 90
-                    },
-                    {
-                      "color": "green",
-                      "value": 95
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Vote Lag"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 8
-                    },
-                    {
-                      "color": "orange",
-                      "value": 32
-                    },
-                    {
-                      "color": "red",
-                      "value": 128
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Root Lag"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 8
-                    },
-                    {
-                      "color": "orange",
-                      "value": 32
-                    },
-                    {
-                      "color": "red",
-                      "value": 128
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Commission"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Skip Rate"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 5
-                    },
-                    {
-                      "color": "red",
-                      "value": 10
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Identity"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 230
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Vote Account"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 230
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Epoch Reward (SOL)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "suffix: SOL"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              },
-              {
-                "id": "custom.width",
-                "value": 130
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Rewarded Blocks"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.width",
-                "value": 120
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Reward / Block (SOL)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "suffix: SOL"
-              },
-              {
-                "id": "decimals",
-                "value": 4
-              },
-              {
-                "id": "custom.width",
-                "value": 140
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 53
-      },
-      "id": 140,
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Stake (SOL)"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_activated_stake_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_vote_efficiency_pct{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_last_vote_slot_lag{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "D"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_root_slot_lag{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "E"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_commission_pct{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "F"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "G"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "H"
-        },
-        {
-          "editorMode": "code",
-          "expr": "100 * max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) / clamp_min(max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) + max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")), 1)",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "I"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_future_leader_slots{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "J"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_epoch_reward_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "K"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "L"
-        },
-        {
-          "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_reward_per_block_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "{{network}} / {{identity}}",
-          "range": false,
-          "refId": "M"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "labelsToFields",
-          "options": {
-            "mode": "columns"
-          }
-        },
-        {
-          "id": "joinByField",
-          "options": {
-            "byField": "validator_key",
-            "mode": "outer"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Time 1": true,
-              "Time 2": true,
-              "Time 3": true,
-              "Time 4": true,
-              "Time 5": true,
-              "Time 6": true,
-              "Time 7": true,
-              "Time 8": true,
-              "Time 9": true,
-              "Value": true,
-              "Value #A": true,
-              "__name__": true,
-              "__name__ 1": true,
-              "__name__ 2": true,
-              "__name__ 3": true,
-              "__name__ 4": true,
-              "__name__ 5": true,
-              "__name__ 6": true,
-              "__name__ 7": true,
-              "__name__ 8": true,
-              "__name__ 9": true,
-              "validator_key": true,
-              "validator_key 1": true,
-              "validator_key 2": true,
-              "validator_key 3": true,
-              "validator_key 4": true,
-              "validator_key 5": true,
-              "validator_key 6": true,
-              "validator_key 7": true,
-              "validator_key 8": true,
-              "validator_key 9": true,
-              "network 1": true,
-              "network 2": true,
-              "network 3": true,
-              "network 4": true,
-              "network 5": true,
-              "network 6": true,
-              "network 7": true,
-              "network 8": true,
-              "network 9": true,
-              "identity 1": true,
-              "identity 2": true,
-              "identity 3": true,
-              "identity 4": true,
-              "identity 5": true,
-              "identity 6": true,
-              "identity 7": true,
-              "identity 8": true,
-              "identity 9": true,
-              "vote_account 1": true,
-              "vote_account 2": true,
-              "vote_account 3": true,
-              "vote_account 4": true,
-              "vote_account 5": true,
-              "vote_account 6": true,
-              "vote_account 7": true,
-              "vote_account 8": true,
-              "vote_account 9": true,
-              "status 1": true,
-              "status 2": true,
-              "status 3": true,
-              "status 4": true,
-              "status 5": true,
-              "status 6": true,
-              "status 7": true,
-              "status 8": true,
-              "status 9": true,
-              "Time 10": true,
-              "__name__ 10": true,
-              "validator_key 10": true,
-              "network 10": true,
-              "identity 10": true,
-              "vote_account 10": true,
-              "status 10": true,
-              "Time 11": true,
-              "__name__ 11": true,
-              "validator_key 11": true,
-              "network 11": true,
-              "identity 11": true,
-              "vote_account 11": true,
-              "status 11": true,
-              "Time 12": true,
-              "__name__ 12": true,
-              "validator_key 12": true,
-              "network 12": true,
-              "identity 12": true,
-              "vote_account 12": true,
-              "status 12": true
-            },
-            "indexByName": {},
-            "renameByName": {
-              "network": "Network",
-              "identity": "Identity",
-              "vote_account": "Vote Account",
-              "status": "Status",
-              "Value #B": "Stake (SOL)",
-              "Value #C": "Vote Efficiency",
-              "Value #D": "Vote Lag",
-              "Value #E": "Root Lag",
-              "Value #F": "Commission",
-              "Value #G": "Produced",
-              "Value #H": "Missed",
-              "Value #I": "Skip Rate",
-              "Value #J": "Next Leader Slots",
-              "Value #K": "Epoch Reward (SOL)",
-              "Value #L": "Rewarded Blocks",
-              "Value #M": "Reward / Block (SOL)"
-            }
-          }
-        }
-      ],
-      "title": "Watched Validators",
-      "type": "table"
     }
   ],
   "refresh": "15s",
@@ -2957,7 +1271,8 @@
   "tags": [
     "solana",
     "watcher",
-    "kiln-inspired"
+    "mode",
+    "overview"
   ],
   "templating": {
     "list": [
@@ -2996,6 +1311,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 3,
+  "version": 1,
   "weekStart": ""
 }

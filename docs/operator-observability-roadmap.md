@@ -1,6 +1,6 @@
 # Operator Observability Roadmap
 
-The current dashboards are useful, but they still lean toward monitoring overview instead of operator decision support.
+The dashboards are organized by execution mode, but several panels can still provide stronger operator decision support.
 
 ## Improve now with current metrics
 
@@ -22,15 +22,16 @@ These changes do not require new exporter metrics.
   - lowest vote efficiency
 - Prefer short trend panels over large gauges for watched-vs-network comparisons.
 
-### Breakdown dashboard
+### Mode dashboards
 
-- Prefer ranked bars and tables over pie charts when the goal is action.
-- Keep worst scopes first.
-  - highest skip rate
-  - highest delinquent stake ratio
-  - lowest vote efficiency
-  - most future leader slots
-- Add stake share and validator share tables per scope.
+- Consensus: keep delinquency, vote efficiency, finalization lag, stake, and
+  commission panels together; prefer ranked tables when the goal is action.
+- Leadership: keep future slots, produced/missed blocks, and skip rate together;
+  surface the worst validator or scope first.
+- Economics: keep rewards, rewarded blocks, and reward per produced block
+  together; distinguish a disabled mode from a failed or stale command.
+- Every mode dashboard must expose its enabled state, configured command routes,
+  latest successful command sources, and source health.
 
 ### Usage guidance
 

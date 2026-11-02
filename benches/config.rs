@@ -1,6 +1,10 @@
 // The benchmark compiles the production config module in isolation; application-only
 // helpers and the module's unit-test imports are intentionally unused by this target.
 #[allow(dead_code, unused_imports)]
+#[path = "../src/mode.rs"]
+mod mode;
+
+#[allow(dead_code, unused_imports)]
 #[path = "../src/config.rs"]
 mod config;
 
@@ -85,7 +89,29 @@ commitment = "confirmed"
         .expect("writing to a String cannot fail");
     }
 
-    config.push_str("[economics]\nmode = \"disabled\"\n");
+    let route = (0..connector_count)
+        .map(|index| format!("\"connector-{index}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    writeln!(
+        config,
+        r#"[modes.health.commands]
+rpc_health = [{route}]
+ws_health = [{route}]
+
+[modes.consensus.commands]
+epoch_info = [{route}]
+vote_accounts = [{route}]
+
+[modes.leadership.commands]
+current_block_production = [{route}]
+current_leader_schedule = [{route}]
+next_leader_schedule = [{route}]
+
+[modes.economics]
+enabled = false"#
+    )
+    .expect("writing to a String cannot fail");
     config
 }
 

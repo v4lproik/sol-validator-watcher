@@ -10,20 +10,19 @@ mod collector;
 mod config;
 mod labels;
 mod metrics;
+mod mode;
+mod source;
 #[cfg(test)]
 mod surfpool_tests;
 mod tasks;
 mod websocket;
 
 use crate::{
-    collector::{
-        collect_snapshot_with_connectors, ensure_economics_supported_with_connectors, RpcClient,
-        RpcConnectorRef,
-    },
+    collector::{collect_snapshot, command::GetHealth, ensure_economics_supported},
     config::Config,
     metrics::Metrics,
+    source::SourceChain,
     tasks::{Shutdown, TaskExit, TaskManager},
-    websocket::WebsocketProbeClient,
 };
 use anyhow::{anyhow, Context, Result};
 use axum::{extract::State, http::StatusCode, routing::get, Router};
@@ -51,17 +50,10 @@ struct AppState {
     metrics: Arc<Metrics>,
 }
 
-struct RuntimeConnector {
-    name: String,
-    kind: crate::config::ConnectorKind,
-    rpc_client: Option<RpcClient>,
-    ws_client: Option<WebsocketProbeClient>,
-}
-
 struct RuntimeState {
     config_path: PathBuf,
     config: Config,
-    connectors: Vec<RuntimeConnector>,
+    sources: SourceChain,
     config_modified: SystemTime,
     metrics_port: u16,
     economics_capabilities_verified: bool,
@@ -72,12 +64,12 @@ impl RuntimeState {
         let config = Config::load(&config_path)?;
         let config_modified = config_mtime(&config_path)?;
         let metrics_port = config.metrics_port;
-        let connectors = build_runtime_connectors(&config)?;
+        let sources = SourceChain::from_config(&config)?;
 
         Ok(Self {
             config_path,
             config,
-            connectors,
+            sources,
             config_modified,
             metrics_port,
             economics_capabilities_verified: false,
@@ -99,16 +91,17 @@ impl RuntimeState {
             );
         }
 
-        let connectors_changed = self.config.connectors != next.connectors;
+        let sources_changed =
+            self.config.connectors != next.connectors || self.config.modes != next.modes;
 
-        if connectors_changed {
-            self.connectors = build_runtime_connectors(&next)?;
+        if sources_changed {
+            self.sources = SourceChain::from_config(&next)?;
         }
 
         info!(
             watched_validators = next.watched_validators.len(),
             connectors = next.connectors.len(),
-            economics_mode = next.economics.mode.as_str(),
+            economics_mode = next.modes.economics.as_str(),
             "reloaded configuration"
         );
 
@@ -116,19 +109,6 @@ impl RuntimeState {
         self.config_modified = modified;
         self.economics_capabilities_verified = false;
         Ok(())
-    }
-
-    fn rpc_connectors(&self) -> Vec<RpcConnectorRef<'_>> {
-        self.connectors
-            .iter()
-            .filter_map(|connector| {
-                connector.rpc_client.as_ref().map(|client| RpcConnectorRef {
-                    name: connector.name.as_str(),
-                    kind: connector.kind,
-                    client,
-                })
-            })
-            .collect()
     }
 }
 
@@ -179,8 +159,8 @@ async fn run_watcher_loop(
     info!(
         network = runtime.config.network,
         watched_validators = runtime.config.watched_validators.len(),
-        connectors = runtime.connectors.len(),
-        economics_mode = runtime.config.economics.mode.as_str(),
+        connectors = runtime.config.connectors.len(),
+        economics_mode = runtime.config.modes.economics.as_str(),
         "starting Solana validator watcher"
     );
 
@@ -190,18 +170,16 @@ async fn run_watcher_loop(
         }
 
         metrics.set_watcher_up(&runtime.config.network, true);
-        metrics.update_runtime_config(&runtime.config);
+        metrics.update_runtime_config(&runtime.config, &runtime.sources);
         guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
         ensure_economics_capabilities_ready(&mut runtime).await?;
-        let rpc_connectors = runtime.rpc_connectors();
-
-        let snapshot = collect_snapshot_with_connectors(&rpc_connectors, &runtime.config)
+        let snapshot = collect_snapshot(&runtime.sources, &runtime.config)
             .await
-            .context("failed to collect snapshot from configured RPC connectors")?;
+            .context("failed to collect snapshot from configured command routes")?;
         if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
             warn!(
                 configured_watched_validators = runtime.config.watched_validators.len(),
-                economics_mode = runtime.config.economics.mode.as_str(),
+                economics_mode = runtime.config.modes.economics.as_str(),
                 "configured watched validators did not match any vote accounts in the latest snapshot; watched-validator panels will be empty"
             );
         }
@@ -228,54 +206,35 @@ async fn run_watcher_loop(
 async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
     metrics.set_rpc_up(&runtime.config.network, false);
     metrics.set_ws_up(&runtime.config.network, false);
-    let mut last_rpc_error = None;
-    for connector in &runtime.connectors {
-        let Some(client) = connector.rpc_client.as_ref() else {
-            continue;
-        };
 
-        match client.ensure_healthy().await {
-            Ok(()) => {
-                metrics.set_rpc_up(&runtime.config.network, true);
-                last_rpc_error = None;
-                break;
-            }
-            Err(err) => {
-                warn!(
-                    connector = connector.name,
-                    connector_kind = connector.kind.as_str(),
-                    error = ?err,
-                    "RPC connector health check failed; trying next connector"
-                );
-                last_rpc_error = Some(err);
-            }
+    let rpc_health = runtime
+        .sources
+        .required(&GetHealth)
+        .await
+        .context("RPC health command failed for all configured connectors")?;
+    metrics.set_rpc_up(&runtime.config.network, true);
+    metrics.set_command_source(&runtime.config.network, &rpc_health.source);
+
+    let health_up = match runtime.sources.websocket_healthy().await {
+        Ok(Some(source)) => {
+            metrics.set_ws_up(&runtime.config.network, true);
+            metrics.set_command_source(&runtime.config.network, &source);
+            true
         }
-    }
-
-    if let Some(err) = last_rpc_error {
-        return Err(err).context("RPC health guard failed for all configured connectors");
-    }
-
-    for connector in &runtime.connectors {
-        let Some(ws_client) = connector.ws_client.as_ref() else {
-            continue;
-        };
-
-        match ws_client.probe().await {
-            Ok(()) => {
-                metrics.set_ws_up(&runtime.config.network, true);
-                break;
-            }
-            Err(err) => {
-                warn!(
-                    connector = connector.name,
-                    connector_kind = connector.kind.as_str(),
-                    error = ?err,
-                    "websocket connector health check failed; trying next connector"
-                );
-            }
+        Ok(None) => true,
+        Err(err) => {
+            warn!(
+                error = ?err,
+                "websocket health command failed for all configured connectors"
+            );
+            false
         }
-    }
+    };
+    metrics.set_mode_up(
+        &runtime.config.network,
+        crate::mode::ModeId::Health,
+        health_up,
+    );
 
     Ok(())
 }
@@ -286,14 +245,13 @@ async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Resu
     }
 
     info!(
-        economics_mode = runtime.config.economics.mode.as_str(),
+        economics_mode = runtime.config.modes.economics.as_str(),
         "validating economics RPC capabilities"
     );
 
-    let rpc_connectors = runtime.rpc_connectors();
-    ensure_economics_supported_with_connectors(&rpc_connectors, &runtime.config)
+    ensure_economics_supported(&runtime.sources, &runtime.config)
         .await
-        .context("failed to validate economics RPC capabilities for configured connectors")?;
+        .context("failed to validate economics command routes")?;
 
     runtime.economics_capabilities_verified = true;
     info!("validated economics RPC capabilities");
@@ -301,8 +259,7 @@ async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Resu
 }
 
 fn economics_capability_check_required(runtime: &RuntimeState) -> bool {
-    !runtime.economics_capabilities_verified
-        && runtime.config.economics.mode != crate::config::EconomicsMode::Disabled
+    !runtime.economics_capabilities_verified && runtime.config.modes.economics.enabled
 }
 
 async fn run_http_server(
@@ -359,32 +316,6 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
-fn build_runtime_connectors(config: &Config) -> Result<Vec<RuntimeConnector>> {
-    let mut connectors = Vec::with_capacity(config.connectors.len());
-    for connector in &config.connectors {
-        let rpc_client = match connector.rpc_url.as_ref() {
-            Some(rpc_url) => Some(RpcClient::new(
-                rpc_url.clone(),
-                Duration::from_secs(connector.rpc_timeout_sec),
-                connector.commitment_config()?,
-            )?),
-            None => None,
-        };
-        let ws_client = connector.ws_url.as_ref().map(|url| {
-            WebsocketProbeClient::new(url.clone(), Duration::from_secs(connector.ws_timeout_sec))
-        });
-
-        connectors.push(RuntimeConnector {
-            name: connector.name.clone(),
-            kind: connector.kind,
-            rpc_client,
-            ws_client,
-        });
-    }
-
-    Ok(connectors)
-}
-
 fn config_mtime(path: &Path) -> Result<SystemTime> {
     fs::metadata(path)
         .with_context(|| format!("failed to stat config file {}", path.display()))?
@@ -439,12 +370,17 @@ fn init_tracing() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_runtime_connectors, config_mtime, economics_capability_check_required,
-        ensure_economics_capabilities_ready, update_liveness_file, RuntimeState,
+        config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
+        update_liveness_file, RuntimeState,
     };
-    use crate::config::{
-        Config, ConnectorConfig, ConnectorKind, EconomicsConfig, EconomicsMode,
-        WatchedValidatorConfig,
+    use crate::{
+        config::{
+            Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
+            EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
+            LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
+        },
+        mode::CommandId,
+        source::SourceChain,
     };
     use anyhow::{Context, Result};
     use std::{
@@ -452,40 +388,6 @@ mod tests {
         path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
-
-    #[test]
-    fn build_runtime_connectors_preserves_declared_order_and_transport_capabilities() -> Result<()>
-    {
-        let config = Config {
-            connectors: vec![
-                ConnectorConfig {
-                    name: "local-validator".to_string(),
-                    kind: ConnectorKind::StandardValidator,
-                    rpc_url: Some("http://127.0.0.1:8899".to_string()),
-                    ..ConnectorConfig::default()
-                },
-                ConnectorConfig {
-                    name: "helius-ws".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedWss,
-                    ws_url: Some("wss://ws.helius.example".to_string()),
-                    ..ConnectorConfig::default()
-                },
-            ],
-            ..Config::default()
-        };
-
-        let connectors = build_runtime_connectors(&config)?;
-
-        assert_eq!(connectors.len(), 2);
-        assert_eq!(connectors[0].name, "local-validator");
-        assert!(connectors[0].rpc_client.is_some());
-        assert!(connectors[0].ws_client.is_none());
-        assert_eq!(connectors[1].name, "helius-ws");
-        assert!(connectors[1].rpc_client.is_none());
-        assert!(connectors[1].ws_client.is_some());
-
-        Ok(())
-    }
 
     #[test]
     fn update_liveness_file_writes_timestamp() -> Result<()> {
@@ -527,13 +429,14 @@ mod tests {
         let mut runtime = disabled_economics_runtime()?;
         assert!(!economics_capability_check_required(&runtime));
 
-        runtime.config.economics = EconomicsConfig {
-            mode: EconomicsMode::SingleValidator,
+        runtime.config.modes.economics = EconomicsModeConfig {
+            enabled: true,
             validator: Some(WatchedValidatorConfig {
                 identity: Some("11111111111111111111111111111111".to_string()),
                 vote_account: Some("vote-1".to_string()),
                 labels: vec![],
             }),
+            ..EconomicsModeConfig::default()
         };
         assert!(economics_capability_check_required(&runtime));
 
@@ -555,13 +458,14 @@ mod tests {
     #[tokio::test]
     async fn ensure_economics_capabilities_ready_skips_preverified_runtime() -> Result<()> {
         let mut runtime = disabled_economics_runtime()?;
-        runtime.config.economics = EconomicsConfig {
-            mode: EconomicsMode::SingleValidator,
+        runtime.config.modes.economics = EconomicsModeConfig {
+            enabled: true,
             validator: Some(WatchedValidatorConfig {
                 identity: Some("11111111111111111111111111111111".to_string()),
                 vote_account: Some("vote-1".to_string()),
                 labels: vec![],
             }),
+            ..EconomicsModeConfig::default()
         };
         runtime.economics_capabilities_verified = true;
 
@@ -572,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn reload_if_needed_rebuilds_connector_order_and_resets_economics_flag() -> Result<()> {
+    fn reload_if_needed_rebuilds_command_routes_and_resets_economics_flag() -> Result<()> {
         let test_dir = unique_test_dir("reload-order");
         fs::create_dir_all(&test_dir)
             .with_context(|| format!("failed to create {}", test_dir.display()))?;
@@ -591,6 +495,22 @@ rpc_url = "https://primary.example"
 name = "fallback"
 kind = "helius+enhanced-wss"
 ws_url = "wss://fallback.example"
+
+[modes.health.commands]
+rpc_health = ["primary"]
+ws_health = ["fallback"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+
+[modes.leadership.commands]
+current_block_production = ["primary"]
+current_leader_schedule = ["primary"]
+next_leader_schedule = ["primary"]
+
+[modes.economics]
+enabled = false
 "#,
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -614,6 +534,22 @@ ws_url = "wss://fallback.example"
 name = "replacement"
 kind = "standard-validator+rpc"
 rpc_url = "https://replacement.example"
+
+[modes.health.commands]
+rpc_health = ["replacement", "fallback"]
+ws_health = ["fallback"]
+
+[modes.consensus.commands]
+epoch_info = ["replacement", "fallback"]
+vote_accounts = ["replacement", "fallback"]
+
+[modes.leadership.commands]
+current_block_production = ["fallback", "replacement"]
+current_leader_schedule = ["replacement", "fallback"]
+next_leader_schedule = ["replacement", "fallback"]
+
+[modes.economics]
+enabled = false
 "#,
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -622,17 +558,20 @@ rpc_url = "https://replacement.example"
 
         assert_eq!(runtime.config.connectors[0].name, "fallback");
         assert_eq!(runtime.config.connectors[1].name, "replacement");
-        assert_eq!(runtime.connectors[0].name, "fallback");
-        assert_eq!(runtime.connectors[0].kind, ConnectorKind::HeliusRpc);
-        assert!(runtime.connectors[0].rpc_client.is_some());
-        assert!(runtime.connectors[0].ws_client.is_some());
-        assert_eq!(runtime.connectors[1].name, "replacement");
-        assert_eq!(
-            runtime.connectors[1].kind,
-            ConnectorKind::StandardValidatorRpc
-        );
-        assert!(runtime.connectors[1].rpc_client.is_some());
-        assert!(runtime.connectors[1].ws_client.is_none());
+        let rpc_health_route = runtime
+            .sources
+            .routes()
+            .filter(|route| route.command == CommandId::RpcHealth)
+            .map(|route| route.connector.to_string())
+            .collect::<Vec<_>>();
+        let block_production_route = runtime
+            .sources
+            .routes()
+            .filter(|route| route.command == CommandId::CurrentBlockProduction)
+            .map(|route| route.connector.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(rpc_health_route, ["replacement", "fallback"]);
+        assert_eq!(block_production_route, ["fallback", "replacement"]);
         assert_ne!(runtime.config_modified, UNIX_EPOCH);
         assert!(!runtime.economics_capabilities_verified);
 
@@ -656,6 +595,21 @@ network = "mainnet-beta"
 name = "primary"
 kind = "standard-validator+rpc"
 rpc_url = "https://primary.example"
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+
+[modes.leadership.commands]
+current_block_production = ["primary"]
+current_leader_schedule = ["primary"]
+next_leader_schedule = ["primary"]
+
+[modes.economics]
+enabled = false
 "#,
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -688,14 +642,13 @@ ws_url = "wss://ws-only.example"
         assert_eq!(runtime.config.network, "mainnet-beta");
         assert_eq!(runtime.config.connectors.len(), 1);
         assert_eq!(runtime.config.connectors[0].name, "primary");
-        assert_eq!(runtime.connectors.len(), 1);
-        assert_eq!(runtime.connectors[0].name, "primary");
-        assert_eq!(
-            runtime.connectors[0].kind,
-            ConnectorKind::StandardValidatorRpc
-        );
-        assert!(runtime.connectors[0].rpc_client.is_some());
-        assert!(runtime.connectors[0].ws_client.is_none());
+        let rpc_health_route = runtime
+            .sources
+            .routes()
+            .filter(|route| route.command == CommandId::RpcHealth)
+            .map(|route| route.connector.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(rpc_health_route, ["primary"]);
         assert_eq!(runtime.config_modified, UNIX_EPOCH);
         assert!(runtime.economics_capabilities_verified);
 
@@ -712,18 +665,45 @@ ws_url = "wss://ws-only.example"
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
             }],
+            modes: modes_for("primary"),
             ..Config::default()
         };
-        let connectors = build_runtime_connectors(&config)?;
+        let sources = SourceChain::from_config(&config)?;
 
         Ok(RuntimeState {
             config_path: PathBuf::from("config.toml"),
             config,
-            connectors,
+            sources,
             config_modified: UNIX_EPOCH,
             metrics_port: 8000,
             economics_capabilities_verified: false,
         })
+    }
+
+    fn modes_for(connector: &str) -> ModesConfig {
+        let route = || vec![connector.to_string()];
+        ModesConfig {
+            health: HealthModeConfig {
+                commands: HealthCommands {
+                    rpc_health: route(),
+                    ws_health: vec![],
+                },
+            },
+            consensus: ConsensusModeConfig {
+                commands: ConsensusCommands {
+                    epoch_info: route(),
+                    vote_accounts: route(),
+                },
+            },
+            leadership: LeadershipModeConfig {
+                commands: LeadershipCommands {
+                    current_block_production: route(),
+                    current_leader_schedule: route(),
+                    next_leader_schedule: route(),
+                },
+            },
+            economics: EconomicsModeConfig::default(),
+        }
     }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
