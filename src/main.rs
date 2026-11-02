@@ -170,7 +170,7 @@ async fn run_watcher_loop(
         }
 
         metrics.set_watcher_up(&runtime.config.network, true);
-        metrics.update_runtime_config(&runtime.config, &runtime.sources);
+        metrics.begin_poll(&runtime.config, &runtime.sources);
         guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
         ensure_economics_capabilities_ready(&mut runtime).await?;
         let snapshot = collect_snapshot(&runtime.sources, &runtime.config)

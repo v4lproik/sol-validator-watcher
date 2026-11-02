@@ -533,7 +533,12 @@ impl Metrics {
             .set(1);
     }
 
-    pub fn update_runtime_config(&self, config: &Config, sources: &SourceChain) {
+    pub fn begin_poll(&self, config: &Config, sources: &SourceChain) {
+        self.sol_mode_command_source_info.reset();
+        self.update_runtime_config(config, sources);
+    }
+
+    fn update_runtime_config(&self, config: &Config, sources: &SourceChain) {
         let connectors = &config.connectors;
         let ws_configured = connectors.iter().any(ConnectorConfig::has_ws);
         let transport_mode = if ws_configured {
@@ -547,7 +552,6 @@ impl Metrics {
         self.sol_mode_enabled.reset();
         self.sol_mode_up.reset();
         self.sol_mode_command_route_info.reset();
-        self.sol_mode_command_source_info.reset();
         self.sol_watcher_config_info
             .with_label_values(&[&config.network, transport_mode, bool_label(ws_configured)])
             .set(1);
@@ -855,7 +859,7 @@ mod tests {
             LeadershipCommands, LeadershipModeConfig, ModesConfig,
         },
         mode::{CommandId, ModeId},
-        source::SourceChain,
+        source::{SourceChain, SourceSelection},
     };
     use anyhow::Result;
     use std::{collections::BTreeMap, sync::Arc};
@@ -983,7 +987,7 @@ mod tests {
         config.modes.health.commands.ws_health =
             vec!["local-validator".to_string(), "helius-ws".to_string()];
         let sources = SourceChain::from_config(&config)?;
-        metrics.update_runtime_config(&config, &sources);
+        metrics.begin_poll(&config, &sources);
         metrics.update_snapshot(&snapshot);
         let rendered = metrics.render()?;
 
@@ -1035,7 +1039,7 @@ mod tests {
             ..Config::default()
         };
         let sources = SourceChain::from_config(&config)?;
-        metrics.update_runtime_config(&config, &sources);
+        metrics.begin_poll(&config, &sources);
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
             epoch: 1,
@@ -1088,6 +1092,58 @@ mod tests {
         let rendered = metrics.render()?;
         assert!(!rendered.contains("old-id"));
         assert!(!rendered.contains("old-vote"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn begin_poll_replaces_command_source_after_fallback_transition() -> Result<()> {
+        let metrics = Metrics::new()?;
+        let network = "mainnet-beta";
+        let config = Config {
+            network: network.to_string(),
+            connectors: vec![
+                ConnectorConfig {
+                    name: "primary".to_string(),
+                    kind: ConnectorKind::StandardValidator,
+                    rpc_url: Some("https://primary.example".to_string()),
+                    ..ConnectorConfig::default()
+                },
+                ConnectorConfig {
+                    name: "fallback".to_string(),
+                    kind: ConnectorKind::HeliusRpc,
+                    rpc_url: Some("https://fallback.example".to_string()),
+                    ..ConnectorConfig::default()
+                },
+            ],
+            modes: modes_for(&["primary", "fallback"], None, false),
+            ..Config::default()
+        };
+        let sources = SourceChain::from_config(&config)?;
+        let primary = SourceSelection {
+            mode: ModeId::Consensus,
+            command: CommandId::EpochInfo,
+            connector: Arc::from("primary"),
+            kind: ConnectorKind::StandardValidator,
+            precedence: 1,
+        };
+        let fallback = SourceSelection {
+            mode: ModeId::Consensus,
+            command: CommandId::EpochInfo,
+            connector: Arc::from("fallback"),
+            kind: ConnectorKind::HeliusRpc,
+            precedence: 2,
+        };
+
+        metrics.begin_poll(&config, &sources);
+        metrics.set_command_source(network, &primary);
+        assert!(metrics.render()?.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
+
+        metrics.begin_poll(&config, &sources);
+        metrics.set_command_source(network, &fallback);
+        let rendered = metrics.render()?;
+        assert!(!rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"fallback\",kind=\"helius+rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"2\"} 1"));
 
         Ok(())
     }
