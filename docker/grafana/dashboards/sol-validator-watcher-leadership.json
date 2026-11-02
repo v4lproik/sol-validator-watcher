@@ -232,19 +232,23 @@
             },
             "indexByName": {
               "available": 0,
-              "network": 1,
-              "mode": 2,
-              "command": 3,
+              "provider": 1,
+              "transport": 2,
+              "feature": 3,
               "connector": 4,
-              "kind": 5,
-              "precedence": 6
+              "command": 5,
+              "mode": 6,
+              "network": 7,
+              "precedence": 8
             },
             "renameByName": {
               "network": "Network",
               "mode": "Mode",
               "command": "Command",
               "connector": "Connector",
-              "kind": "Kind",
+              "provider": "Provider",
+              "transport": "Transport",
+              "feature": "Feature",
               "precedence": "Order",
               "available": "Available"
             }
@@ -330,21 +334,24 @@
               "job": true
             },
             "indexByName": {
-              "network": 0,
-              "mode": 1,
-              "command": 2,
+              "provider": 0,
+              "transport": 1,
+              "feature": 2,
               "connector": 3,
-              "kind": 4,
-              "precedence": 5
+              "command": 4,
+              "mode": 5,
+              "network": 6,
+              "precedence": 7
             },
             "renameByName": {
               "network": "Network",
               "mode": "Mode",
               "command": "Command",
               "connector": "Connector",
-              "kind": "Kind",
-              "precedence": "Order",
-              "available": "Available"
+              "provider": "Provider",
+              "transport": "Transport",
+              "feature": "Feature",
+              "precedence": "Order"
             }
           }
         }

@@ -1,7 +1,7 @@
 use crate::{
     collector::{command::SourceCommand, RpcClient},
-    config::{Config, ConnectorConfig, ConnectorKind},
-    mode::{CommandId, ModeId, COMMAND_COUNT},
+    config::{Config, ConnectorConfig, ProviderFeature},
+    mode::{CommandId, ModeId, Transport, COMMAND_COUNT},
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
@@ -13,7 +13,9 @@ pub struct SourceSelection {
     pub mode: ModeId,
     pub command: CommandId,
     pub connector: Arc<str>,
-    pub kind: ConnectorKind,
+    pub provider: Arc<str>,
+    pub transport: Transport,
+    pub feature: Option<ProviderFeature>,
     pub precedence: usize,
 }
 
@@ -28,14 +30,16 @@ pub struct SourceRoute<'a> {
     pub mode: ModeId,
     pub command: CommandId,
     pub connector: &'a str,
-    pub kind: ConnectorKind,
+    pub provider: &'a str,
+    pub transport: Transport,
+    pub feature: Option<ProviderFeature>,
     pub precedence: usize,
     pub available: bool,
 }
 
 struct Connector {
     name: Arc<str>,
-    kind: ConnectorKind,
+    provider: Arc<str>,
     rpc_client: Option<RpcClient>,
     ws_client: Option<WebsocketProbeClient>,
 }
@@ -62,7 +66,7 @@ impl Connector {
 
         Ok(Self {
             name: Arc::from(config.name.as_str()),
-            kind: config.kind,
+            provider: Arc::from(config.provider.as_str()),
             rpc_client,
             ws_client,
         })
@@ -73,7 +77,9 @@ impl Connector {
             mode: command.mode(),
             command,
             connector: Arc::clone(&self.name),
-            kind: self.kind,
+            provider: Arc::clone(&self.provider),
+            transport: command.transport(),
+            feature: ProviderFeature::required_for(command),
             precedence,
         }
     }
@@ -126,15 +132,18 @@ impl SourceChain {
                 .enumerate()
                 .map(move |(index, connector_index)| {
                     let connector = &self.connectors[*connector_index];
-                    let available = match command {
-                        CommandId::WsHealth => connector.ws_client.is_some(),
-                        _ => connector.rpc_client.is_some(),
+                    let transport = command.transport();
+                    let available = match transport {
+                        Transport::Rpc => connector.rpc_client.is_some(),
+                        Transport::Websocket => connector.ws_client.is_some(),
                     };
                     SourceRoute {
                         mode: command.mode(),
                         command,
                         connector: connector.name.as_ref(),
-                        kind: connector.kind,
+                        provider: connector.provider.as_ref(),
+                        transport,
+                        feature: ProviderFeature::required_for(command),
                         precedence: index + 1,
                         available,
                     }
@@ -164,7 +173,7 @@ impl SourceChain {
                         mode = C::ID.mode().as_str(),
                         command = C::ID.as_str(),
                         connector = connector.name.as_ref(),
-                        connector_kind = connector.kind.as_str(),
+                        provider = connector.provider.as_ref(),
                         error = ?error,
                         "connector failed for required command; trying next connector"
                     );
@@ -208,7 +217,7 @@ impl SourceChain {
                     mode = C::ID.mode().as_str(),
                     command = C::ID.as_str(),
                     connector = connector.name.as_ref(),
-                    connector_kind = connector.kind.as_str(),
+                    provider = connector.provider.as_ref(),
                     error = ?error,
                     "connector failed for optional command; trying next connector"
                 ),
@@ -233,7 +242,7 @@ impl SourceChain {
                         mode = command.mode().as_str(),
                         command = command.as_str(),
                         connector = connector.name.as_ref(),
-                        connector_kind = connector.kind.as_str(),
+                        provider = connector.provider.as_ref(),
                         error = ?error,
                         "connector failed for websocket health command; trying next connector"
                     );

@@ -375,9 +375,9 @@ mod tests {
     };
     use crate::{
         config::{
-            Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
-            EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
-            LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
+            Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsModeConfig,
+            HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig,
+            ModesConfig, WatchedValidatorConfig,
         },
         mode::CommandId,
         source::SourceChain,
@@ -488,12 +488,14 @@ network = "mainnet-beta"
 
 [[connectors]]
 name = "primary"
-kind = "standard-validator+rpc"
+provider = "solana"
+features = []
 rpc_url = "https://primary.example"
 
 [[connectors]]
 name = "fallback"
-kind = "helius+enhanced-wss"
+provider = "helius"
+features = []
 ws_url = "wss://fallback.example"
 
 [modes.health.commands]
@@ -526,13 +528,15 @@ network = "mainnet-beta"
 
 [[connectors]]
 name = "fallback"
-kind = "helius+rpc"
+provider = "helius"
+features = []
 rpc_url = "https://fallback.example"
 ws_url = "wss://fallback.example"
 
 [[connectors]]
 name = "replacement"
-kind = "standard-validator+rpc"
+provider = "solana"
+features = []
 rpc_url = "https://replacement.example"
 
 [modes.health.commands]
@@ -593,7 +597,8 @@ network = "mainnet-beta"
 
 [[connectors]]
 name = "primary"
-kind = "standard-validator+rpc"
+provider = "solana"
+features = []
 rpc_url = "https://primary.example"
 
 [modes.health.commands]
@@ -625,7 +630,8 @@ network = "testnet"
 
 [[connectors]]
 name = "ws-only"
-kind = "helius+ws"
+provider = "helius"
+features = []
 ws_url = "wss://ws-only.example"
 "#,
         )
@@ -661,7 +667,8 @@ ws_url = "wss://ws-only.example"
         let config = Config {
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
-                kind: ConnectorKind::StandardValidatorRpc,
+                provider: "solana".to_string(),
+                features: Vec::new(),
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
             }],

@@ -44,12 +44,18 @@ probes, and economics collection.
 - Connector declaration order is inventory, not fallback policy. Do not add
   numeric priorities, capability overrides, hidden sorting, or global
   connector-order fallback.
+- Command eligibility separates transport from provider capability. Standard RPC
+  commands require an `rpc_url`, WebSocket health uses `ws_url`, and reward
+  history commands additionally require the `historical-data` provider feature.
+  Validate the complete route before polling; do not discover declared
+  capability by trial and error.
 - Required and optional execution are separate policies. Required commands
   exhaust their route and return the last causal error. Optional commands may
   exhaust their route and return absence, but every failed attempt is logged.
 - Do not depend on hash-map iteration order.
 - Health, collection, provenance, logs, tests, and dashboards must use the same
-  mode, command, connector, and precedence semantics.
+  mode, command, connector, provider, transport, optional feature, and
+  precedence semantics.
 - Record source provenance only after a command succeeds. Do not attribute an
   empty/default value to a connector that failed.
 

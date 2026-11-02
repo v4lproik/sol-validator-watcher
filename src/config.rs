@@ -9,35 +9,31 @@ use std::{
 
 pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ConnectorKind {
-    #[serde(rename = "standard-validator")]
-    StandardValidator,
-    #[serde(rename = "standard-validator+rpc")]
-    #[default]
-    StandardValidatorRpc,
-    #[serde(rename = "standard-validator+full-rpc")]
-    StandardValidatorFullRpc,
-    #[serde(rename = "helius+rpc")]
-    HeliusRpc,
-    #[serde(rename = "helius+enhanced-rpc")]
-    HeliusEnhancedRpc,
-    #[serde(rename = "helius+ws")]
-    HeliusWs,
-    #[serde(rename = "helius+enhanced-wss")]
-    HeliusEnhancedWss,
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderFeature {
+    HistoricalData,
 }
 
-impl ConnectorKind {
+impl ProviderFeature {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::StandardValidator => "standard-validator",
-            Self::StandardValidatorRpc => "standard-validator+rpc",
-            Self::StandardValidatorFullRpc => "validator+full-rpc",
-            Self::HeliusRpc => "helius+rpc",
-            Self::HeliusEnhancedRpc => "helius+enhanced-rpc",
-            Self::HeliusWs => "helius+ws",
-            Self::HeliusEnhancedWss => "helius+enhanced-wss",
+            Self::HistoricalData => "historical-data",
+        }
+    }
+
+    pub const fn required_for(command: CommandId) -> Option<Self> {
+        match command {
+            CommandId::InflationRewards | CommandId::RewardEpochBlockProduction => {
+                Some(Self::HistoricalData)
+            }
+            CommandId::RpcHealth
+            | CommandId::WsHealth
+            | CommandId::EpochInfo
+            | CommandId::VoteAccounts
+            | CommandId::CurrentBlockProduction
+            | CommandId::CurrentLeaderSchedule
+            | CommandId::NextLeaderSchedule => None,
         }
     }
 }
@@ -151,14 +147,20 @@ pub struct WatchedValidatorConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectorConfig {
     pub name: String,
-    pub kind: ConnectorKind,
+    pub provider: String,
+    pub features: Vec<ProviderFeature>,
+    #[serde(default)]
     pub rpc_url: Option<String>,
+    #[serde(default = "default_rpc_timeout_sec")]
     pub rpc_timeout_sec: u64,
+    #[serde(default)]
     pub ws_url: Option<String>,
+    #[serde(default = "default_ws_timeout_sec")]
     pub ws_timeout_sec: u64,
+    #[serde(default = "default_commitment")]
     pub commitment: String,
 }
 
@@ -166,7 +168,8 @@ impl Default for ConnectorConfig {
     fn default() -> Self {
         Self {
             name: String::new(),
-            kind: ConnectorKind::default(),
+            provider: String::new(),
+            features: Vec::new(),
             rpc_url: None,
             rpc_timeout_sec: default_rpc_timeout_sec(),
             ws_url: None,
@@ -185,6 +188,10 @@ impl ConnectorConfig {
         self.ws_url.is_some()
     }
 
+    pub fn supports(&self, feature: ProviderFeature) -> bool {
+        self.features.contains(&feature)
+    }
+
     pub fn commitment_config(&self) -> Result<String> {
         match self.commitment.as_str() {
             "processed" | "confirmed" | "finalized" => Ok(self.commitment.clone()),
@@ -197,6 +204,7 @@ impl ConnectorConfig {
 
     fn normalize(&mut self) {
         self.name = self.name.trim().to_string();
+        self.provider = self.provider.trim().to_string();
         self.rpc_url = self
             .rpc_url
             .as_ref()
@@ -215,6 +223,18 @@ impl ConnectorConfig {
 
         if self.name.is_empty() {
             bail!("connectors[{index}].name must not be empty");
+        }
+        if self.provider.is_empty() {
+            bail!("connectors[{index}].provider must not be empty");
+        }
+        let mut seen_features = HashSet::with_capacity(self.features.len());
+        for feature in &self.features {
+            if !seen_features.insert(*feature) {
+                bail!(
+                    "connectors[{index}].features contains duplicate provider feature {:?}",
+                    feature.as_str()
+                );
+            }
         }
         if self.rpc_url.is_none() && self.ws_url.is_none() {
             bail!("connectors[{index}] must define rpc_url and/or ws_url");
@@ -400,6 +420,8 @@ impl Config {
                 bail!("{path} requires modes.economics.enabled = true");
             }
 
+            let required_transport = command.transport();
+            let required_feature = ProviderFeature::required_for(command);
             let mut seen = HashSet::with_capacity(route.len());
             for connector_name in route {
                 if !seen.insert(connector_name) {
@@ -412,14 +434,20 @@ impl Config {
                     .with_context(|| {
                         format!("{path} references unknown connector {connector_name:?}")
                     })?;
-                let transport_available =
-                    matches!(command, CommandId::WsHealth) || connector.has_rpc();
-                if !transport_available {
+                if required_transport == crate::mode::Transport::Rpc && !connector.has_rpc() {
                     bail!(
-                        "{path} references connector {:?}, which cannot run command {}",
-                        connector.name,
-                        command.as_str()
+                        "{path} references connector {:?}, which has no configured RPC transport",
+                        connector.name
                     );
+                }
+                if let Some(feature) = required_feature {
+                    if !connector.supports(feature) {
+                        bail!(
+                            "{path} references connector {:?}, which lacks provider feature {:?}",
+                            connector.name,
+                            feature.as_str()
+                        );
+                    }
                 }
             }
         }
@@ -582,9 +610,9 @@ fn validate_ws_url(url: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_env_vars_with, Config, ConnectorConfig, ConnectorKind, ConsensusCommands,
-        ConsensusModeConfig, EconomicsCommands, EconomicsModeConfig, HealthCommands,
-        HealthModeConfig, LeadershipCommands, LeadershipModeConfig, ModesConfig,
+        expand_env_vars_with, Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig,
+        EconomicsCommands, EconomicsModeConfig, HealthCommands, HealthModeConfig,
+        LeadershipCommands, LeadershipModeConfig, ModesConfig, ProviderFeature,
         WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
     };
     use anyhow::{Context, Result};
@@ -607,17 +635,20 @@ network = "testnet"
 
 [[connectors]]
 name = "local-validator"
-kind = "standard-validator"
+provider = "solana-validator"
+features = []
 rpc_url = "http://127.0.0.1:8899"
 
 [[connectors]]
 name = "helius-rpc"
-kind = "helius+enhanced-rpc"
+provider = "helius"
+features = []
 rpc_url = "https://rpc.helius.example"
 
 [[connectors]]
 name = "helius-ws"
-kind = "helius+enhanced-wss"
+provider = "helius"
+features = []
 ws_url = "wss://ws.helius.example"
 
 [[watched_validators]]
@@ -645,11 +676,12 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
         assert_eq!(config.network, "testnet");
         assert_eq!(config.connectors.len(), 3);
         assert_eq!(config.connectors[0].name, "local-validator");
-        assert_eq!(config.connectors[0].kind, ConnectorKind::StandardValidator);
+        assert_eq!(config.connectors[0].provider, "solana-validator");
+        assert!(config.connectors[0].features.is_empty());
         assert_eq!(config.connectors[1].name, "helius-rpc");
-        assert_eq!(config.connectors[1].kind, ConnectorKind::HeliusEnhancedRpc);
+        assert_eq!(config.connectors[1].provider, "helius");
         assert_eq!(config.connectors[2].name, "helius-ws");
-        assert_eq!(config.connectors[2].kind, ConnectorKind::HeliusEnhancedWss);
+        assert!(config.connectors[2].features.is_empty());
         assert_eq!(config.watched_validators.len(), 1);
         assert_eq!(
             config.modes.leadership.commands.current_block_production,
@@ -670,40 +702,45 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "config/local/validator.toml",
                 "mainnet-beta",
                 "local-validator",
-                ConnectorKind::StandardValidatorRpc,
+                "solana-validator",
+                false,
                 false,
             ),
             (
                 "config/compose/validator.toml",
                 "external-validator",
                 "external-validator",
-                ConnectorKind::StandardValidatorRpc,
+                "solana-validator",
+                false,
                 false,
             ),
             (
                 "config/compose/surfpool.toml",
                 "surfpool-localnet",
                 "surfpool",
-                ConnectorKind::StandardValidatorRpc,
+                "surfpool",
                 true,
+                false,
             ),
             (
                 "config/remote/devnet.toml",
                 "devnet",
                 "devnet-rpc",
-                ConnectorKind::StandardValidatorRpc,
+                "helius",
+                true,
                 true,
             ),
             (
                 "config/remote/mainnet.toml",
                 "mainnet-beta",
                 "mainnet-rpc",
-                ConnectorKind::HeliusRpc,
+                "helius",
+                true,
                 true,
             ),
         ];
 
-        for (relative_path, network, connector_name, connector_kind, has_ws) in cases {
+        for (relative_path, network, connector_name, provider, has_ws, has_history) in cases {
             let path = root.join(relative_path);
             let config = Config::load_with(&path, |raw| {
                 expand_env_vars_with(raw, |key| {
@@ -728,13 +765,18 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "profile {relative_path}"
             );
             assert_eq!(
-                config.connectors[0].kind, connector_kind,
+                config.connectors[0].provider, provider,
                 "profile {relative_path}"
             );
             assert!(config.connectors[0].has_rpc(), "profile {relative_path}");
             assert_eq!(
                 config.connectors[0].has_ws(),
                 has_ws,
+                "profile {relative_path}"
+            );
+            assert_eq!(
+                config.connectors[0].supports(ProviderFeature::HistoricalData),
+                has_history,
                 "profile {relative_path}"
             );
         }
@@ -756,81 +798,105 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
     }
 
     #[test]
-    fn rejects_noncanonical_connector_kind_aliases() -> Result<()> {
-        let test_dir = unique_test_dir("connector-kind-alias");
-        fs::create_dir_all(&test_dir)
-            .with_context(|| format!("failed to create {}", test_dir.display()))?;
-        let config_path = test_dir.join("watcher.toml");
-        fs::write(
-            &config_path,
+    fn rejects_transports_as_provider_features() -> Result<()> {
+        for feature in ["rpc", "websocket", "historical-rpc"] {
+            let raw = format!(
+                r#"
+network = "testnet"
+
+[[connectors]]
+name = "helius"
+provider = "helius"
+features = ["{feature}"]
+rpc_url = "https://rpc.helius.example"
+"#
+            );
+            let error = config_load_error("transport-provider-feature", &raw)?;
+
+            assert!(format!("{error:#}").contains("unknown variant"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_missing_provider_features() -> Result<()> {
+        let error = config_load_error(
+            "missing-provider-features",
             r#"
 network = "testnet"
 
 [[connectors]]
 name = "helius"
-kind = "helius-rpc"
+provider = "helius"
 rpc_url = "https://rpc.helius.example"
 "#,
-        )
-        .with_context(|| format!("failed to write {}", config_path.display()))?;
+        )?;
 
-        let result = Config::load(&config_path);
-        fs::remove_dir_all(&test_dir)
-            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
-
-        let error = match result {
-            Ok(_) => anyhow::bail!("noncanonical connector kind should be rejected"),
-            Err(error) => error,
-        };
-        assert!(format!("{error:#}").contains("unknown variant"));
+        assert!(format!("{error:#}").contains("missing field `features`"));
         Ok(())
     }
 
     #[test]
-    fn canonical_connector_kinds_deserialize_and_export_stable_labels() -> Result<()> {
+    fn rejects_invalid_provider_feature_declarations() -> Result<()> {
         let cases = [
             (
-                "standard-validator",
-                ConnectorKind::StandardValidator,
-                "standard-validator",
+                ConnectorConfig {
+                    name: "primary".to_string(),
+                    rpc_url: Some("https://rpc.example".to_string()),
+                    ..ConnectorConfig::default()
+                },
+                "provider must not be empty",
             ),
             (
-                "standard-validator+rpc",
-                ConnectorKind::StandardValidatorRpc,
-                "standard-validator+rpc",
-            ),
-            (
-                "standard-validator+full-rpc",
-                ConnectorKind::StandardValidatorFullRpc,
-                "validator+full-rpc",
-            ),
-            ("helius+rpc", ConnectorKind::HeliusRpc, "helius+rpc"),
-            (
-                "helius+enhanced-rpc",
-                ConnectorKind::HeliusEnhancedRpc,
-                "helius+enhanced-rpc",
-            ),
-            ("helius+ws", ConnectorKind::HeliusWs, "helius+ws"),
-            (
-                "helius+enhanced-wss",
-                ConnectorKind::HeliusEnhancedWss,
-                "helius+enhanced-wss",
+                ConnectorConfig {
+                    name: "primary".to_string(),
+                    provider: "solana".to_string(),
+                    features: vec![
+                        ProviderFeature::HistoricalData,
+                        ProviderFeature::HistoricalData,
+                    ],
+                    rpc_url: Some("https://rpc.example".to_string()),
+                    ..ConnectorConfig::default()
+                },
+                "contains duplicate provider feature \"historical-data\"",
             ),
         ];
 
-        for (toml_kind, expected_kind, exported_label) in cases {
-            let connector: ConnectorConfig = toml::from_str(&format!(
-                r#"
-name = "test"
-kind = "{toml_kind}"
-rpc_url = "https://rpc.example"
-"#
-            ))?;
-
-            assert_eq!(connector.kind, expected_kind);
-            assert_eq!(connector.kind.as_str(), exported_label);
+        for (connector, expected) in cases {
+            let mut config = Config {
+                connectors: vec![connector],
+                ..Config::default()
+            };
+            let Err(error) = config.validate() else {
+                anyhow::bail!("invalid provider feature declaration should be rejected");
+            };
+            assert!(error.to_string().contains(expected), "{error:#}");
         }
+        Ok(())
+    }
 
+    #[test]
+    fn provider_features_deserialize_and_export_stable_labels() -> Result<()> {
+        let connector: ConnectorConfig = toml::from_str(
+            r#"
+name = "test"
+provider = "helius"
+features = ["historical-data"]
+rpc_url = "https://rpc.example"
+ws_url = "wss://rpc.example"
+"#,
+        )?;
+
+        assert_eq!(connector.provider, "helius");
+        assert_eq!(connector.features, [ProviderFeature::HistoricalData]);
+        assert_eq!(
+            connector
+                .features
+                .iter()
+                .map(|feature| feature.as_str())
+                .collect::<Vec<_>>(),
+            ["historical-data"]
+        );
         Ok(())
     }
 
@@ -852,7 +918,8 @@ network = "testnet"
 
 [[connectors]]
 name = "primary"
-kind = "standard-validator+rpc"
+provider = "solana"
+features = []
 rpc_url = "https://rpc.example"
 "#
                 ),
@@ -871,7 +938,8 @@ network = "testnet"
 
 [[connectors]]
 name = "primary"
-kind = "standard-validator+rpc"
+provider = "solana"
+features = []
 rpc_url = "https://rpc.example"
 transport_mode = "poll-http"
 "#,
@@ -903,7 +971,8 @@ transport_mode = "poll-http"
         let mut config = Config {
             connectors: vec![ConnectorConfig {
                 name: "ws-only".to_string(),
-                kind: ConnectorKind::HeliusEnhancedWss,
+                provider: "helius".to_string(),
+                features: Vec::new(),
                 ws_url: Some("wss://ws.helius.example".to_string()),
                 ..ConnectorConfig::default()
             }],
@@ -1007,7 +1076,8 @@ transport_mode = "poll-http"
                 rpc_connector("primary"),
                 ConnectorConfig {
                     name: "ws-only".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedWss,
+                    provider: "helius".to_string(),
+                    features: Vec::new(),
                     ws_url: Some("wss://ws.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1022,7 +1092,31 @@ transport_mode = "poll-http"
         };
         assert!(error
             .to_string()
-            .contains("cannot run command current-block-production"));
+            .contains("has no configured RPC transport"));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_economics_route_without_historical_data_feature() -> Result<()> {
+        let mut connector = rpc_connector("primary");
+        connector.features = Vec::new();
+        let mut config = Config {
+            connectors: vec![connector],
+            modes: modes_for("primary", None, true),
+            ..Config::default()
+        };
+        config.modes.economics.validator = Some(WatchedValidatorConfig {
+            identity: None,
+            vote_account: Some("vote-1".to_string()),
+            labels: vec![],
+        });
+
+        let Err(error) = config.validate() else {
+            anyhow::bail!("economics route without historical data should be rejected");
+        };
+        assert!(error
+            .to_string()
+            .contains("lacks provider feature \"historical-data\""));
         Ok(())
     }
 
@@ -1213,7 +1307,8 @@ rpc_url = "${WATCHER_RPC_URL}"
     fn rpc_connector(name: &str) -> ConnectorConfig {
         ConnectorConfig {
             name: name.to_string(),
-            kind: ConnectorKind::StandardValidatorRpc,
+            provider: "solana".to_string(),
+            features: vec![ProviderFeature::HistoricalData],
             rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
             ..ConnectorConfig::default()
         }

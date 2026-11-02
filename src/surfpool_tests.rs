@@ -1,9 +1,8 @@
 use crate::{
     collector::{collect_snapshot, RpcClient},
     config::{
-        Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
-        EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
-        LeadershipModeConfig, ModesConfig,
+        Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsModeConfig,
+        HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig, ModesConfig,
     },
     metrics::Metrics,
     source::SourceChain,
@@ -31,7 +30,8 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
         network: "localnet".to_string(),
         connectors: vec![ConnectorConfig {
             name: "surfpool".to_string(),
-            kind: ConnectorKind::StandardValidator,
+            provider: "surfpool".to_string(),
+            features: Vec::new(),
             rpc_url: Some(harness.rpc_url()),
             rpc_timeout_sec: 5,
             ws_url: Some(harness.ws_url()),
