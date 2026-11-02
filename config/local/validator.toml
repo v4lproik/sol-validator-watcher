@@ -3,7 +3,7 @@ metrics_port = 8000
 poll_interval_sec = 15
 liveness_file = "/tmp/sol-validator-watcher.liveness"
 
-# Connectors are tried in declaration order for each metric.
+# Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "local-validator"
 kind = "standard-validator+rpc"
@@ -16,5 +16,17 @@ commitment = "confirmed"
 identity = "11111111111111111111111111111111"
 labels = ["vc:validator-1", "region:sbg"]
 
-[economics]
-mode = "disabled"
+[modes.health.commands]
+rpc_health = ["local-validator"]
+
+[modes.consensus.commands]
+epoch_info = ["local-validator"]
+vote_accounts = ["local-validator"]
+
+[modes.leadership.commands]
+current_block_production = ["local-validator"]
+current_leader_schedule = ["local-validator"]
+next_leader_schedule = ["local-validator"]
+
+[modes.economics]
+enabled = false

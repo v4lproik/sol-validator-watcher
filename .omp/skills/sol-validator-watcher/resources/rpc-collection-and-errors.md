@@ -2,21 +2,26 @@
 
 ## Scope
 
-Use this resource for Solana JSON-RPC calls, connector ordering, fallback,
-provider capability checks, request batching, source provenance, health probes,
-and economics collection.
+Use this resource for Solana JSON-RPC calls, typed mode commands, explicit
+command routes, connector fallback, request batching, source provenance, health
+probes, and economics collection.
 
 ## Ownership and Boundaries
 
 - `collector.rs` owns JSON-RPC request/response types, HTTP status handling,
-  method calls, fallback selection, snapshot source records, batching, and
-  aggregation inputs.
-- `main.rs` owns runtime connector construction and dependency health checks.
-- `config.rs` owns connector kind, URL, timeout, commitment, and ordering
+  method implementations, snapshot source records, batching, and aggregation
+  inputs.
+- `collector/command.rs` maps typed commands to RPC operations and outputs.
+- `mode.rs` owns stable mode and command identifiers.
+- `source.rs` owns connector client construction, compiled command routes,
+  required/optional fallback execution, and source selection.
+- `main.rs` owns dependency guard policy and transactional source-chain reload.
+- `config.rs` owns connector transport settings and exact per-command route
   validation.
 - `websocket.rs` owns websocket reachability only. Do not infer RPC method
   support from websocket success.
-- `metrics.rs` publishes which connector supplied each collected metric family.
+- `metrics.rs` publishes configured routes and the connector that supplied each
+  command's latest result.
 
 ## Invariants
 
@@ -31,20 +36,22 @@ and economics collection.
 - Include the RPC method in boundary context without logging credentials or a
   secret-bearing URL.
 
-### Keep connector selection deterministic
+### Keep command routing deterministic
 
-- Connector declaration order is the current precedence contract. The first
-  connector that can successfully serve a metric wins; a failure may advance
-  to the next configured connector.
-- Required and optional collection are separate policies. Required collection
-  exhausts candidates and returns an error. Optional collection may exhaust
-  candidates and return absence, but each failed attempt remains observable.
-- Preserve deterministic ordering on ties when priority or capability policy is
-  introduced. Do not depend on hash-map iteration order.
-- Health, collection, provenance, logs, and tests must name the same connector
-  and metric semantics.
-- Record source provenance only after a command succeeds. Do not attribute a
-  fallback value to a connector that failed.
+- Each `modes.<mode>.commands.<command>` array is the complete precedence
+  contract for that command. The first connector that succeeds wins; a failure
+  advances only within that declared route.
+- Connector declaration order is inventory, not fallback policy. Do not add
+  numeric priorities, capability overrides, hidden sorting, or global
+  connector-order fallback.
+- Required and optional execution are separate policies. Required commands
+  exhaust their route and return the last causal error. Optional commands may
+  exhaust their route and return absence, but every failed attempt is logged.
+- Do not depend on hash-map iteration order.
+- Health, collection, provenance, logs, tests, and dashboards must use the same
+  mode, command, connector, and precedence semantics.
+- Record source provenance only after a command succeeds. Do not attribute an
+  empty/default value to a connector that failed.
 
 ### Keep related requests on the correct source
 
@@ -84,13 +91,14 @@ and economics collection.
 1. What exact Solana method and wire result are being modeled?
 2. Are HTTP, JSON parsing, JSON-RPC error, missing result, null, and empty result
    distinguished?
-3. Is the metric required or optional, and who owns that decision?
-4. Which connector wins, why, and what makes selection deterministic?
+3. Is the command required or optional, and which mode owns that policy?
+4. What exact route is configured, which connector wins, and what makes that
+   selection deterministic?
 5. Do dependent calls remain on one candidate connector?
 6. Is source provenance emitted only for successful data?
 7. Are request count, range, address count, timeout, and response size bounded?
-8. Does economics mode still fail closed for every required capability?
-9. Would logs and `sol_metric_source_info` reveal the actual selected source?
+8. Does economics mode still fail closed for every required command?
+9. Would logs and `sol_mode_command_source_info` reveal the actual source?
 
 ## Prohibited Shortcuts
 
@@ -109,4 +117,4 @@ and economics collection.
   the local Axum mock RPC boundary.
 - Real validator compatibility: `just surfpool test`.
 - Runtime source selection: run the watcher against controlled connectors and
-  inspect the rendered `sol_metric_source_info` series.
+  inspect `sol_mode_command_route_info` and `sol_mode_command_source_info`.

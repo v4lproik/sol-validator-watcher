@@ -1,26 +1,11 @@
+use crate::mode::{CommandId, ModeId};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
 };
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum EconomicsMode {
-    #[default]
-    Disabled,
-    SingleValidator,
-}
-
-impl EconomicsMode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Disabled => "disabled",
-            Self::SingleValidator => "single-validator",
-        }
-    }
-}
 
 pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
 
@@ -57,14 +42,106 @@ impl ConnectorKind {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct EconomicsConfig {
-    pub mode: EconomicsMode,
-    pub validator: Option<WatchedValidatorConfig>,
+pub struct HealthCommands {
+    pub rpc_health: Vec<String>,
+    pub ws_health: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ConsensusCommands {
+    pub epoch_info: Vec<String>,
+    pub vote_accounts: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LeadershipCommands {
+    pub current_block_production: Vec<String>,
+    pub current_leader_schedule: Vec<String>,
+    pub next_leader_schedule: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct EconomicsCommands {
+    pub inflation_rewards: Vec<String>,
+    pub reward_epoch_block_production: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HealthModeConfig {
+    pub commands: HealthCommands,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ConsensusModeConfig {
+    pub commands: ConsensusCommands,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LeadershipModeConfig {
+    pub commands: LeadershipCommands,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct EconomicsModeConfig {
+    pub enabled: bool,
+    pub validator: Option<WatchedValidatorConfig>,
+    pub commands: EconomicsCommands,
+}
+
+impl EconomicsModeConfig {
+    pub const fn as_str(&self) -> &'static str {
+        if self.enabled {
+            "single-validator"
+        } else {
+            "disabled"
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ModesConfig {
+    pub health: HealthModeConfig,
+    pub consensus: ConsensusModeConfig,
+    pub leadership: LeadershipModeConfig,
+    pub economics: EconomicsModeConfig,
+}
+
+impl ModesConfig {
+    pub fn route(&self, command: CommandId) -> &[String] {
+        match command {
+            CommandId::RpcHealth => &self.health.commands.rpc_health,
+            CommandId::WsHealth => &self.health.commands.ws_health,
+            CommandId::EpochInfo => &self.consensus.commands.epoch_info,
+            CommandId::VoteAccounts => &self.consensus.commands.vote_accounts,
+            CommandId::CurrentBlockProduction => &self.leadership.commands.current_block_production,
+            CommandId::CurrentLeaderSchedule => &self.leadership.commands.current_leader_schedule,
+            CommandId::NextLeaderSchedule => &self.leadership.commands.next_leader_schedule,
+            CommandId::InflationRewards => &self.economics.commands.inflation_rewards,
+            CommandId::RewardEpochBlockProduction => {
+                &self.economics.commands.reward_epoch_block_production
+            }
+        }
+    }
+
+    pub const fn enabled(&self, mode: ModeId) -> bool {
+        match mode {
+            ModeId::Health | ModeId::Consensus | ModeId::Leadership => true,
+            ModeId::Economics => self.economics.enabled,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WatchedValidatorConfig {
     pub identity: Option<String>,
@@ -163,7 +240,7 @@ impl ConnectorConfig {
 pub struct Config {
     pub network: String,
     pub connectors: Vec<ConnectorConfig>,
-    pub economics: EconomicsConfig,
+    pub modes: ModesConfig,
     pub metrics_port: u16,
     pub poll_interval_sec: u64,
     pub delinquent_slot_distance: Option<u64>,
@@ -176,7 +253,7 @@ impl Default for Config {
         Self {
             network: default_network(),
             connectors: vec![],
-            economics: EconomicsConfig::default(),
+            modes: ModesConfig::default(),
             metrics_port: default_metrics_port(),
             poll_interval_sec: default_poll_interval_sec(),
             delinquent_slot_distance: None,
@@ -260,35 +337,89 @@ impl Config {
         }
 
         self.validate_economics()?;
+        self.validate_routes()?;
         Ok(())
     }
 
     fn validate_economics(&mut self) -> Result<()> {
-        match self.economics.mode {
-            EconomicsMode::Disabled => {
-                if self.economics.validator.is_some() {
-                    bail!("economics.validator requires economics.mode: single-validator");
-                }
+        let economics = &mut self.modes.economics;
+        if !economics.enabled {
+            if economics.validator.is_some() {
+                bail!("modes.economics.validator requires modes.economics.enabled = true");
             }
-            EconomicsMode::SingleValidator => {
-                let validator = self.economics.validator.as_mut().with_context(|| {
-                    "economics.mode single-validator requires economics.validator"
-                })?;
-                normalize_watched_validator(validator, "economics.validator")?;
-                validator.labels.push(ECONOMICS_TARGET_LABEL.to_string());
-                validator.labels.sort();
-                validator.labels.dedup();
+            return Ok(());
+        }
 
-                if let Some(existing) = self
-                    .watched_validators
-                    .iter_mut()
-                    .find(|watched| watched_validators_match(watched, validator))
-                {
-                    existing.labels.extend(validator.labels.iter().cloned());
-                    existing.labels.sort();
-                    existing.labels.dedup();
-                } else {
-                    self.watched_validators.push(validator.clone());
+        let validator = economics
+            .validator
+            .as_mut()
+            .context("modes.economics.enabled requires modes.economics.validator")?;
+        normalize_watched_validator(validator, "modes.economics.validator")?;
+        validator.labels.push(ECONOMICS_TARGET_LABEL.to_string());
+        validator.labels.sort();
+        validator.labels.dedup();
+
+        if let Some(existing) = self
+            .watched_validators
+            .iter_mut()
+            .find(|watched| watched_validators_match(watched, validator))
+        {
+            existing.labels.extend(validator.labels.iter().cloned());
+            existing.labels.sort();
+            existing.labels.dedup();
+        } else {
+            self.watched_validators.push(validator.clone());
+        }
+
+        Ok(())
+    }
+
+    fn validate_routes(&self) -> Result<()> {
+        for command in CommandId::ALL {
+            let route = self.modes.route(command);
+            let path = format!(
+                "modes.{}.commands.{}",
+                command.mode().as_str(),
+                command.as_str().replace('-', "_")
+            );
+            let required = match command {
+                CommandId::WsHealth => false,
+                CommandId::InflationRewards | CommandId::RewardEpochBlockProduction => {
+                    self.modes.economics.enabled
+                }
+                _ => true,
+            };
+
+            if route.is_empty() {
+                if required {
+                    bail!("{path} must contain at least one connector name");
+                }
+                continue;
+            }
+            if command.mode() == ModeId::Economics && !self.modes.economics.enabled {
+                bail!("{path} requires modes.economics.enabled = true");
+            }
+
+            let mut seen = HashSet::with_capacity(route.len());
+            for connector_name in route {
+                if !seen.insert(connector_name) {
+                    bail!("{path} contains duplicate connector name {connector_name:?}");
+                }
+                let connector = self
+                    .connectors
+                    .iter()
+                    .find(|candidate| candidate.name == *connector_name)
+                    .with_context(|| {
+                        format!("{path} references unknown connector {connector_name:?}")
+                    })?;
+                let transport_available =
+                    matches!(command, CommandId::WsHealth) || connector.has_rpc();
+                if !transport_available {
+                    bail!(
+                        "{path} references connector {:?}, which cannot run command {}",
+                        connector.name,
+                        command.as_str()
+                    );
                 }
             }
         }
@@ -451,8 +582,10 @@ fn validate_ws_url(url: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_env_vars_with, Config, ConnectorConfig, ConnectorKind, EconomicsConfig,
-        EconomicsMode, WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
+        expand_env_vars_with, Config, ConnectorConfig, ConnectorKind, ConsensusCommands,
+        ConsensusModeConfig, EconomicsCommands, EconomicsModeConfig, HealthCommands,
+        HealthModeConfig, LeadershipCommands, LeadershipModeConfig, ModesConfig,
+        WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
     };
     use anyhow::{Context, Result};
     use std::{
@@ -462,7 +595,7 @@ mod tests {
     };
 
     #[test]
-    fn loads_toml_and_preserves_connector_priority_order() -> Result<()> {
+    fn loads_toml_and_preserves_explicit_command_route_order() -> Result<()> {
         let test_dir = unique_test_dir("ordered-connectors");
         fs::create_dir_all(&test_dir)
             .with_context(|| format!("failed to create {}", test_dir.display()))?;
@@ -490,6 +623,19 @@ ws_url = "wss://ws.helius.example"
 [[watched_validators]]
 identity = "11111111111111111111111111111111"
 labels = ["vc:validator-1", "region:sbg"]
+
+[modes.health.commands]
+rpc_health = ["local-validator", "helius-rpc"]
+ws_health = ["helius-ws"]
+
+[modes.consensus.commands]
+epoch_info = ["local-validator", "helius-rpc"]
+vote_accounts = ["local-validator", "helius-rpc"]
+
+[modes.leadership.commands]
+current_block_production = ["helius-rpc", "local-validator"]
+current_leader_schedule = ["local-validator", "helius-rpc"]
+next_leader_schedule = ["local-validator", "helius-rpc"]
 "#,
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -505,6 +651,11 @@ labels = ["vc:validator-1", "region:sbg"]
         assert_eq!(config.connectors[2].name, "helius-ws");
         assert_eq!(config.connectors[2].kind, ConnectorKind::HeliusEnhancedWss);
         assert_eq!(config.watched_validators.len(), 1);
+        assert_eq!(
+            config.modes.leadership.commands.current_block_production,
+            ["helius-rpc", "local-validator"]
+        );
+        assert_eq!(config.modes.health.commands.ws_health, ["helius-ws"]);
 
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
@@ -808,6 +959,7 @@ transport_mode = "poll-http"
         connector.ws_url = Some("   ".to_string());
         let mut config = Config {
             connectors: vec![connector],
+            modes: modes_for("primary", None, false),
             ..Config::default()
         };
 
@@ -818,24 +970,97 @@ transport_mode = "poll-http"
     }
 
     #[test]
+    fn rejects_unknown_and_duplicate_command_route_connectors() -> Result<()> {
+        let mut unknown = Config {
+            connectors: vec![rpc_connector("primary")],
+            modes: modes_for("primary", None, false),
+            ..Config::default()
+        };
+        unknown.modes.consensus.commands.epoch_info = vec!["missing".to_string()];
+        let Err(error) = unknown.validate() else {
+            anyhow::bail!("unknown route connector should be rejected");
+        };
+        assert!(error
+            .to_string()
+            .contains("references unknown connector \"missing\""));
+
+        let mut duplicate = Config {
+            connectors: vec![rpc_connector("primary")],
+            modes: modes_for("primary", None, false),
+            ..Config::default()
+        };
+        duplicate.modes.consensus.commands.epoch_info =
+            vec!["primary".to_string(), "primary".to_string()];
+        let Err(error) = duplicate.validate() else {
+            anyhow::bail!("duplicate route connector should be rejected");
+        };
+        assert!(error
+            .to_string()
+            .contains("contains duplicate connector name \"primary\""));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_rpc_command_routed_to_websocket_only_connector() -> Result<()> {
+        let mut config = Config {
+            connectors: vec![
+                rpc_connector("primary"),
+                ConnectorConfig {
+                    name: "ws-only".to_string(),
+                    kind: ConnectorKind::HeliusEnhancedWss,
+                    ws_url: Some("wss://ws.example".to_string()),
+                    ..ConnectorConfig::default()
+                },
+            ],
+            modes: modes_for("primary", Some("ws-only"), false),
+            ..Config::default()
+        };
+        config.modes.leadership.commands.current_block_production = vec!["ws-only".to_string()];
+
+        let Err(error) = config.validate() else {
+            anyhow::bail!("RPC command without RPC transport should be rejected");
+        };
+        assert!(error
+            .to_string()
+            .contains("cannot run command current-block-production"));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_economics_routes_while_mode_is_disabled() -> Result<()> {
+        let mut config = Config {
+            connectors: vec![rpc_connector("primary")],
+            modes: modes_for("primary", None, false),
+            ..Config::default()
+        };
+        config.modes.economics.commands.inflation_rewards = vec!["primary".to_string()];
+
+        let Err(error) = config.validate() else {
+            anyhow::bail!("disabled economics routes should be rejected");
+        };
+        assert!(error
+            .to_string()
+            .contains("requires modes.economics.enabled = true"));
+        Ok(())
+    }
+
+    #[test]
     fn economics_single_validator_is_merged_into_watched_validators() -> Result<()> {
         let mut config = Config {
             connectors: vec![rpc_connector("primary")],
+            modes: modes_for("primary", None, true),
             watched_validators: vec![WatchedValidatorConfig {
                 identity: Some("11111111111111111111111111111111".to_string()),
                 vote_account: None,
                 labels: vec!["region:sbg".to_string()],
             }],
-            economics: EconomicsConfig {
-                mode: EconomicsMode::SingleValidator,
-                validator: Some(WatchedValidatorConfig {
-                    identity: Some("11111111111111111111111111111111".to_string()),
-                    vote_account: None,
-                    labels: vec!["team:ops".to_string()],
-                }),
-            },
             ..Config::default()
         };
+        config.modes.economics.validator = Some(WatchedValidatorConfig {
+            identity: Some("11111111111111111111111111111111".to_string()),
+            vote_account: None,
+            labels: vec!["team:ops".to_string()],
+        });
 
         config.validate()?;
 
@@ -856,13 +1081,17 @@ transport_mode = "poll-http"
     fn rejects_economics_validator_without_single_validator_mode() -> Result<()> {
         let mut config = Config {
             connectors: vec![rpc_connector("primary")],
-            economics: EconomicsConfig {
-                mode: EconomicsMode::Disabled,
-                validator: Some(WatchedValidatorConfig {
-                    identity: None,
-                    vote_account: Some("vote-1".to_string()),
-                    labels: vec![],
-                }),
+            modes: ModesConfig {
+                economics: EconomicsModeConfig {
+                    enabled: false,
+                    validator: Some(WatchedValidatorConfig {
+                        identity: None,
+                        vote_account: Some("vote-1".to_string()),
+                        labels: vec![],
+                    }),
+                    ..EconomicsModeConfig::default()
+                },
+                ..modes_for("primary", None, false)
             },
             ..Config::default()
         };
@@ -871,7 +1100,7 @@ transport_mode = "poll-http"
             Ok(()) => anyhow::bail!("economics validator should be rejected"),
             Err(error) => assert!(error
                 .to_string()
-                .contains("economics.validator requires economics.mode: single-validator")),
+                .contains("modes.economics.validator requires modes.economics.enabled = true")),
         }
         Ok(())
     }
@@ -880,9 +1109,16 @@ transport_mode = "poll-http"
     fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> {
         let mut config = Config {
             connectors: vec![rpc_connector("primary")],
-            economics: EconomicsConfig {
-                mode: EconomicsMode::SingleValidator,
-                validator: None,
+            modes: ModesConfig {
+                economics: EconomicsModeConfig {
+                    enabled: true,
+                    validator: None,
+                    commands: EconomicsCommands {
+                        inflation_rewards: vec!["primary".to_string()],
+                        reward_epoch_block_production: vec!["primary".to_string()],
+                    },
+                },
+                ..modes_for("primary", None, false)
             },
             ..Config::default()
         };
@@ -891,7 +1127,7 @@ transport_mode = "poll-http"
             Ok(()) => anyhow::bail!("missing economics validator should be rejected"),
             Err(error) => assert!(error
                 .to_string()
-                .contains("economics.mode single-validator requires economics.validator")),
+                .contains("modes.economics.enabled requires modes.economics.validator")),
         }
         Ok(())
     }
@@ -956,12 +1192,6 @@ rpc_url = "${WATCHER_RPC_URL}"
         Ok(())
     }
 
-    #[test]
-    fn economics_mode_string_helpers_cover_supported_modes() {
-        assert_eq!(EconomicsMode::Disabled.as_str(), "disabled");
-        assert_eq!(EconomicsMode::SingleValidator.as_str(), "single-validator");
-    }
-
     fn config_load_error(prefix: &str, raw: &str) -> Result<anyhow::Error> {
         let test_dir = unique_test_dir(prefix);
         fs::create_dir_all(&test_dir)
@@ -986,6 +1216,41 @@ rpc_url = "${WATCHER_RPC_URL}"
             kind: ConnectorKind::StandardValidatorRpc,
             rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
             ..ConnectorConfig::default()
+        }
+    }
+
+    fn modes_for(rpc: &str, ws: Option<&str>, economics_enabled: bool) -> ModesConfig {
+        let rpc_route = || vec![rpc.to_string()];
+        ModesConfig {
+            health: HealthModeConfig {
+                commands: HealthCommands {
+                    rpc_health: rpc_route(),
+                    ws_health: ws.into_iter().map(str::to_string).collect(),
+                },
+            },
+            consensus: ConsensusModeConfig {
+                commands: ConsensusCommands {
+                    epoch_info: rpc_route(),
+                    vote_accounts: rpc_route(),
+                },
+            },
+            leadership: LeadershipModeConfig {
+                commands: LeadershipCommands {
+                    current_block_production: rpc_route(),
+                    current_leader_schedule: rpc_route(),
+                    next_leader_schedule: rpc_route(),
+                },
+            },
+            economics: EconomicsModeConfig {
+                enabled: economics_enabled,
+                validator: None,
+                commands: EconomicsCommands {
+                    inflation_rewards: economics_enabled.then(rpc_route).unwrap_or_default(),
+                    reward_epoch_block_production: economics_enabled
+                        .then(rpc_route)
+                        .unwrap_or_default(),
+                },
+            },
         }
     }
 

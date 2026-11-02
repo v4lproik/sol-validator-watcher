@@ -26,11 +26,13 @@ operator-facing semantics.
   error text, URL, request ID, or other unbounded values.
 - Convert lamports to SOL and fractions to percentages in one owning function.
   Names and help text must match the exported unit.
-- Reset dynamic vectors before applying a new snapshot so removed validators,
-  scopes, and source selections do not survive as stale series.
-- Config inventory metrics and selected-source metrics answer different
-  questions. Do not infer successful collection from configured connector
-  presence.
+- Reset snapshot-owned vectors before applying a new snapshot so removed
+  validators and scopes do not survive as stale series. Reset command-source
+  selections at the start of each command cycle so health and collection
+  sources can coexist for that cycle.
+- Connector inventory, command routes, and selected-command-source metrics
+  answer different questions. Do not infer successful execution from a
+  configured route or connector.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.
@@ -46,6 +48,9 @@ operator-facing semantics.
   repository Compose stack.
 - No-data, zero, stale, and dependency-down states are different. Panels and
   alerts must not collapse them into one reassuring display.
+- Keep overview, consensus, leadership, and economics dashboards separate.
+  Mode dashboards consume only their mode's command health, routes, sources,
+  and domain metrics.
 - Keep generated/public Pages output out of source edits; the site build owns it.
 
 ## Review Gates
