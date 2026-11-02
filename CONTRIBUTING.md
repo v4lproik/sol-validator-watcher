@@ -21,13 +21,24 @@ just coverage check
 ## Development flow
 
 1. Make the change.
-2. Run `just ci verify`.
-3. Run `just coverage check` if the change affects Rust code.
-4. If you changed dashboards, validate them with:
+2. Update every affected module's `Unreleased` changelog.
+3. Run `just ci verify`.
+4. Run `just coverage check` if the change affects Rust code.
+5. If you changed dashboards, validate them with:
 
 ```bash
 jq empty docker/grafana/dashboards/sol-validator-watcher-overview.json docker/grafana/dashboards/sol-validator-watcher-breakdown.json
 ```
+
+## Module changelogs
+
+Use the [README module index](README.md#modules) to select ownership. Every
+affected module gets one concise outcome-focused entry under `Unreleased`;
+cross-module changes update multiple changelog files.
+
+Do not put verification output, commit hashes, implementation narration, or
+future work in changelog entries. Module ownership changes must also update the
+README index and the repository changelog skill resource.
 
 ## Planning and tracking
 
