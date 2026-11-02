@@ -28,6 +28,10 @@ _compose target action:
       ;;
   esac
 
+  set -a
+  [[ ! -f .env ]] || source .env
+  set +a
+
   export RUST_VERSION="$(mise config get tools.rust.version)"
 
   case "${action}" in

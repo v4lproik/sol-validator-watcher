@@ -72,7 +72,8 @@ cp .env.example .env
 ```
 
 The files under `config/` are committed templates. Keep real RPC credentials in `.env` or exported environment variables instead of writing secrets into YAML.
-The watcher config can point at one or more companion connector TOML files, which are loaded through `figment` and still support `${VAR}` / `${VAR:-default}` expansion.
+Watcher config files support `${VAR}` / `${VAR:-default}` expansion, and `just stack` sources the repository-root `.env` before invoking Compose.
+Companion connector TOML files resolve relative to their watcher config.
 
 Pick a config profile:
 
