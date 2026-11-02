@@ -23,18 +23,17 @@ services:
 
   watcher-surfpool:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: .
       args:
         RUST_VERSION: ${RUST_VERSION:?RUST_VERSION must come from mise.toml}
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/config/config.compose.surfpool.yaml
+      - /app/etc/config.compose.surfpool.yaml
     environment:
       RUST_LOG: info
     volumes:
-      - ../config/config.compose.surfpool.yaml:/app/config/config.compose.surfpool.yaml:ro
+      - ./etc/config.compose.surfpool.yaml:/app/etc/config.compose.surfpool.yaml:ro
     depends_on:
       - surfpool
     ports:

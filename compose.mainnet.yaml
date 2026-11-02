@@ -1,20 +1,19 @@
 services:
   watcher-mainnet:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: .
       args:
         RUST_VERSION: ${RUST_VERSION:?RUST_VERSION must come from mise.toml}
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/config/config.mainnet.yaml
+      - /app/etc/config.mainnet.yaml
     environment:
       RUST_LOG: info
       SOL_MAINNET_RPC_URL: ${SOL_MAINNET_RPC_URL}
       SOL_MAINNET_WS_URL: ${SOL_MAINNET_WS_URL}
     volumes:
-      - ../config/config.mainnet.yaml:/app/config/config.mainnet.yaml:ro
+      - ./etc/config.mainnet.yaml:/app/etc/config.mainnet.yaml:ro
     ports:
       - "${WATCHER_MAINNET_METRICS_PORT:-8003}:8000"
     restart: on-failure

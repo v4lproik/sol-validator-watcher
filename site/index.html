@@ -214,9 +214,9 @@
                 <p class="snippet-title">Run</p>
                 <pre><code>docker run --rm \
   -p 8000:8000 \
-  -v "$(pwd)/config:/app/config:ro" \
+  -v "$(pwd)/etc:/app/etc:ro" \
   ghcr.io/v4lproik/sol-validator-watcher:latest \
-  --config /app/config/config.devnet.yaml</code></pre>
+  --config /app/etc/config.devnet.yaml</code></pre>
               </article>
 
               <article class="snippet-card">

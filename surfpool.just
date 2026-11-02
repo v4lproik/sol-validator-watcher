@@ -1,5 +1,4 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
-set working-directory := '..'
 
 _require-cli:
   if ! command -v surfpool >/dev/null 2>&1; then echo "surfpool CLI not found. Install it with: curl -sL https://run.surfpool.run/ | bash" >&2; exit 1; fi

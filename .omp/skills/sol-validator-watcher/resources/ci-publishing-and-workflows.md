@@ -8,7 +8,7 @@ checks.
 
 ## Command Ownership
 
-- The root `Justfile` routes to domain modules under `just/`. Use `just` or
+- The root `Justfile` routes to domain modules. Use `just` or
   `just --list --list-submodules` to discover commands and
   `just --show <module>::<verb>` to inspect one without copying recipe bodies.
 - Recipes use `mise` so the pinned Rust and coverage tools are consistent
@@ -42,7 +42,7 @@ checks.
 
 ## Coverage and Pages
 
-- Coverage thresholds and ignore patterns have one owner in `just/coverage.just`.
+- Coverage thresholds and ignore patterns have one owner in `Justfile` recipes.
   Update local, CI, and documentation semantics together.
 - Pages generation is two-stage: build HTML coverage, then assemble `site/`,
   `assets/`, and coverage into ignored `public/` output.

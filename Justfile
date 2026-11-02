@@ -1,19 +1,19 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # Repository verification and CI workflows.
-mod ci 'just/ci.just'
+mod ci
 # Container tooling and image builds.
-mod container 'just/container.just'
+mod container
 # Rust coverage reports and enforcement.
-mod coverage 'just/coverage.just'
+mod coverage
 # Rust toolchain, development, and execution.
-mod rust 'just/rust.just'
+mod rust
 # Coverage-backed project site generation.
-mod site 'just/site.just'
+mod site
 # Docker Compose stack lifecycle.
-mod stack 'just/stack.just'
+mod stack
 # Surfpool tooling and opt-in tests.
-mod surfpool 'just/surfpool.just'
+mod surfpool
 
 default:
     @just --list --list-submodules

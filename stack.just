@@ -1,5 +1,4 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
-set working-directory := '..'
 
 _compose target action:
   #!/usr/bin/env bash
@@ -7,19 +6,19 @@ _compose target action:
 
   target={{quote(target)}}
   action={{quote(action)}}
-  files=(-f docker/compose.yaml)
+  files=(-f compose.yaml)
 
   case "${target}" in
-    surfpool) files+=(-f docker/compose.surfpool.yaml) ;;
-    validator) files+=(-f docker/compose.validator.yaml) ;;
-    devnet) files+=(-f docker/compose.devnet.yaml) ;;
-    mainnet) files+=(-f docker/compose.mainnet.yaml) ;;
+    surfpool) files+=(-f compose.surfpool.yaml) ;;
+    validator) files+=(-f compose.validator.yaml) ;;
+    devnet) files+=(-f compose.devnet.yaml) ;;
+    mainnet) files+=(-f compose.mainnet.yaml) ;;
     all)
       files+=(
-        -f docker/compose.surfpool.yaml
-        -f docker/compose.validator.yaml
-        -f docker/compose.devnet.yaml
-        -f docker/compose.mainnet.yaml
+        -f compose.surfpool.yaml
+        -f compose.validator.yaml
+        -f compose.devnet.yaml
+        -f compose.mainnet.yaml
       )
       ;;
     *)
@@ -27,10 +26,6 @@ _compose target action:
       exit 2
       ;;
   esac
-
-  set -a
-  [[ ! -f .env ]] || source .env
-  set +a
 
   export RUST_VERSION="$(mise config get tools.rust.version)"
 

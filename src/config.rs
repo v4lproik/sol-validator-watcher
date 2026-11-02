@@ -569,12 +569,10 @@ impl Config {
 
     fn resolve_connectors(&mut self, config_path: &Path) -> Result<()> {
         if self.connectors.is_empty() {
-            // The legacy connection file is already loaded above; resolving it again would
-            // duplicate the config directory when the main config path is relative.
             self.connectors
                 .push(ConnectorConfig::from_validator_connection(
                     &self.validator_connection,
-                    None,
+                    self.validator_connection_file.clone(),
                 ));
         }
 
@@ -747,7 +745,7 @@ mod tests {
     };
     use anyhow::{Context, Result};
     use std::{
-        fs,
+        env, fs,
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -1136,7 +1134,7 @@ validator_websocket_enabled: ${WATCHER_VALIDATOR_WEBSOCKET_ENABLED:-true}
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
             .unwrap_or_default();
-        PathBuf::from("target").join(format!(
+        env::temp_dir().join(format!(
             "sol-validator-watcher-config-{}-{}-{}",
             prefix,
             std::process::id(),

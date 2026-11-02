@@ -1,14 +1,13 @@
 services:
   watcher-validator:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: .
       args:
         RUST_VERSION: ${RUST_VERSION:?RUST_VERSION must come from mise.toml}
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/config/config.compose.validator.yaml
+      - /app/etc/config.compose.validator.yaml
     environment:
       RUST_LOG: info
       SOL_WATCHER_NETWORK: ${SOL_WATCHER_NETWORK:-external-validator}
@@ -23,7 +22,7 @@ services:
       SOL_WATCHER_COMMITMENT: ${SOL_WATCHER_COMMITMENT:-confirmed}
       SOL_WATCHER_DELINQUENT_SLOT_DISTANCE: ${SOL_WATCHER_DELINQUENT_SLOT_DISTANCE:-128}
     volumes:
-      - ../config/config.compose.validator.yaml:/app/config/config.compose.validator.yaml:ro
+      - ./etc/config.compose.validator.yaml:/app/etc/config.compose.validator.yaml:ro
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:

@@ -1,5 +1,4 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
-set working-directory := '..'
 
 _ensure-components:
   mise exec -- rustup component add rustfmt clippy llvm-tools
@@ -28,7 +27,7 @@ test:
 build profile="debug":
   profile={{quote(profile)}}; case "${profile}" in debug) mise exec -- cargo build ;; release) mise exec -- cargo build --release ;; *) echo "profile must be debug or release: ${profile}" >&2; exit 2 ;; esac
 
-run profile="debug" config="config/config.local.yaml":
+run profile="debug" config="etc/config.local.yaml":
   profile={{quote(profile)}}; \
   case "${profile}" in debug|release) ;; *) echo "profile must be debug or release: ${profile}" >&2; exit 2 ;; esac; \
   set -a; \
