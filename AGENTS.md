@@ -49,7 +49,7 @@ or site scripts directly.
 | `just rust clippy` | Lint all targets and features with warnings denied |
 | `just rust test` | Run the default Rust test suite |
 | `just rust build [debug\|release]` | Build the selected profile; defaults to debug |
-| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `etc/config.local.yaml` |
+| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `config/config.local.yaml` |
 | `just rust clean` | Remove Cargo build artifacts |
 
 ### Verification and coverage
@@ -94,8 +94,8 @@ Additional gates:
 
 ## Maintaining This Guidance
 
-- The live `Justfile` is authoritative for recipe behavior and accepted
-  arguments. Update this command catalog when its public surface changes.
+- The root `Justfile` routes commands to the modules under `just/`; together
+  they are authoritative for recipe behavior and accepted arguments.
 - Update the owning skill resource in the same change that modifies a durable
   repository invariant.
 - Keep one rule under one category and link to it instead of duplicating it.
