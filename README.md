@@ -71,15 +71,15 @@ Create a local env file:
 cp .env.example .env
 ```
 
-The files under `etc/` are committed templates. Keep real RPC credentials in `.env` or exported environment variables instead of writing secrets into YAML.
+The files under `config/` are committed templates. Keep real RPC credentials in `.env` or exported environment variables instead of writing secrets into YAML.
 The watcher config can point at one or more companion connector TOML files, which are loaded through `figment` and still support `${VAR}` / `${VAR:-default}` expansion.
 
 Pick a config profile:
 
-- `etc/config.devnet.yaml`
-- `etc/config.mainnet.yaml`
-- `etc/config.compose.validator.yaml`
-- `etc/config.compose.surfpool.yaml`
+- `config/config.devnet.yaml`
+- `config/config.mainnet.yaml`
+- `config/config.compose.validator.yaml`
+- `config/config.compose.surfpool.yaml`
 
 Set at least:
 
@@ -145,7 +145,7 @@ just stack up devnet
 For a hosted mainnet RPC profile:
 
 ```bash
-just rust run debug etc/config.mainnet.yaml
+just rust run debug config/config.mainnet.yaml
 ```
 
 Or with the local Compose stack:
@@ -161,7 +161,7 @@ new scrape target is picked up:
 just stack reload prometheus
 ```
 
-The committed `etc/config.mainnet.yaml` uses
+The committed `config/config.mainnet.yaml` uses
 sample watched validators and keeps `economics.mode: disabled` by default. Many hosted RPC
 endpoints do not retain enough reward-epoch block production history for strict economics mode. If
 you enable economics on mainnet, use a vote account you care about and an RPC endpoint that can
@@ -191,8 +191,8 @@ just rust test
 just ci verify
 just coverage check
 just site build
-just rust run debug etc/config.devnet.yaml
-just rust run debug etc/config.mainnet.yaml
+just rust run debug config/config.devnet.yaml
+just rust run debug config/config.mainnet.yaml
 just stack up devnet
 just stack up mainnet
 just stack reload prometheus
