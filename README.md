@@ -97,9 +97,15 @@ validator_websocket_enabled: true
 connectors:
   - name: local-validator
     kind: standard-validator+rpc
+    priority: 20
     connection_file: validator.devnet.toml
   - name: helius-fallback
     kind: helius+enhanced-rpc
+    priority: 10
+    capabilities:
+      leader_schedule: 50
+    commands:
+      next_leader_schedule: 100
     rpc_url: ${SOL_DEVNET_FALLBACK_RPC_URL}
   - name: helius-ws
     kind: helius+enhanced-wss
@@ -115,10 +121,27 @@ rpc_url = "${SOL_DEVNET_RPC_URL}"
 ws_url = "${SOL_DEVNET_WS_URL}"
 ```
 
-Connectors are ordered. The first connector that can serve a metric wins, so you can declare a local validator first, then a hosted RPC fallback, then a websocket-only connector for probes. The exporter exposes both:
+Each collection command resolves an ordered chain of compatible connectors. The connector with the
+highest effective priority runs first; a failed command falls through to the next connector. Required
+commands fail only after the chain is exhausted, while unavailable optional commands are omitted.
+Declaration order is the deterministic tie-breaker.
 
-- `sol_connector_info` for the declared connector stack and precedence
-- `sol_metric_source_info` for the connector that actually supplied each metric family in the latest snapshot
+Priority resolves from the most specific setting to the least specific:
+
+1. the command override under `commands`;
+2. the capability override under `capabilities`;
+3. the connector's base `priority`.
+
+For example, the configuration above normally prefers the local validator, prefers Helius for all
+leader-schedule commands, and gives Helius the highest priority specifically for
+`next_leader_schedule`. Supported command keys are `rpc_health`, `ws_health`, `epoch_info`,
+`vote_accounts`, `current_block_production`, `current_leader_schedule`, `next_leader_schedule`,
+`inflation_rewards`, and `reward_epoch_block_production`.
+
+The exporter exposes:
+
+- `sol_connector_info` for the declared connector stack and declaration order
+- `sol_metric_source_info` for the connector that supplied each metric family in the latest snapshot
 
 Single-validator economics target:
 
