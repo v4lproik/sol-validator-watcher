@@ -6,7 +6,8 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 # Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "local-validator"
-kind = "standard-validator+rpc"
+provider = "solana-validator"
+features = ["rpc"]
 rpc_url = "http://127.0.0.1:8899"
 rpc_timeout_sec = 30
 ws_timeout_sec = 10

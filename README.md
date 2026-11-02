@@ -43,17 +43,19 @@ Run `just` to discover all module commands. Configuration templates live in [`co
 
 ## Command routes
 
-`[[connectors]]` declares reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
+`[[connectors]]` declares a stable provider name, the provider features available through that connector, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
 
 ```toml
 [[connectors]]
 name = "validator"
-kind = "standard-validator+rpc"
+provider = "solana-validator"
+features = ["rpc"]
 rpc_url = "http://validator:8899"
 
 [[connectors]]
 name = "hosted"
-kind = "helius+enhanced-rpc"
+provider = "helius"
+features = ["rpc", "historical-rpc"]
 rpc_url = "${SOL_MAINNET_RPC_URL}"
 
 [modes.consensus.commands]
@@ -66,7 +68,9 @@ current_leader_schedule = ["validator", "hosted"]
 next_leader_schedule = ["validator", "hosted"]
 ```
 
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects unknown names, duplicate route entries, missing required routes, and RPC commands assigned to connectors without `rpc_url`. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
+Supported features are `rpc`, `websocket`, and `historical-rpc`. Standard health, consensus, and leadership commands require `rpc`; WebSocket health requires `websocket`; economics commands require `historical-rpc`, which also requires `rpc`. Provider names identify the service supplying the capability and are exported with connector, route, and selected-source metrics.
+
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects missing providers or features, duplicate features, feature/transport mismatches, unknown names, duplicate route entries, missing required routes, and routes whose connectors lack the command's required feature. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
 
 ## Contributing
 

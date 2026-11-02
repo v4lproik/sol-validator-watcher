@@ -1,6 +1,6 @@
 use crate::{
     collector::{Snapshot, WatchedValidatorMetrics},
-    config::{Config, ConnectorConfig},
+    config::{Config, ConnectorConfig, ProviderFeature},
     mode::ModeId,
     source::{SourceChain, SourceSelection},
 };
@@ -21,6 +21,7 @@ pub struct Metrics {
     sol_ws_up: IntGaugeVec,
     sol_watcher_config_info: IntGaugeVec,
     sol_connector_info: IntGaugeVec,
+    sol_connector_feature_info: IntGaugeVec,
     sol_mode_enabled: IntGaugeVec,
     sol_mode_up: IntGaugeVec,
     sol_mode_command_route_info: IntGaugeVec,
@@ -106,16 +107,23 @@ impl Metrics {
         let sol_connector_info = IntGaugeVec::new(
             Opts::new(
                 "sol_connector_info",
-                "Configured connector inventory and available transports",
+                "Configured connector inventory, provider, and available transports",
             ),
             &[
                 "network",
                 "connector",
-                "kind",
+                "provider",
                 "declaration_order",
                 "has_rpc",
                 "has_ws",
             ],
+        )?;
+        let sol_connector_feature_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_connector_feature_info",
+                "Provider features declared for each configured connector",
+            ),
+            &["network", "connector", "provider", "feature"],
         )?;
         let sol_mode_enabled = IntGaugeVec::new(
             Opts::new("sol_mode_enabled", "Whether a collection mode is enabled"),
@@ -131,14 +139,15 @@ impl Metrics {
         let sol_mode_command_route_info = IntGaugeVec::new(
             Opts::new(
                 "sol_mode_command_route_info",
-                "Configured connector fallback order for each mode command",
+                "Configured connector fallback order and required feature for each mode command",
             ),
             &[
                 "network",
                 "mode",
                 "command",
                 "connector",
-                "kind",
+                "provider",
+                "feature",
                 "precedence",
                 "available",
             ],
@@ -146,14 +155,15 @@ impl Metrics {
         let sol_mode_command_source_info = IntGaugeVec::new(
             Opts::new(
                 "sol_mode_command_source_info",
-                "Connector that supplied the latest result for each mode command",
+                "Connector, provider, and feature that supplied each mode command's latest result",
             ),
             &[
                 "network",
                 "mode",
                 "command",
                 "connector",
-                "kind",
+                "provider",
+                "feature",
                 "precedence",
             ],
         )?;
@@ -392,6 +402,7 @@ impl Metrics {
         register(&registry, &sol_ws_up)?;
         register(&registry, &sol_watcher_config_info)?;
         register(&registry, &sol_connector_info)?;
+        register(&registry, &sol_connector_feature_info)?;
         register(&registry, &sol_mode_enabled)?;
         register(&registry, &sol_mode_up)?;
         register(&registry, &sol_mode_command_route_info)?;
@@ -443,6 +454,7 @@ impl Metrics {
             sol_ws_up,
             sol_watcher_config_info,
             sol_connector_info,
+            sol_connector_feature_info,
             sol_mode_enabled,
             sol_mode_up,
             sol_mode_command_route_info,
@@ -527,7 +539,8 @@ impl Metrics {
                 source.mode.as_str(),
                 source.command.as_str(),
                 source.connector.as_ref(),
-                source.kind.as_str(),
+                source.provider.as_ref(),
+                ProviderFeature::required_for(source.command).as_str(),
                 precedence.as_str(),
             ])
             .set(1);
@@ -549,6 +562,7 @@ impl Metrics {
 
         self.sol_watcher_config_info.reset();
         self.sol_connector_info.reset();
+        self.sol_connector_feature_info.reset();
         self.sol_mode_enabled.reset();
         self.sol_mode_up.reset();
         self.sol_mode_command_route_info.reset();
@@ -562,12 +576,22 @@ impl Metrics {
                 .with_label_values(&[
                     &config.network,
                     connector.name.as_str(),
-                    connector.kind.as_str(),
+                    connector.provider.as_str(),
                     declaration_order.as_str(),
                     bool_label(connector.has_rpc()),
                     bool_label(connector.has_ws()),
                 ])
                 .set(1);
+            for feature in &connector.features {
+                self.sol_connector_feature_info
+                    .with_label_values(&[
+                        &config.network,
+                        connector.name.as_str(),
+                        connector.provider.as_str(),
+                        feature.as_str(),
+                    ])
+                    .set(1);
+            }
         }
 
         for mode in ModeId::ALL {
@@ -588,7 +612,8 @@ impl Metrics {
                     route.mode.as_str(),
                     route.command.as_str(),
                     route.connector,
-                    route.kind.as_str(),
+                    route.provider,
+                    route.feature.as_str(),
                     precedence.as_str(),
                     bool_label(route.available),
                 ])
@@ -628,7 +653,8 @@ impl Metrics {
                     source.mode.as_str(),
                     source.command.as_str(),
                     source.connector.as_ref(),
-                    source.kind.as_str(),
+                    source.provider.as_ref(),
+                    ProviderFeature::required_for(source.command).as_str(),
                     precedence.as_str(),
                 ])
                 .set(1);
@@ -854,9 +880,9 @@ mod tests {
             WatchedValidatorMetrics,
         },
         config::{
-            Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
-            EconomicsCommands, EconomicsModeConfig, HealthCommands, HealthModeConfig,
-            LeadershipCommands, LeadershipModeConfig, ModesConfig,
+            Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
+            EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
+            LeadershipModeConfig, ModesConfig, ProviderFeature,
         },
         mode::{CommandId, ModeId},
         source::{SourceChain, SourceSelection},
@@ -920,14 +946,14 @@ mod tests {
                     mode: ModeId::Consensus,
                     command: CommandId::EpochInfo,
                     connector: Arc::from("local-validator"),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: Arc::from("solana-validator"),
                     precedence: 1,
                 },
                 SnapshotDataSource {
                     mode: ModeId::Economics,
                     command: CommandId::InflationRewards,
                     connector: Arc::from("helius-rpc"),
-                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    provider: Arc::from("helius"),
                     precedence: 2,
                 },
             ],
@@ -954,25 +980,29 @@ mod tests {
             connectors: vec![
                 ConnectorConfig {
                     name: "local-validator".to_string(),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: "solana-validator".to_string(),
+                    features: vec![ProviderFeature::Rpc, ProviderFeature::Websocket],
                     rpc_url: Some("http://127.0.0.1:8899".to_string()),
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "helius-rpc".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
                     rpc_url: Some("https://rpc.helius.example".to_string()),
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "helius-ws".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedWss,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Websocket],
                     ws_url: Some("wss://ws.helius.example".to_string()),
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "full-rpc".to_string(),
-                    kind: ConnectorKind::StandardValidatorFullRpc,
+                    provider: "solana-validator".to_string(),
+                    features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
                     rpc_url: Some("https://full-rpc.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -992,13 +1022,14 @@ mod tests {
         let rendered = metrics.render()?;
 
         assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_rpc=\"true\",has_ws=\"false\",kind=\"standard-validator\",network=\"mainnet-beta\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_rpc=\"false\",has_ws=\"true\",kind=\"helius+enhanced-wss\",network=\"mainnet-beta\"} 1"));
-        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
-        assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",kind=\"standard-validator\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
-        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",kind=\"helius+enhanced-wss\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\"} 1"));
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",kind=\"helius+enhanced-rpc\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_rpc=\"true\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"solana-validator\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_rpc=\"false\",has_ws=\"true\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
+        assert!(rendered.contains("sol_connector_feature_info{connector=\"helius-rpc\",feature=\"historical-rpc\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",feature=\"rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",feature=\"websocket\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",feature=\"websocket\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",feature=\"rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-rpc\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\"} 1"));
         assert!(
             rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1")
         );
@@ -1030,7 +1061,8 @@ mod tests {
             network: network.to_string(),
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
-                kind: ConnectorKind::StandardValidator,
+                provider: "solana".to_string(),
+                features: vec![ProviderFeature::Rpc, ProviderFeature::Websocket],
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
@@ -1069,7 +1101,7 @@ mod tests {
                 mode: ModeId::Consensus,
                 command: CommandId::EpochInfo,
                 connector: Arc::from("primary"),
-                kind: ConnectorKind::StandardValidator,
+                provider: Arc::from("solana"),
                 precedence: 1,
             }],
             mode_statuses: vec![ModeStatus {
@@ -1105,13 +1137,15 @@ mod tests {
             connectors: vec![
                 ConnectorConfig {
                     name: "primary".to_string(),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: "solana".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some("https://primary.example".to_string()),
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "fallback".to_string(),
-                    kind: ConnectorKind::HeliusRpc,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some("https://fallback.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1124,26 +1158,26 @@ mod tests {
             mode: ModeId::Consensus,
             command: CommandId::EpochInfo,
             connector: Arc::from("primary"),
-            kind: ConnectorKind::StandardValidator,
+            provider: Arc::from("solana"),
             precedence: 1,
         };
         let fallback = SourceSelection {
             mode: ModeId::Consensus,
             command: CommandId::EpochInfo,
             connector: Arc::from("fallback"),
-            kind: ConnectorKind::HeliusRpc,
+            provider: Arc::from("helius"),
             precedence: 2,
         };
 
         metrics.begin_poll(&config, &sources);
         metrics.set_command_source(network, &primary);
-        assert!(metrics.render()?.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
+        assert!(metrics.render()?.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\"} 1"));
 
         metrics.begin_poll(&config, &sources);
         metrics.set_command_source(network, &fallback);
         let rendered = metrics.render()?;
-        assert!(!rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",kind=\"standard-validator\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"fallback\",kind=\"helius+rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"2\"} 1"));
+        assert!(!rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"fallback\",feature=\"rpc\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\"} 1"));
 
         Ok(())
     }

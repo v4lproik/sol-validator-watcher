@@ -30,9 +30,10 @@ operator-facing semantics.
   validators and scopes do not survive as stale series. Reset command-source
   selections at the start of each command cycle so health and collection
   sources can coexist for that cycle.
-- Connector inventory, command routes, and selected-command-source metrics
-  answer different questions. Do not infer successful execution from a
-  configured route or connector.
+- Connector inventory, declared provider features, command routes, and
+  selected-command-source metrics answer different questions. Route and source
+  labels include provider and required feature. Do not infer successful
+  execution from a configured route or connector.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.

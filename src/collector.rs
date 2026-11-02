@@ -432,7 +432,7 @@ pub struct SnapshotDataSource {
     pub mode: ModeId,
     pub command: CommandId,
     pub connector: Arc<str>,
-    pub kind: crate::config::ConnectorKind,
+    pub provider: Arc<str>,
     pub precedence: usize,
 }
 
@@ -442,7 +442,7 @@ impl From<SourceSelection> for SnapshotDataSource {
             mode: source.mode,
             command: source.command,
             connector: source.connector,
-            kind: source.kind,
+            provider: source.provider,
             precedence: source.precedence,
         }
     }
@@ -1114,9 +1114,9 @@ mod tests {
     };
     use crate::{
         config::{
-            Config, ConnectorConfig, ConnectorKind, ConsensusCommands, ConsensusModeConfig,
-            EconomicsCommands, EconomicsModeConfig, HealthCommands, HealthModeConfig,
-            LeadershipCommands, LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
+            Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
+            EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
+            LeadershipModeConfig, ModesConfig, ProviderFeature, WatchedValidatorConfig,
         },
         labels::LabelMatcher,
         mode::{CommandId, ModeId},
@@ -1358,7 +1358,8 @@ mod tests {
             network: "devnet".to_string(),
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
-                kind: ConnectorKind::StandardValidatorRpc,
+                provider: "mock-solana".to_string(),
+                features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
                 rpc_url: Some(rpc_url.clone()),
                 rpc_timeout_sec: 5,
                 ..ConnectorConfig::default()
@@ -1420,14 +1421,16 @@ mod tests {
             connectors: vec![
                 ConnectorConfig {
                     name: "local-validator".to_string(),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: "solana-validator".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(primary_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "helius-fallback".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(fallback_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1464,15 +1467,12 @@ mod tests {
             .ok_or_else(|| anyhow!("missing next-leader-schedule source"))?;
 
         assert_eq!(epoch_info_source.connector.as_ref(), "local-validator");
-        assert_eq!(epoch_info_source.kind, ConnectorKind::StandardValidator);
+        assert_eq!(epoch_info_source.provider.as_ref(), "solana-validator");
         assert_eq!(
             current_schedule_source.connector.as_ref(),
             "helius-fallback"
         );
-        assert_eq!(
-            current_schedule_source.kind,
-            ConnectorKind::HeliusEnhancedRpc
-        );
+        assert_eq!(current_schedule_source.provider.as_ref(), "helius");
         assert_eq!(current_schedule_source.precedence, 2);
         assert_eq!(next_schedule_source.connector.as_ref(), "helius-fallback");
         assert_eq!(snapshot.watched_validators[0].future_leader_slots, 3);
@@ -1491,14 +1491,16 @@ mod tests {
             connectors: vec![
                 ConnectorConfig {
                     name: "local-validator".to_string(),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: "solana-validator".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(primary_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "helius-fallback".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(fallback_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1525,10 +1527,10 @@ mod tests {
             .ok_or_else(|| anyhow!("missing vote-accounts source"))?;
 
         assert_eq!(epoch_info_source.connector.as_ref(), "helius-fallback");
-        assert_eq!(epoch_info_source.kind, ConnectorKind::HeliusEnhancedRpc);
+        assert_eq!(epoch_info_source.provider.as_ref(), "helius");
         assert_eq!(epoch_info_source.precedence, 2);
         assert_eq!(vote_accounts_source.connector.as_ref(), "local-validator");
-        assert_eq!(vote_accounts_source.kind, ConnectorKind::StandardValidator);
+        assert_eq!(vote_accounts_source.provider.as_ref(), "solana-validator");
 
         Ok(())
     }
@@ -1544,14 +1546,16 @@ mod tests {
             connectors: vec![
                 ConnectorConfig {
                     name: "first".to_string(),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: "solana-validator".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(first_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "second".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(second_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1595,14 +1599,16 @@ mod tests {
             connectors: vec![
                 ConnectorConfig {
                     name: "first".to_string(),
-                    kind: ConnectorKind::StandardValidator,
+                    provider: "solana-validator".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(first_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
                     name: "second".to_string(),
-                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    provider: "helius".to_string(),
+                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some(second_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1633,7 +1639,8 @@ mod tests {
             network: "devnet".to_string(),
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
-                kind: ConnectorKind::StandardValidatorRpc,
+                provider: "mock-solana".to_string(),
+                features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
                 rpc_url: Some(rpc_url),
                 rpc_timeout_sec: 5,
                 ..ConnectorConfig::default()
@@ -1708,7 +1715,8 @@ mod tests {
             network: "devnet".to_string(),
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
-                kind: ConnectorKind::StandardValidator,
+                provider: "solana-validator".to_string(),
+                features: vec![ProviderFeature::Rpc, ProviderFeature::Websocket],
                 rpc_url: Some("https://rpc.example".to_string()),
                 ws_url: Some("wss://rpc.example".to_string()),
                 ..ConnectorConfig::default()
@@ -1793,7 +1801,8 @@ mod tests {
             network: "devnet".to_string(),
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
-                kind: ConnectorKind::StandardValidatorRpc,
+                provider: "solana-validator".to_string(),
+                features: vec![ProviderFeature::Rpc],
                 rpc_url: Some("https://rpc.example".to_string()),
                 ..ConnectorConfig::default()
             }],

@@ -236,15 +236,17 @@
               "mode": 2,
               "command": 3,
               "connector": 4,
-              "kind": 5,
-              "precedence": 6
+              "provider": 5,
+              "feature": 6,
+              "precedence": 7
             },
             "renameByName": {
               "network": "Network",
               "mode": "Mode",
               "command": "Command",
               "connector": "Connector",
-              "kind": "Kind",
+              "provider": "Provider",
+              "feature": "Feature",
               "precedence": "Order",
               "available": "Available"
             }
@@ -334,17 +336,18 @@
               "mode": 1,
               "command": 2,
               "connector": 3,
-              "kind": 4,
-              "precedence": 5
+              "provider": 4,
+              "feature": 5,
+              "precedence": 6
             },
             "renameByName": {
               "network": "Network",
               "mode": "Mode",
               "command": "Command",
               "connector": "Connector",
-              "kind": "Kind",
-              "precedence": "Order",
-              "available": "Available"
+              "provider": "Provider",
+              "feature": "Feature",
+              "precedence": "Order"
             }
           }
         }

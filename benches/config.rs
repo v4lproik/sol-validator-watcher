@@ -78,7 +78,8 @@ poll_interval_sec = 15
             config,
             r#"[[connectors]]
 name = "connector-{index}"
-kind = "standard-validator+rpc"
+provider = "benchmark-provider"
+features = ["rpc", "websocket"]
 rpc_url = "https://rpc-{index}.example"
 rpc_timeout_sec = 30
 ws_url = "wss://rpc-{index}.example"

@@ -7,7 +7,8 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 # Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "surfpool"
-kind = "standard-validator+rpc"
+provider = "surfpool"
+features = ["rpc", "websocket"]
 rpc_url = "http://surfpool:8899"
 rpc_timeout_sec = 5
 ws_url = "ws://surfpool:8900"

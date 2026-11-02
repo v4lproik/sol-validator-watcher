@@ -8,7 +8,8 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 # Each command route is an explicit connector fallback order.
 [[connectors]]
 name = "mainnet-rpc"
-kind = "helius+rpc"
+provider = "helius"
+features = ["rpc", "websocket", "historical-rpc"]
 rpc_url = "${SOL_MAINNET_RPC_URL}"
 rpc_timeout_sec = 30
 ws_url = "${SOL_MAINNET_WS_URL}"
