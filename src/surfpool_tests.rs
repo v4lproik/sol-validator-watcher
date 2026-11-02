@@ -1,6 +1,6 @@
 use crate::{
     collector::{collect_snapshot, RpcClient},
-    config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
+    config::{Config, ConnectorConfig, ConnectorKind},
     metrics::Metrics,
     websocket::WebsocketProbeClient,
 };
@@ -25,33 +25,34 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     let harness = SurfpoolHarness::spawn()?;
     let config = Config {
         network: "localnet".to_string(),
-        validator_connection: ValidatorConnectionConfig {
-            rpc_url: harness.rpc_url(),
+        connectors: vec![ConnectorConfig {
+            name: "surfpool".to_string(),
+            kind: ConnectorKind::StandardValidator,
+            rpc_url: Some(harness.rpc_url()),
             rpc_timeout_sec: 5,
-            transport_mode: TransportMode::PollHttpAndWs,
             ws_url: Some(harness.ws_url()),
             ws_timeout_sec: 5,
-            ..ValidatorConnectionConfig::default()
-        },
-        validator_mode: ValidatorMode::ConsensusAndRpc,
-        validator_websocket_enabled: true,
+            ..ConnectorConfig::default()
+        }],
         poll_interval_sec: 1,
         delinquent_slot_distance: Some(128),
         ..Config::default()
     };
-    let connection = &config.validator_connection;
+    let connector = &config.connectors[0];
     let client = RpcClient::new(
-        connection.rpc_url.clone(),
-        Duration::from_secs(connection.rpc_timeout_sec),
-        connection.commitment_config()?,
+        connector
+            .rpc_url
+            .clone()
+            .context("surfpool connector requires rpc_url")?,
+        Duration::from_secs(connector.rpc_timeout_sec),
+        connector.commitment_config()?,
     )?;
     let ws_client = WebsocketProbeClient::new(
-        config
-            .validator_connection
+        connector
             .ws_url
             .clone()
-            .context("transport_mode requires ws_url")?,
-        Duration::from_secs(connection.ws_timeout_sec),
+            .context("surfpool connector requires ws_url")?,
+        Duration::from_secs(connector.ws_timeout_sec),
     );
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;

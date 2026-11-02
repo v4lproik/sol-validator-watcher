@@ -42,7 +42,7 @@ use tracing::{error, info, warn};
 #[command(name = "sol-validator-watcher")]
 #[command(about = "Prometheus watcher for Solana validators")]
 struct Cli {
-    #[arg(long, default_value = "config/local/validator/watcher.yaml")]
+    #[arg(long, default_value = "config/local/validator.toml")]
     config: PathBuf,
 }
 
@@ -99,8 +99,7 @@ impl RuntimeState {
             );
         }
 
-        let connectors_changed = self.config.connectors != next.connectors
-            || self.config.validator_websocket_enabled != next.validator_websocket_enabled;
+        let connectors_changed = self.config.connectors != next.connectors;
 
         if connectors_changed {
             self.connectors = build_runtime_connectors(&next)?;
@@ -109,7 +108,6 @@ impl RuntimeState {
         info!(
             watched_validators = next.watched_validators.len(),
             connectors = next.connectors.len(),
-            validator_mode = next.validator_mode.as_str(),
             economics_mode = next.economics.mode.as_str(),
             "reloaded configuration"
         );
@@ -182,7 +180,6 @@ async fn run_watcher_loop(
         network = runtime.config.network,
         watched_validators = runtime.config.watched_validators.len(),
         connectors = runtime.connectors.len(),
-        validator_mode = runtime.config.validator_mode.as_str(),
         economics_mode = runtime.config.economics.mode.as_str(),
         "starting Solana validator watcher"
     );
@@ -363,10 +360,8 @@ async fn health_handler() -> &'static str {
 }
 
 fn build_runtime_connectors(config: &Config) -> Result<Vec<RuntimeConnector>> {
-    let connector_configs = config.effective_connectors();
-
-    let mut connectors = Vec::with_capacity(connector_configs.len());
-    for connector in connector_configs {
+    let mut connectors = Vec::with_capacity(config.connectors.len());
+    for connector in &config.connectors {
         let rpc_client = match connector.rpc_url.as_ref() {
             Some(rpc_url) => Some(RpcClient::new(
                 rpc_url.clone(),
@@ -375,19 +370,12 @@ fn build_runtime_connectors(config: &Config) -> Result<Vec<RuntimeConnector>> {
             )?),
             None => None,
         };
-        let ws_client = if config.validator_websocket_enabled {
-            connector.ws_url.as_ref().map(|url| {
-                WebsocketProbeClient::new(
-                    url.clone(),
-                    Duration::from_secs(connector.ws_timeout_sec),
-                )
-            })
-        } else {
-            None
-        };
+        let ws_client = connector.ws_url.as_ref().map(|url| {
+            WebsocketProbeClient::new(url.clone(), Duration::from_secs(connector.ws_timeout_sec))
+        });
 
         connectors.push(RuntimeConnector {
-            name: connector.name,
+            name: connector.name.clone(),
             kind: connector.kind,
             rpc_client,
             ws_client,
@@ -395,14 +383,6 @@ fn build_runtime_connectors(config: &Config) -> Result<Vec<RuntimeConnector>> {
     }
 
     Ok(connectors)
-}
-
-#[cfg(test)]
-fn new_ws_probe_client(config: &Config) -> Option<WebsocketProbeClient> {
-    let connection = &config.validator_connection;
-    connection.ws_url.as_ref().map(|url| {
-        WebsocketProbeClient::new(url.clone(), Duration::from_secs(connection.ws_timeout_sec))
-    })
 }
 
 fn config_mtime(path: &Path) -> Result<SystemTime> {
@@ -460,64 +440,35 @@ fn init_tracing() -> Result<()> {
 mod tests {
     use super::{
         build_runtime_connectors, config_mtime, economics_capability_check_required,
-        ensure_economics_capabilities_ready, new_ws_probe_client, update_liveness_file,
-        RuntimeState,
+        ensure_economics_capabilities_ready, update_liveness_file, RuntimeState,
     };
     use crate::config::{
-        Config, EconomicsConfig, EconomicsMode, TransportMode, ValidatorConnectionConfig,
-        ValidatorMode, WatchedValidatorConfig,
+        Config, ConnectorConfig, ConnectorKind, EconomicsConfig, EconomicsMode,
+        WatchedValidatorConfig,
     };
     use anyhow::{Context, Result};
     use std::{
         env, fs,
         path::PathBuf,
-        time::{Duration, SystemTime, UNIX_EPOCH},
+        time::{SystemTime, UNIX_EPOCH},
     };
-
-    #[test]
-    fn new_ws_probe_client_respects_ws_configuration() {
-        let with_ws = Config {
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-                transport_mode: TransportMode::PollHttpAndWs,
-                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-                ..ValidatorConnectionConfig::default()
-            },
-            validator_mode: ValidatorMode::ConsensusAndRpc,
-            validator_websocket_enabled: true,
-            ..Config::default()
-        };
-        let without_ws = Config {
-            validator_connection: ValidatorConnectionConfig {
-                ws_url: None,
-                transport_mode: TransportMode::PollHttp,
-                ..with_ws.validator_connection.clone()
-            },
-            validator_websocket_enabled: false,
-            ..with_ws.clone()
-        };
-
-        assert!(new_ws_probe_client(&with_ws).is_some());
-        assert!(new_ws_probe_client(&without_ws).is_none());
-    }
 
     #[test]
     fn build_runtime_connectors_preserves_declared_order_and_transport_capabilities() -> Result<()>
     {
         let config = Config {
-            validator_websocket_enabled: true,
             connectors: vec![
-                crate::config::ConnectorConfig {
+                ConnectorConfig {
                     name: "local-validator".to_string(),
-                    kind: crate::config::ConnectorKind::StandardValidator,
+                    kind: ConnectorKind::StandardValidator,
                     rpc_url: Some("http://127.0.0.1:8899".to_string()),
-                    ..crate::config::ConnectorConfig::default()
+                    ..ConnectorConfig::default()
                 },
-                crate::config::ConnectorConfig {
+                ConnectorConfig {
                     name: "helius-ws".to_string(),
-                    kind: crate::config::ConnectorKind::HeliusEnhancedWss,
+                    kind: ConnectorKind::HeliusEnhancedWss,
                     ws_url: Some("wss://ws.helius.example".to_string()),
-                    ..crate::config::ConnectorConfig::default()
+                    ..ConnectorConfig::default()
                 },
             ],
             ..Config::default()
@@ -621,40 +572,132 @@ mod tests {
     }
 
     #[test]
-    fn reload_if_needed_resets_economics_capabilities_flag() -> Result<()> {
-        let test_dir = unique_test_dir("reload");
+    fn reload_if_needed_rebuilds_connector_order_and_resets_economics_flag() -> Result<()> {
+        let test_dir = unique_test_dir("reload-order");
         fs::create_dir_all(&test_dir)
             .with_context(|| format!("failed to create {}", test_dir.display()))?;
-        let config_path = test_dir.join("watcher.yaml");
+        let config_path = test_dir.join("watcher.toml");
         fs::write(
             &config_path,
             r#"
-network: mainnet-beta
-rpc_url: https://api.mainnet-beta.solana.com
-validator_mode: consensus
-poll_interval_sec: 15
+network = "mainnet-beta"
+
+[[connectors]]
+name = "primary"
+kind = "standard-validator+rpc"
+rpc_url = "https://primary.example"
+
+[[connectors]]
+name = "fallback"
+kind = "helius+enhanced-wss"
+ws_url = "wss://fallback.example"
 "#,
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
         let mut runtime = RuntimeState::load(config_path.clone())?;
         runtime.economics_capabilities_verified = true;
+        runtime.config_modified = UNIX_EPOCH;
 
-        std::thread::sleep(Duration::from_millis(20));
         fs::write(
             &config_path,
             r#"
-network: mainnet-beta
-rpc_url: https://api.mainnet-beta.solana.com
-validator_mode: rpc
-poll_interval_sec: 15
+network = "mainnet-beta"
+
+[[connectors]]
+name = "fallback"
+kind = "helius+rpc"
+rpc_url = "https://fallback.example"
+ws_url = "wss://fallback.example"
+
+[[connectors]]
+name = "replacement"
+kind = "standard-validator+rpc"
+rpc_url = "https://replacement.example"
 "#,
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
         runtime.reload_if_needed()?;
 
+        assert_eq!(runtime.config.connectors[0].name, "fallback");
+        assert_eq!(runtime.config.connectors[1].name, "replacement");
+        assert_eq!(runtime.connectors[0].name, "fallback");
+        assert_eq!(runtime.connectors[0].kind, ConnectorKind::HeliusRpc);
+        assert!(runtime.connectors[0].rpc_client.is_some());
+        assert!(runtime.connectors[0].ws_client.is_some());
+        assert_eq!(runtime.connectors[1].name, "replacement");
+        assert_eq!(
+            runtime.connectors[1].kind,
+            ConnectorKind::StandardValidatorRpc
+        );
+        assert!(runtime.connectors[1].rpc_client.is_some());
+        assert!(runtime.connectors[1].ws_client.is_none());
+        assert_ne!(runtime.config_modified, UNIX_EPOCH);
         assert!(!runtime.economics_capabilities_verified);
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn reload_if_needed_keeps_last_known_good_runtime_after_invalid_candidate() -> Result<()> {
+        let test_dir = unique_test_dir("reload-invalid");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.toml");
+        fs::write(
+            &config_path,
+            r#"
+network = "mainnet-beta"
+
+[[connectors]]
+name = "primary"
+kind = "standard-validator+rpc"
+rpc_url = "https://primary.example"
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let mut runtime = RuntimeState::load(config_path.clone())?;
+        runtime.economics_capabilities_verified = true;
+        runtime.config_modified = UNIX_EPOCH;
+
+        fs::write(
+            &config_path,
+            r#"
+network = "testnet"
+
+[[connectors]]
+name = "ws-only"
+kind = "helius+ws"
+ws_url = "wss://ws-only.example"
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let error = match runtime.reload_if_needed() {
+            Ok(()) => anyhow::bail!("invalid reload candidate should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("at least one connector with rpc_url is required"));
+        assert_eq!(runtime.config.network, "mainnet-beta");
+        assert_eq!(runtime.config.connectors.len(), 1);
+        assert_eq!(runtime.config.connectors[0].name, "primary");
+        assert_eq!(runtime.connectors.len(), 1);
+        assert_eq!(runtime.connectors[0].name, "primary");
+        assert_eq!(
+            runtime.connectors[0].kind,
+            ConnectorKind::StandardValidatorRpc
+        );
+        assert!(runtime.connectors[0].rpc_client.is_some());
+        assert!(runtime.connectors[0].ws_client.is_none());
+        assert_eq!(runtime.config_modified, UNIX_EPOCH);
+        assert!(runtime.economics_capabilities_verified);
 
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
@@ -663,16 +706,18 @@ poll_interval_sec: 15
 
     fn disabled_economics_runtime() -> Result<RuntimeState> {
         let config = Config {
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-                ..ValidatorConnectionConfig::default()
-            },
+            connectors: vec![ConnectorConfig {
+                name: "primary".to_string(),
+                kind: ConnectorKind::StandardValidatorRpc,
+                rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
+                ..ConnectorConfig::default()
+            }],
             ..Config::default()
         };
         let connectors = build_runtime_connectors(&config)?;
 
         Ok(RuntimeState {
-            config_path: PathBuf::from("config.yaml"),
+            config_path: PathBuf::from("config.toml"),
             config,
             connectors,
             config_modified: UNIX_EPOCH,

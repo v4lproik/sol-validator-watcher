@@ -1551,8 +1551,8 @@ mod tests {
     };
     use crate::{
         config::{
-            Config, ConnectorKind, EconomicsConfig, EconomicsMode, TransportMode,
-            ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig,
+            Config, ConnectorConfig, ConnectorKind, EconomicsConfig, EconomicsMode,
+            WatchedValidatorConfig,
         },
         labels::LabelMatcher,
     };
@@ -1571,6 +1571,7 @@ mod tests {
     #[derive(Clone, Copy)]
     enum MockRpcProfile {
         Default,
+        NoEpochInfo,
         NoLeaderSchedule,
     }
 
@@ -1861,11 +1862,13 @@ mod tests {
         let (rpc_url, server_task) = start_mock_rpc_server().await?;
         let config = Config {
             network: "devnet".to_string(),
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: rpc_url.clone(),
+            connectors: vec![ConnectorConfig {
+                name: "primary".to_string(),
+                kind: ConnectorKind::StandardValidatorRpc,
+                rpc_url: Some(rpc_url.clone()),
                 rpc_timeout_sec: 5,
-                ..ValidatorConnectionConfig::default()
-            },
+                ..ConnectorConfig::default()
+            }],
             watched_validators: vec![WatchedValidatorConfig {
                 identity: Some("id-1".to_string()),
                 vote_account: Some("vote-1".to_string()),
@@ -1884,7 +1887,7 @@ mod tests {
         let client = RpcClient::new(
             rpc_url,
             Duration::from_secs(5),
-            config.validator_connection.commitment_config()?,
+            config.connectors[0].commitment_config()?,
         )?;
 
         client.ensure_healthy().await?;
@@ -1983,6 +1986,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn collect_snapshot_with_connectors_uses_fallback_connector_for_missing_required_metric(
+    ) -> Result<()> {
+        let (primary_rpc_url, primary_server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoEpochInfo).await?;
+        let (fallback_rpc_url, fallback_server_task) = start_mock_rpc_server().await?;
+        let config = Config {
+            network: "devnet".to_string(),
+            ..Config::default()
+        };
+        let primary_client = RpcClient::new(
+            primary_rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+        )?;
+        let fallback_client = RpcClient::new(
+            fallback_rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+        )?;
+        let connectors = [
+            RpcConnectorRef {
+                name: "local-validator",
+                kind: ConnectorKind::StandardValidator,
+                client: &primary_client,
+            },
+            RpcConnectorRef {
+                name: "helius-fallback",
+                kind: ConnectorKind::HeliusEnhancedRpc,
+                client: &fallback_client,
+            },
+        ];
+
+        let snapshot = collect_snapshot_with_connectors(&connectors, &config).await?;
+
+        primary_server_task.abort();
+        fallback_server_task.abort();
+
+        let epoch_info_source = snapshot
+            .data_sources
+            .iter()
+            .find(|source| source.metric == "epoch-info")
+            .ok_or_else(|| anyhow!("missing epoch-info source"))?;
+        let vote_accounts_source = snapshot
+            .data_sources
+            .iter()
+            .find(|source| source.metric == "vote-accounts")
+            .ok_or_else(|| anyhow!("missing vote-accounts source"))?;
+
+        assert_eq!(epoch_info_source.connector, "helius-fallback");
+        assert_eq!(epoch_info_source.kind, "helius+enhanced-rpc");
+        assert_eq!(vote_accounts_source.connector, "local-validator");
+        assert_eq!(vote_accounts_source.kind, "standard-validator");
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
         let (rpc_url, server_task) = start_mock_rpc_server().await?;
         let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
@@ -2017,14 +2077,13 @@ mod tests {
     fn build_record_uses_block_production_schedules_and_labels() {
         let config = Config {
             network: "devnet".to_string(),
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://rpc.example".to_string(),
-                transport_mode: TransportMode::PollHttpAndWs,
+            connectors: vec![ConnectorConfig {
+                name: "primary".to_string(),
+                kind: ConnectorKind::StandardValidator,
+                rpc_url: Some("https://rpc.example".to_string()),
                 ws_url: Some("wss://rpc.example".to_string()),
-                ..ValidatorConnectionConfig::default()
-            },
-            validator_mode: ValidatorMode::Rpc,
-            validator_websocket_enabled: true,
+                ..ConnectorConfig::default()
+            }],
             delinquent_slot_distance: Some(128),
             watched_validators: vec![WatchedValidatorConfig {
                 identity: None,
@@ -2103,12 +2162,12 @@ mod tests {
     fn build_record_defaults_missing_block_data_to_zero() {
         let config = Config {
             network: "devnet".to_string(),
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://rpc.example".to_string(),
-                transport_mode: TransportMode::PollHttp,
-                ..ValidatorConnectionConfig::default()
-            },
-            validator_mode: ValidatorMode::Observer,
+            connectors: vec![ConnectorConfig {
+                name: "primary".to_string(),
+                kind: ConnectorKind::StandardValidatorRpc,
+                rpc_url: Some("https://rpc.example".to_string()),
+                ..ConnectorConfig::default()
+            }],
             ..Config::default()
         };
         let matcher = LabelMatcher::from_config(&config);
@@ -2265,16 +2324,23 @@ mod tests {
 
         match method {
             "getHealth" => (StatusCode::OK, Json(rpc_success(json!("ok")))).into_response(),
-            "getEpochInfo" => (
-                StatusCode::OK,
-                Json(rpc_success(json!({
-                    "epoch": 9,
-                    "slotIndex": 10,
-                    "slotsInEpoch": 100,
-                    "absoluteSlot": 810
-                }))),
-            )
-                .into_response(),
+            "getEpochInfo" => {
+                if matches!(profile, MockRpcProfile::NoEpochInfo) {
+                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                        .into_response();
+                }
+
+                (
+                    StatusCode::OK,
+                    Json(rpc_success(json!({
+                        "epoch": 9,
+                        "slotIndex": 10,
+                        "slotsInEpoch": 100,
+                        "absoluteSlot": 810
+                    }))),
+                )
+                    .into_response()
+            }
             "getVoteAccounts" => (
                 StatusCode::OK,
                 Json(rpc_success(json!({

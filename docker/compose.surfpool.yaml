@@ -30,11 +30,11 @@ services:
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/config/compose/surfpool/watcher.yaml
+      - /app/config/compose/surfpool.toml
     environment:
       RUST_LOG: info
     volumes:
-      - ../config/compose/surfpool:/app/config/compose/surfpool:ro
+      - ../config/compose/surfpool.toml:/app/config/compose/surfpool.toml:ro
     depends_on:
       - surfpool
     ports:

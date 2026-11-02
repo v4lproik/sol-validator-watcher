@@ -8,8 +8,9 @@ liveness files, signals, and shutdown.
 
 ## Ownership and Boundaries
 
-- `config.rs` parses, expands, normalizes, validates, and resolves connector
-  files. No other module reads raw environment-backed config policy.
+- `config.rs` parses each self-contained TOML profile, expands environment
+  placeholders, normalizes values, and validates the ordered connector list.
+  No other module reads raw environment-backed config policy.
 - `main.rs` builds runtime clients from validated config, owns reload, runs the
   polling loop, and exposes `/metrics` and `/healthz`.
 - `tasks.rs` owns task registration, first-failure handling, shutdown broadcast,
@@ -20,15 +21,17 @@ liveness files, signals, and shutdown.
 
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
   variables fail with the config field/path context; never log resolved secrets.
-- Resolve companion connector TOML paths relative to the watcher config, not the
-  process working directory.
+- Keep connectors inline in the profile. Declaration order is the runtime
+  priority and fallback order for every metric.
+- Treat each connector's `rpc_url` and `ws_url` as the sole transport
+  configuration. Do not add root-level validator modes or transport toggles.
 - Normalize names, URLs, commitments, labels, and public keys once, then validate
   the normalized value.
-- Reject zero ports/timeouts/intervals, duplicate connector names, unsupported
-  commitments, invalid websocket schemes, and impossible economics mode/target
-  combinations before client construction.
-- Legacy single-connection fields remain one compatibility owner. Do not add a
-  second migration path or allow legacy and connector-stack semantics to drift.
+- Reject unknown fields, zero ports/timeouts/intervals, duplicate connector
+  names, unsupported commitments, invalid websocket schemes, and impossible
+  economics mode/target combinations before client construction.
+- Removed split-config and single-connection fields stay unsupported. Do not
+  add aliases or a second migration path.
 - Config reload is transactional: load and validate the candidate, build every
   changed runtime dependency, then replace the last known-good state. A failed
   reload keeps the prior state and remains observable.
@@ -45,8 +48,8 @@ liveness files, signals, and shutdown.
 - Do not spawn detached work whose error or lifetime outlives `TaskManager`.
 - Shutdown waits for supervised tasks to finish. Cancellation must interrupt
   polling sleeps without waiting for the full interval.
-- Dependency guards run before collection. RPC health failure is fatal; websocket
-  behavior follows the configured transport requirement.
+- Dependency guards run before collection. RPC health failure is fatal; every
+  connector with `ws_url` is eligible for WebSocket probing.
 - Update the liveness file only after a complete snapshot has updated metrics.
   A process that is looping but failing collection is not live by this contract.
 - `/healthz` currently proves the HTTP process is serving. Do not silently turn
@@ -85,7 +88,8 @@ liveness files, signals, and shutdown.
 
 ## Boundary Proof
 
-Use config unit tests for parsing/validation and relative paths. Use task tests
+Use config unit tests for strict parsing/validation, every committed profile,
+canonical connector kinds, and declaration-order preservation. Use task tests
 for completion/error/panic/shutdown outcomes. Smoke the binary with a controlled
 RPC endpoint, fetch `/healthz` and `/metrics`, trigger shutdown, and observe a
 clean exit when runtime wiring changes.

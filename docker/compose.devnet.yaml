@@ -8,13 +8,13 @@ services:
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/config/remote/devnet/watcher.yaml
+      - /app/config/remote/devnet.toml
     environment:
       RUST_LOG: info
       SOL_DEVNET_RPC_URL: ${SOL_DEVNET_RPC_URL}
       SOL_DEVNET_WS_URL: ${SOL_DEVNET_WS_URL}
     volumes:
-      - ../config/remote/devnet:/app/config/remote/devnet:ro
+      - ../config/remote/devnet.toml:/app/config/remote/devnet.toml:ro
     ports:
       - "${WATCHER_DEVNET_METRICS_PORT:-8002}:8000"
     restart: on-failure
