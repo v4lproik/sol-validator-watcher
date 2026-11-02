@@ -4,6 +4,8 @@
 
 <h1 align="center">Solana Validator Watcher</h1>
 
+[![codecov](https://codecov.io/gh/v4lproik/sol-validator-watcher/graph/badge.svg?token=V3PM3PQJ49)](https://codecov.io/gh/v4lproik/sol-validator-watcher)
+
 <p align="center">
   Operator-first Prometheus monitoring for Solana validators, built in Rust.
 </p>
