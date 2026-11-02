@@ -62,6 +62,9 @@ A behavioral change is not complete until the changed surface runs:
 
 - CLI/runtime: start the watcher with representative config, observe one poll,
   fetch `/healthz` and `/metrics`, trigger shutdown, and observe a clean exit.
+- Credential-bearing provider URLs: inject complete URLs from the local
+  environment, never command arguments or output; exercise each configured
+  transport and assert returned errors do not expose secret query parameters.
 - RPC fallback/source selection: control each endpoint response at the local Axum
   boundary, configure an explicit per-command route, and assert
   `sol_mode_command_source_info`.

@@ -1,7 +1,7 @@
 use crate::{
     collector::{Snapshot, WatchedValidatorMetrics},
-    config::{Config, ConnectorConfig, ProviderFeature},
-    mode::ModeId,
+    config::{Config, ConnectorConfig},
+    mode::{ModeId, ProviderFeature},
     source::{SourceChain, SourceSelection},
 };
 use anyhow::{Context, Result};
@@ -891,9 +891,9 @@ mod tests {
         config::{
             Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
             EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
-            LeadershipModeConfig, ModesConfig, ProviderFeature,
+            LeadershipModeConfig, ModesConfig,
         },
-        mode::{CommandId, ModeId, Transport},
+        mode::{CommandId, ModeId, ProviderFeature, Transport},
         source::{SourceChain, SourceSelection},
     };
     use anyhow::Result;

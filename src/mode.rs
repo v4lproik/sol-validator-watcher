@@ -18,6 +18,45 @@ impl Transport {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderFeature {
+    HistoricalData,
+}
+
+impl ProviderFeature {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HistoricalData => "historical-data",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ModeSourceRequirement {
+    pub transport: Transport,
+    pub feature: Option<ProviderFeature>,
+}
+
+const HEALTH_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 2] = [
+    ModeSourceRequirement {
+        transport: Transport::Rpc,
+        feature: None,
+    },
+    ModeSourceRequirement {
+        transport: Transport::Websocket,
+        feature: None,
+    },
+];
+const RPC_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 1] = [ModeSourceRequirement {
+    transport: Transport::Rpc,
+    feature: None,
+}];
+const ECONOMICS_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 1] = [ModeSourceRequirement {
+    transport: Transport::Rpc,
+    feature: Some(ProviderFeature::HistoricalData),
+}];
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModeId {
@@ -41,6 +80,14 @@ impl ModeId {
             Self::Consensus => "consensus",
             Self::Leadership => "leadership",
             Self::Economics => "economics",
+        }
+    }
+
+    pub const fn source_requirements(self) -> &'static [ModeSourceRequirement] {
+        match self {
+            Self::Health => &HEALTH_SOURCE_REQUIREMENTS,
+            Self::Consensus | Self::Leadership => &RPC_SOURCE_REQUIREMENTS,
+            Self::Economics => &ECONOMICS_SOURCE_REQUIREMENTS,
         }
     }
 }
@@ -97,17 +144,17 @@ impl CommandId {
         }
     }
 
-    pub const fn transport(self) -> Transport {
+    pub const fn source_requirement(self) -> ModeSourceRequirement {
         match self {
-            Self::WsHealth => Transport::Websocket,
-            Self::RpcHealth
-            | Self::EpochInfo
-            | Self::VoteAccounts
-            | Self::CurrentBlockProduction
+            Self::RpcHealth => ModeId::Health.source_requirements()[0],
+            Self::WsHealth => ModeId::Health.source_requirements()[1],
+            Self::EpochInfo | Self::VoteAccounts => ModeId::Consensus.source_requirements()[0],
+            Self::CurrentBlockProduction
             | Self::CurrentLeaderSchedule
-            | Self::NextLeaderSchedule
-            | Self::InflationRewards
-            | Self::RewardEpochBlockProduction => Transport::Rpc,
+            | Self::NextLeaderSchedule => ModeId::Leadership.source_requirements()[0],
+            Self::InflationRewards | Self::RewardEpochBlockProduction => {
+                ModeId::Economics.source_requirements()[0]
+            }
         }
     }
 
@@ -128,7 +175,7 @@ impl CommandId {
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandId, ModeId, Transport};
+    use super::{CommandId, ModeId, ModeSourceRequirement, ProviderFeature, Transport};
 
     #[test]
     fn command_indices_and_modes_match_all_order() {
@@ -141,9 +188,51 @@ mod tests {
         assert_eq!(CommandId::CurrentLeaderSchedule.mode(), ModeId::Leadership);
         assert_eq!(CommandId::InflationRewards.mode(), ModeId::Economics);
 
-        assert_eq!(CommandId::RpcHealth.transport(), Transport::Rpc);
-        assert_eq!(CommandId::EpochInfo.transport(), Transport::Rpc);
-        assert_eq!(CommandId::InflationRewards.transport(), Transport::Rpc);
-        assert_eq!(CommandId::WsHealth.transport(), Transport::Websocket);
+        assert_eq!(
+            ModeId::Health.source_requirements(),
+            [
+                ModeSourceRequirement {
+                    transport: Transport::Rpc,
+                    feature: None,
+                },
+                ModeSourceRequirement {
+                    transport: Transport::Websocket,
+                    feature: None,
+                },
+            ]
+        );
+        assert_eq!(
+            ModeId::Consensus.source_requirements(),
+            [ModeSourceRequirement {
+                transport: Transport::Rpc,
+                feature: None,
+            }]
+        );
+        assert_eq!(
+            ModeId::Leadership.source_requirements(),
+            [ModeSourceRequirement {
+                transport: Transport::Rpc,
+                feature: None,
+            }]
+        );
+        assert_eq!(
+            ModeId::Economics.source_requirements(),
+            [ModeSourceRequirement {
+                transport: Transport::Rpc,
+                feature: Some(ProviderFeature::HistoricalData),
+            }]
+        );
+
+        for command in CommandId::ALL {
+            assert!(
+                command
+                    .mode()
+                    .source_requirements()
+                    .contains(&command.source_requirement()),
+                "{} must use a source combination declared by mode {}",
+                command.as_str(),
+                command.mode().as_str()
+            );
+        }
     }
 }

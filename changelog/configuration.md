@@ -13,3 +13,4 @@
 - Rejected missing required routes, unknown or duplicate route names, disabled economics routes, and RPC commands assigned to connectors without RPC transport.
 - Replaced provider-specific connector kinds with explicit `provider` names and watcher-relevant `features` arrays.
 - Separated transport from provider capabilities: `rpc_url` and `ws_url` determine available transports, feature arrays may be empty, and prior-epoch economics routes require `historical-data`.
+- Added a Helius Devnet profile that consumes complete authenticated RPC and WebSocket URLs and enables the economics mode on a declared `historical-data` source.

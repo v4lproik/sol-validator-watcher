@@ -1,4 +1,4 @@
-use crate::mode::{CommandId, ModeId};
+use crate::mode::{CommandId, ModeId, ProviderFeature, Transport};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,35 +8,6 @@ use std::{
 };
 
 pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProviderFeature {
-    HistoricalData,
-}
-
-impl ProviderFeature {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::HistoricalData => "historical-data",
-        }
-    }
-
-    pub const fn required_for(command: CommandId) -> Option<Self> {
-        match command {
-            CommandId::InflationRewards | CommandId::RewardEpochBlockProduction => {
-                Some(Self::HistoricalData)
-            }
-            CommandId::RpcHealth
-            | CommandId::WsHealth
-            | CommandId::EpochInfo
-            | CommandId::VoteAccounts
-            | CommandId::CurrentBlockProduction
-            | CommandId::CurrentLeaderSchedule
-            | CommandId::NextLeaderSchedule => None,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -420,8 +391,7 @@ impl Config {
                 bail!("{path} requires modes.economics.enabled = true");
             }
 
-            let required_transport = command.transport();
-            let required_feature = ProviderFeature::required_for(command);
+            let requirement = command.source_requirement();
             let mut seen = HashSet::with_capacity(route.len());
             for connector_name in route {
                 if !seen.insert(connector_name) {
@@ -434,13 +404,13 @@ impl Config {
                     .with_context(|| {
                         format!("{path} references unknown connector {connector_name:?}")
                     })?;
-                if required_transport == crate::mode::Transport::Rpc && !connector.has_rpc() {
+                if requirement.transport == Transport::Rpc && !connector.has_rpc() {
                     bail!(
                         "{path} references connector {:?}, which has no configured RPC transport",
                         connector.name
                     );
                 }
-                if let Some(feature) = required_feature {
+                if let Some(feature) = requirement.feature {
                     if !connector.supports(feature) {
                         bail!(
                             "{path} references connector {:?}, which lacks provider feature {:?}",
@@ -612,9 +582,10 @@ mod tests {
     use super::{
         expand_env_vars_with, Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig,
         EconomicsCommands, EconomicsModeConfig, HealthCommands, HealthModeConfig,
-        LeadershipCommands, LeadershipModeConfig, ModesConfig, ProviderFeature,
-        WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
+        LeadershipCommands, LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
+        ECONOMICS_TARGET_LABEL,
     };
+    use crate::mode::{CommandId, ModeSourceRequirement, ProviderFeature, Transport};
     use anyhow::{Context, Result};
     use std::{
         fs,
@@ -725,7 +696,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
             (
                 "config/remote/devnet.toml",
                 "devnet",
-                "devnet-rpc",
+                "helius-devnet",
                 "helius",
                 true,
                 true,
@@ -745,12 +716,15 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
             let config = Config::load_with(&path, |raw| {
                 expand_env_vars_with(raw, |key| {
                     let value = match key {
-                        "SOL_DEVNET_RPC_URL" | "SOL_MAINNET_RPC_URL" => {
-                            Some("http://127.0.0.1:8899".to_string())
-                        }
-                        "SOL_DEVNET_WS_URL" | "SOL_MAINNET_WS_URL" => {
-                            Some("ws://127.0.0.1:8900".to_string())
-                        }
+                        "SOL_DEVNET_RPC_URL" => Some(
+                            "https://devnet.example/custom/rpc?api-key=test-key&region=us"
+                                .to_string(),
+                        ),
+                        "SOL_DEVNET_WS_URL" => Some(
+                            "wss://devnet.example/custom/ws?api-key=test-key&region=us".to_string(),
+                        ),
+                        "SOL_MAINNET_RPC_URL" => Some("http://127.0.0.1:8899".to_string()),
+                        "SOL_MAINNET_WS_URL" => Some("ws://127.0.0.1:8900".to_string()),
                         _ => None,
                     };
                     Ok(value)
@@ -779,6 +753,29 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 has_history,
                 "profile {relative_path}"
             );
+
+            if relative_path == "config/remote/devnet.toml" {
+                assert_eq!(
+                    config.connectors[0].rpc_url.as_deref(),
+                    Some("https://devnet.example/custom/rpc?api-key=test-key&region=us")
+                );
+                assert_eq!(
+                    config.connectors[0].ws_url.as_deref(),
+                    Some("wss://devnet.example/custom/ws?api-key=test-key&region=us")
+                );
+                assert!(config.modes.economics.enabled);
+                assert_eq!(
+                    config.modes.route(CommandId::InflationRewards),
+                    ["helius-devnet"]
+                );
+                assert_eq!(
+                    CommandId::InflationRewards.source_requirement(),
+                    ModeSourceRequirement {
+                        transport: Transport::Rpc,
+                        feature: Some(ProviderFeature::HistoricalData),
+                    }
+                );
+            }
         }
 
         Ok(())

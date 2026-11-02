@@ -1,9 +1,9 @@
 pub mod command;
 
 use crate::{
-    config::{Config, ProviderFeature},
+    config::Config,
     labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
-    mode::{CommandId, ModeId, Transport},
+    mode::{CommandId, ModeId, ProviderFeature, Transport},
     source::{SourceChain, SourceSelection},
 };
 use anyhow::{bail, Context, Result};
@@ -201,14 +201,10 @@ impl RpcClient {
         let health = self
             .get_health()
             .await
-            .with_context(|| format!("RPC endpoint {} failed getHealth", self.url))?;
+            .context("RPC endpoint failed getHealth")?;
 
         if health != "ok" {
-            bail!(
-                "RPC endpoint {} returned unexpected getHealth result {:?}",
-                self.url,
-                health
-            );
+            bail!("RPC endpoint returned unexpected getHealth result {health:?}");
         }
 
         Ok(())
@@ -235,12 +231,14 @@ impl RpcClient {
             .json(&JsonRpcRequest::new(method, params))
             .send()
             .await
-            .with_context(|| format!("{} request failed", method))?;
+            .map_err(reqwest::Error::without_url)
+            .with_context(|| format!("{method} request failed"))?;
         let status = response.status();
         let body = response
             .text()
             .await
-            .with_context(|| format!("{} response body read failed", method))?;
+            .map_err(reqwest::Error::without_url)
+            .with_context(|| format!("{method} response body read failed"))?;
 
         let envelope: JsonRpcEnvelope<T> = serde_json::from_str(&body).with_context(|| {
             if status.is_success() {
@@ -1120,10 +1118,10 @@ mod tests {
         config::{
             Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
             EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
-            LeadershipModeConfig, ModesConfig, ProviderFeature, WatchedValidatorConfig,
+            LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
         },
         labels::LabelMatcher,
-        mode::{CommandId, ModeId},
+        mode::{CommandId, ModeId, ProviderFeature},
         source::SourceChain,
     };
     use anyhow::{anyhow, Context, Result};
@@ -1142,6 +1140,7 @@ mod tests {
     enum MockRpcProfile {
         Default,
         NoCurrentBlockProduction,
+        Unhealthy,
         NoEpochInfo,
         NoLeaderSchedule,
     }
@@ -1935,6 +1934,31 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::Unhealthy).await?;
+        let secret = "do-not-expose-this-api-key";
+        let client = RpcClient::new(
+            format!("{rpc_url}/?api-key={secret}"),
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+        )?;
+
+        let Err(error) = client.ensure_healthy().await else {
+            anyhow::bail!("unhealthy RPC should fail");
+        };
+        server_task.abort();
+        let message = format!("{error:#}");
+
+        assert!(message.contains("unexpected getHealth result"));
+        assert!(
+            !message.contains(secret),
+            "RPC health errors must redact secret URL query parameters"
+        );
+        Ok(())
+    }
+
     async fn start_mock_rpc_server() -> Result<(String, JoinHandle<()>)> {
         start_mock_rpc_server_with_profile(MockRpcProfile::Default).await
     }
@@ -1973,7 +1997,14 @@ mod tests {
             .unwrap_or_default();
 
         match method {
-            "getHealth" => (StatusCode::OK, Json(rpc_success(json!("ok")))).into_response(),
+            "getHealth" => {
+                let health = if matches!(profile, MockRpcProfile::Unhealthy) {
+                    "unhealthy"
+                } else {
+                    "ok"
+                };
+                (StatusCode::OK, Json(rpc_success(json!(health)))).into_response()
+            }
             "getEpochInfo" => {
                 if matches!(profile, MockRpcProfile::NoEpochInfo) {
                     return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
