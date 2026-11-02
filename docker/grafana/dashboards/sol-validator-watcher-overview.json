@@ -511,12 +511,12 @@
             },
             "indexByName": {
               "available": 0,
-              "network": 1,
-              "mode": 2,
-              "command": 3,
-              "connector": 4,
-              "provider": 5,
-              "feature": 6,
+              "provider": 1,
+              "feature": 2,
+              "connector": 3,
+              "command": 4,
+              "mode": 5,
+              "network": 6,
               "precedence": 7
             },
             "renameByName": {
@@ -611,12 +611,12 @@
               "job": true
             },
             "indexByName": {
-              "network": 0,
-              "mode": 1,
-              "command": 2,
-              "connector": 3,
-              "provider": 4,
-              "feature": 5,
+              "provider": 0,
+              "feature": 1,
+              "connector": 2,
+              "command": 3,
+              "mode": 4,
+              "network": 5,
               "precedence": 6
             },
             "renameByName": {
