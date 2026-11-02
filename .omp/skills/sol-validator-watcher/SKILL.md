@@ -31,7 +31,9 @@ matching resources. Read every matching resource when work crosses categories.
 
 | Component | Read when changing |
 | --- | --- |
-| [Rust code quality](resources/rust-code-quality.md) | Rust APIs, ownership, lifetimes, enums, serde models, async sequencing, allocations, comments, visibility, or dead code |
+| [Rust best practices](../rust-best-practices/SKILL.md) and [repository Rust rules](resources/rust-code-quality.md) | Writing, refactoring, or debugging Rust APIs, ownership, lifetimes, enums, serde models, async sequencing, allocations, comments, visibility, or dead code |
+| [Rust review](../rust-review/SKILL.md) and [repository review rules](resources/rust-review.md) | Reviewing a Rust file, module, crate, diff, or pull request |
+| [Rust porting](../rust-port/SKILL.md) and [repository porting rules](resources/rust-porting.md) | Translating or rewriting C, C++, Python, Go, JavaScript, or TypeScript behavior in Rust |
 | [RPC collection and errors](resources/rpc-collection-and-errors.md) | JSON-RPC methods, connector order, fallback, batching, provider health, source provenance, economics checks, or wire decoding |
 | [Runtime, configuration, and shutdown](resources/runtime-configuration-and-shutdown.md) | Startup, config load/reload, task supervision, HTTP endpoints, websocket probes, liveness, signals, or environment expansion |
 | [Metrics and dashboards](resources/metrics-and-dashboards.md) | Prometheus names/labels/units, resets, source metrics, Grafana dashboards, provisioning, alerts, or operator semantics |

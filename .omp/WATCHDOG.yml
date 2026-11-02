@@ -14,7 +14,14 @@ advisors:
 
       - Rust source, Cargo manifests, ownership, types, async code, visibility,
         allocations, or comments:
+        `.omp/skills/rust-best-practices/SKILL.md`
         `.omp/skills/sol-validator-watcher/resources/rust-code-quality.md`
+      - Explicit review of a Rust file, module, crate, diff, or pull request:
+        `.omp/skills/rust-review/SKILL.md`
+        `.omp/skills/sol-validator-watcher/resources/rust-review.md`
+      - Porting C, C++, Python, Go, JavaScript, or TypeScript behavior to Rust:
+        `.omp/skills/rust-port/SKILL.md`
+        `.omp/skills/sol-validator-watcher/resources/rust-porting.md`
       - RPC methods, connector order, fallback, provider behavior, batching,
         provenance, or economics collection:
         `.omp/skills/sol-validator-watcher/resources/rpc-collection-and-errors.md`

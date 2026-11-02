@@ -20,7 +20,9 @@ boundaries; do not bulk-load unrelated guidance.
 
 | Category | Read when changing | Skill resource |
 | --- | --- | --- |
-| Rust quality and types | Rust APIs, ownership, lifetimes, enums, serde models, async code, allocations, or module visibility | `.omp/skills/sol-validator-watcher/resources/rust-code-quality.md` |
+| Rust implementation | Rust APIs, ownership, lifetimes, enums, serde models, async code, allocations, or module visibility | `.omp/skills/rust-best-practices/SKILL.md` and `.omp/skills/sol-validator-watcher/resources/rust-code-quality.md` |
+| Rust review | Reviewing a Rust file, module, crate, diff, or pull request | `.omp/skills/rust-review/SKILL.md` and `.omp/skills/sol-validator-watcher/resources/rust-review.md` |
+| Rust porting | Translating or rewriting C, C++, Python, Go, JavaScript, or TypeScript behavior in Rust | `.omp/skills/rust-port/SKILL.md` and `.omp/skills/sol-validator-watcher/resources/rust-porting.md` |
 | RPC collection and errors | Solana JSON-RPC methods, connector precedence, fallback, batching, provenance, provider failures, or economics capability checks | `.omp/skills/sol-validator-watcher/resources/rpc-collection-and-errors.md` |
 | Runtime and configuration | Startup, config loading/reload, task supervision, shutdown, HTTP health, websocket probes, liveness, or environment expansion | `.omp/skills/sol-validator-watcher/resources/runtime-configuration-and-shutdown.md` |
 | Metrics and dashboards | Prometheus descriptors or labels, snapshot resets, Grafana JSON/provisioning, alerts, or operator semantics | `.omp/skills/sol-validator-watcher/resources/metrics-and-dashboards.md` |
