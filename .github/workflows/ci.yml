@@ -29,19 +29,19 @@ jobs:
         uses: jdx/mise-action@v2
 
       - name: Verify toolchain
-        run: just doctor
+        run: just rust doctor
 
       - name: Run CI checks
-        run: just ci
+        run: just ci verify
 
       - name: Enforce coverage gate
-        run: just coverage-ci
+        run: just coverage check
 
       - name: Generate LCOV report
-        run: just coverage-lcov
+        run: just coverage lcov
 
       - name: Generate HTML coverage report
-        run: just coverage-html
+        run: just coverage html
 
       - name: Upload LCOV artifact
         uses: actions/upload-artifact@v4

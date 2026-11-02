@@ -14,7 +14,7 @@ boundaries; do not bulk-load unrelated guidance.
 4. Reuse the existing module owner and `just` workflow. Do not add a second
    client, configuration path, fallback policy, or command convention.
 5. Verify the changed behavior at its real boundary.
-6. Run `just verify` on the final revision before every commit or push.
+6. Run `just ci verify` on the final revision before every commit or push.
 
 ## Category Index
 
@@ -43,56 +43,54 @@ or site scripts directly.
 
 | Command | Purpose |
 | --- | --- |
-| `just doctor` | Verify the pinned Rust, `just`, formatting, lint, and coverage tools |
-| `just check` | Fast Rust compilation check |
-| `just fmt` | Format Rust sources |
-| `just clippy` | Lint all targets and features with warnings denied |
-| `just test` | Run the default Rust test suite |
-| `just build` | Build the debug binary |
-| `just build-release` | Build the release binary |
-| `just run [config]` | Run with `.env` and a selected config; defaults to `etc/config.local.yaml` |
-| `just run-release [config]` | Run the release binary with a selected config |
+| `just rust doctor` | Verify the pinned Rust, `just`, formatting, lint, and coverage tools |
+| `just rust check` | Fast Rust compilation check |
+| `just rust fmt` | Format Rust sources |
+| `just rust clippy` | Lint all targets and features with warnings denied |
+| `just rust test` | Run the default Rust test suite |
+| `just rust build [debug\|release]` | Build the selected profile; defaults to debug |
+| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `etc/config.local.yaml` |
+| `just rust clean` | Remove Cargo build artifacts |
 
-### Verification
+### Verification and coverage
 
 | Command | Purpose |
 | --- | --- |
-| `just verify` | Baseline pre-commit/pre-push gate: format, Clippy, build, and tests |
-| `just coverage` | Local coverage summary |
-| `just coverage-ci [threshold]` | Enforce line coverage; default threshold is 80 |
-| `just test-surfpool` | Run the focused opt-in Surfpool smoke test |
-| `just test-surfpool-all` | Run all tests with Surfpool E2E enabled |
-| `just ci` | Alias for the baseline verification gate |
-| `just ci-full` | Full local CI including coverage and Surfpool |
+| `just ci verify` | Baseline pre-commit/pre-push gate: format, Clippy, build, and tests |
+| `just ci full` | Full local CI including coverage and the focused Surfpool smoke |
+| `just coverage summary` | Generate a local coverage summary |
+| `just coverage check [threshold]` | Enforce line coverage; default threshold is 80 |
+| `just coverage html` | Generate the local HTML coverage report |
+| `just coverage lcov` | Generate `lcov.info` |
+| `just surfpool doctor` | Verify the optional Surfpool CLI |
+| `just surfpool test [smoke\|all]` | Run focused or complete opt-in Surfpool tests |
 
 ### Containers and local stacks
 
-| Command family | Purpose |
+| Command | Purpose |
 | --- | --- |
-| `just doctor-docker` / `just doctor-surfpool` | Verify optional local dependencies |
-| `just docker-build [tag]` | Build the watcher image with the Rust version pinned in `mise.toml` |
-| `just stack-config-{surfpool,validator,devnet,mainnet,all}` | Render the selected Compose configuration without starting it |
-| `just stack-up-{surfpool,validator,devnet,mainnet,all}` | Build with the Rust version pinned in `mise.toml` and start the selected stack |
-| `just stack-logs-{surfpool,validator,devnet,mainnet,all}` | Follow logs for the selected stack |
-| `just stack-ps-{surfpool,validator,devnet,mainnet,all}` | Inspect selected stack containers |
-| `just stack-reload-prometheus` | Reload local Prometheus configuration |
-| `just stack-down` | Stop all repository Compose profiles without deleting volumes |
+| `just container doctor` | Verify Docker and Docker Compose |
+| `just container build [tag]` | Build the watcher image with the Rust version pinned in `mise.toml` |
+| `just stack config <target>` | Render `surfpool`, `validator`, `devnet`, `mainnet`, or `all` without starting it |
+| `just stack up <target>` | Build with the pinned Rust version and start the selected stack |
+| `just stack logs <target>` | Follow logs for the selected stack |
+| `just stack ps <target>` | Inspect selected stack containers |
+| `just stack reload prometheus` | Reload local Prometheus configuration |
+| `just stack down` | Stop all repository Compose profiles without deleting volumes |
 
-### Coverage site and CI
+### Coverage site
 
 | Command | Purpose |
 | --- | --- |
-| `just coverage-html` | Generate the local HTML coverage report |
-| `just coverage-lcov` | Generate `lcov.info` |
-| `just site-build` | Rebuild the Pages site and coverage report |
+| `just site build` | Rebuild the Pages site and coverage report |
 
 Additional gates:
 
 - GitHub Actions changes: run `actionlint -color`.
-- Pages site or coverage publishing changes: run `just site-build`.
-- Coverage logic or threshold changes: run `just coverage-ci`.
-- Compose changes: run every affected `just stack-config-*` recipe before any
-  opt-in stack startup.
+- Pages site or coverage publishing changes: run `just site build`.
+- Coverage logic or threshold changes: run `just coverage check`.
+- Compose changes: run `just stack config <target>` for every affected target
+  before any opt-in stack startup.
 
 ## Maintaining This Guidance
 

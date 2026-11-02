@@ -76,6 +76,7 @@ operator-facing semantics.
 - Snapshot update/reset/provenance: render the Prometheus text and assert stable
   series, labels, values, and stale-series removal.
 - Dashboard/provisioning changes: parse the JSON, run the affected
-  `just stack-config-*` recipe, and inspect the real panel against local data.
-- Pages changes: run `just site-build` and inspect the generated surface without
+  `just stack config <target>` command, and inspect the real panel against local
+  data.
+- Pages changes: run `just site build` and inspect the generated surface without
   committing `public/`.

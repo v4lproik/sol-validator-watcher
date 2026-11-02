@@ -107,6 +107,6 @@ and economics collection.
 - Pure range, merge, and aggregation policy: unit tests.
 - HTTP status, JSON-RPC envelope, batching, connector fallback, and provenance:
   the local Axum mock RPC boundary.
-- Real validator compatibility: `just test-surfpool`.
+- Real validator compatibility: `just surfpool test`.
 - Runtime source selection: run the watcher against controlled connectors and
   inspect the rendered `sol_metric_source_info` series.

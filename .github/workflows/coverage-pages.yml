@@ -78,13 +78,9 @@ jobs:
         if: ${{ steps.pages.outputs.should_run == 'true' }}
         uses: jdx/mise-action@v2
 
-      - name: Build HTML coverage report
+      - name: Build Pages site
         if: ${{ steps.pages.outputs.should_run == 'true' }}
-        run: just coverage-html
-
-      - name: Assemble Pages site
-        if: ${{ steps.pages.outputs.should_run == 'true' }}
-        run: bash ./scripts/build-pages-site.sh
+        run: just site build
 
       - name: Upload Pages artifact
         if: ${{ steps.pages.outputs.should_run == 'true' }}

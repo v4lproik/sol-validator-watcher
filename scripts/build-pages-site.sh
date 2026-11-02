@@ -7,7 +7,7 @@ coverage_dir="${repo_root}/coverage/html"
 output_dir="${repo_root}/public"
 
 if [[ ! -f "${coverage_dir}/index.html" ]]; then
-  echo "coverage/html/index.html is missing. Run 'just coverage-html' first." >&2
+  echo "coverage/html/index.html is missing. Run 'just coverage html' first." >&2
   exit 1
 fi
 

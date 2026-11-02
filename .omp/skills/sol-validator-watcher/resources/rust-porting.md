@@ -85,7 +85,7 @@ observable contract, not the source language's structure.
 
 - Run the original test suite when available and the mapped Rust tests on the
   same representative inputs.
-- Run `just verify` on the final revision.
+- Run `just ci verify` on the final revision.
 - Smoke the real repository boundary: RPC fixture, watcher CLI, rendered metric,
   task shutdown, Compose config, or Surfpool as applicable.
 - Record API mapping, test mapping, preserved quirks, deliberate differences,
