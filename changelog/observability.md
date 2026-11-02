@@ -10,3 +10,4 @@
 - Added bounded mode enablement, health, configured-route, and selected-command-source metrics; selected sources reset at the start of every poll.
 - Split Grafana into overview, consensus, leadership, and economics dashboards with mode-specific routing and provenance panels.
 - Replaced connector-kind labels with provider, transport, and optional feature labels; published declared connector features as a bounded metric and exposed transport separately from features on every route and source dashboard.
+- Added per-validator `ACTIVE` and `DELINQUENT` voting-state cards to the overview dashboard's operator-state row, with the detailed watched-validator table directly below that row.

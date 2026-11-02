@@ -55,7 +55,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 15
       },
       "id": 1,
       "panels": [],
@@ -120,7 +120,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 16
       },
       "id": 2,
       "options": {
@@ -213,7 +213,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 1
+        "y": 16
       },
       "id": 3,
       "options": {
@@ -306,7 +306,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 1
+        "y": 16
       },
       "id": 4,
       "options": {
@@ -399,7 +399,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 16
       },
       "id": 5,
       "options": {
@@ -469,7 +469,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 6
+        "y": 21
       },
       "id": 6,
       "options": {
@@ -572,7 +572,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 6
+        "y": 21
       },
       "id": 7,
       "options": {
@@ -644,7 +644,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 27
       },
       "id": 8,
       "panels": [],
@@ -678,7 +678,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 13
+        "y": 28
       },
       "id": 9,
       "options": {
@@ -744,7 +744,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 13
+        "y": 28
       },
       "id": 10,
       "options": {
@@ -801,7 +801,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 13
+        "y": 28
       },
       "id": 11,
       "options": {
@@ -871,7 +871,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 13
+        "y": 28
       },
       "id": 12,
       "options": {
@@ -940,7 +940,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 13
+        "y": 28
       },
       "id": 13,
       "options": {
@@ -1009,7 +1009,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 13
+        "y": 28
       },
       "id": 14,
       "options": {
@@ -1044,7 +1044,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 0
       },
       "id": 15,
       "panels": [],
@@ -1056,20 +1056,24 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Flags watched validators that are lagging badly or already delinquent.",
+      "description": "On-chain voting liveness for every observed watched validator. ACTIVE means Solana reports the vote account in the current set. DELINQUENT means it is not keeping up with cluster voting. This does not probe the validator's private RPC process.",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [
             {
               "options": {
                 "0": {
-                  "text": "Healthy"
+                  "color": "red",
+                  "index": 0,
+                  "text": "DELINQUENT"
                 },
                 "1": {
-                  "text": "Lagging"
-                },
-                "2": {
-                  "text": "Delinquent"
+                  "color": "green",
+                  "index": 1,
+                  "text": "ACTIVE"
                 }
               },
               "type": "value"
@@ -1079,16 +1083,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "yellow",
+                "color": "green",
                 "value": 1
-              },
-              {
-                "color": "red",
-                "value": 2
               }
             ]
           }
@@ -1097,15 +1097,16 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
+        "w": 12,
         "x": 0,
-        "y": 18
+        "y": 1
       },
       "id": 16,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
-        "orientation": "auto",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1113,19 +1114,20 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value"
+        "textMode": "value_and_name",
+        "wideLayout": true
       },
       "targets": [
         {
           "editorMode": "code",
-          "expr": "clamp_max(((max(sol_watched_validator_info{network=~\"$network\",status=\"delinquent\"}) or vector(0)) * 2) + (max(sol_watched_validator_last_vote_slot_lag{network=~\"$network\"} > bool 32) or vector(0)) + (max(sol_watched_validator_root_slot_lag{network=~\"$network\"} > bool 32) or vector(0)), 2)",
+          "expr": "max by (identity) (sol_watched_validator_info{network=~\"$network\",status=\"current\"}) or (max by (identity) (sol_watched_validator_info{network=~\"$network\",status=\"delinquent\"}) * 0)",
           "instant": true,
-          "legendFormat": "voting_state",
+          "legendFormat": "{{identity}}",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Watched Voting State",
+      "title": "Watched Validator Liveness",
       "type": "stat"
     },
     {
@@ -1174,9 +1176,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 8,
-        "y": 18
+        "w": 6,
+        "x": 12,
+        "y": 1
       },
       "id": 17,
       "options": {
@@ -1239,9 +1241,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 16,
-        "y": 18
+        "w": 6,
+        "x": 18,
+        "y": 1
       },
       "id": 18,
       "options": {
@@ -1270,6 +1272,662 @@
       ],
       "title": "Validators Needing Attention",
       "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Sortable operator view for every watched validator, positioned directly below live operator state.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "current": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "Current"
+                      },
+                      "delinquent": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "Delinquent"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stake (SOL)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Efficiency"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 90
+                    },
+                    {
+                      "color": "green",
+                      "value": 95
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Lag"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 8
+                    },
+                    {
+                      "color": "orange",
+                      "value": 32
+                    },
+                    {
+                      "color": "red",
+                      "value": 128
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Root Lag"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 8
+                    },
+                    {
+                      "color": "orange",
+                      "value": 32
+                    },
+                    {
+                      "color": "red",
+                      "value": 128
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Commission"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Skip Rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 5
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Identity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 230
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 230
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Epoch Reward (SOL)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rewarded Blocks"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reward / Block (SOL)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 19,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Stake (SOL)"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_activated_stake_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_vote_efficiency_pct{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_last_vote_slot_lag{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "D"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_root_slot_lag{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "E"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_commission_pct{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "F"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "G"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "H"
+        },
+        {
+          "editorMode": "code",
+          "expr": "100 * max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) / clamp_min(max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) + max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")), 1)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "I"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_future_leader_slots{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "J"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_epoch_reward_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "K"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "L"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_reward_per_block_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "M"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "validator_key",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "Time 7": true,
+              "Time 8": true,
+              "Time 9": true,
+              "Value": true,
+              "Value #A": true,
+              "__name__": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "__name__ 4": true,
+              "__name__ 5": true,
+              "__name__ 6": true,
+              "__name__ 7": true,
+              "__name__ 8": true,
+              "__name__ 9": true,
+              "validator_key": true,
+              "validator_key 1": true,
+              "validator_key 2": true,
+              "validator_key 3": true,
+              "validator_key 4": true,
+              "validator_key 5": true,
+              "validator_key 6": true,
+              "validator_key 7": true,
+              "validator_key 8": true,
+              "validator_key 9": true,
+              "network 1": true,
+              "network 2": true,
+              "network 3": true,
+              "network 4": true,
+              "network 5": true,
+              "network 6": true,
+              "network 7": true,
+              "network 8": true,
+              "network 9": true,
+              "identity 1": true,
+              "identity 2": true,
+              "identity 3": true,
+              "identity 4": true,
+              "identity 5": true,
+              "identity 6": true,
+              "identity 7": true,
+              "identity 8": true,
+              "identity 9": true,
+              "vote_account 1": true,
+              "vote_account 2": true,
+              "vote_account 3": true,
+              "vote_account 4": true,
+              "vote_account 5": true,
+              "vote_account 6": true,
+              "vote_account 7": true,
+              "vote_account 8": true,
+              "vote_account 9": true,
+              "status 1": true,
+              "status 2": true,
+              "status 3": true,
+              "status 4": true,
+              "status 5": true,
+              "status 6": true,
+              "status 7": true,
+              "status 8": true,
+              "status 9": true,
+              "Time 10": true,
+              "__name__ 10": true,
+              "validator_key 10": true,
+              "network 10": true,
+              "identity 10": true,
+              "vote_account 10": true,
+              "status 10": true,
+              "Time 11": true,
+              "__name__ 11": true,
+              "validator_key 11": true,
+              "network 11": true,
+              "identity 11": true,
+              "vote_account 11": true,
+              "status 11": true,
+              "Time 12": true,
+              "__name__ 12": true,
+              "validator_key 12": true,
+              "network 12": true,
+              "identity 12": true,
+              "vote_account 12": true,
+              "status 12": true
+            },
+            "indexByName": {
+              "identity": 0,
+              "status": 1,
+              "vote_account": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8,
+              "Value #H": 9,
+              "Value #I": 10,
+              "Value #J": 11,
+              "Value #K": 12,
+              "Value #L": 13,
+              "Value #M": 14,
+              "network": 15
+            },
+            "renameByName": {
+              "network": "Network",
+              "identity": "Identity",
+              "vote_account": "Vote Account",
+              "status": "Status",
+              "Value #B": "Stake (SOL)",
+              "Value #C": "Vote Efficiency",
+              "Value #D": "Vote Lag",
+              "Value #E": "Root Lag",
+              "Value #F": "Commission",
+              "Value #G": "Produced",
+              "Value #H": "Missed",
+              "Value #I": "Skip Rate",
+              "Value #J": "Next Leader Slots",
+              "Value #K": "Epoch Reward (SOL)",
+              "Value #L": "Rewarded Blocks",
+              "Value #M": "Reward / Block (SOL)"
+            }
+          }
+        }
+      ],
+      "title": "Watched Validators",
+      "type": "table"
     }
   ],
   "refresh": "15s",
@@ -1318,6 +1976,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

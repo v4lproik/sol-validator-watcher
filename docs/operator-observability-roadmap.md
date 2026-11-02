@@ -13,8 +13,9 @@ These changes do not require new exporter metrics.
   - RPC health
   - websocket health
   - metrics freshness
-- Make the watched-validator table the main drill-down panel.
-  - desired columns: `status`, `stake`, `vote efficiency`, `last vote lag`, `root lag`, `produced`, `missed`, `skip rate`, `commission`, `future leader slots`
+- Show every watched validator directly in the operator-state row.
+  - map each identity to an explicit `ACTIVE` or `DELINQUENT` voting state
+- Place the detailed watched-validator table immediately below operator state as the first detailed investigation panel.
 - Add explicit outlier panels.
   - highest vote lag
   - highest root lag
@@ -38,6 +39,10 @@ These changes do not require new exporter metrics.
 - Use a concrete `Network` selection for day-to-day operations.
 - Treat `scope:all-network` as the default health view.
 - Treat watched validators and custom scopes as investigation views.
+- `ACTIVE` means Solana currently lists the vote account in its current set.
+  `DELINQUENT` means the vote account is not keeping up with cluster voting.
+  These states do not probe a validator's private RPC process; use vote and root
+  lag for additional liveness context.
 
 ## Metrics the exporter should add
 
