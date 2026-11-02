@@ -10,7 +10,7 @@ liveness_file: /tmp/sol-validator-watcher.liveness
 connectors:
   - name: mainnet-rpc
     kind: helius+rpc
-    connection_file: validator.mainnet.toml
+    connection_file: connection.toml
 
 watched_validators:
   - vote_account: BeRtYZ7SVQozwTby6ajQzrHtKYkn4qoKyRfb3NDAedtA
