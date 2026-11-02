@@ -8,8 +8,9 @@ checks.
 
 ## Command Ownership
 
-- The live `Justfile` is the stable human and agent interface. Use `just --list`
-  and `just --show <recipe>` instead of inventing flags or copying recipe bodies.
+- The root `Justfile` routes to domain modules. Use `just` or
+  `just --list --list-submodules` to discover commands and
+  `just --show <module>::<verb>` to inspect one without copying recipe bodies.
 - Recipes use `mise` so the pinned Rust and coverage tools are consistent
   locally and in CI.
 - Add a public recipe when a repeated repository workflow needs a stable entry
@@ -24,9 +25,9 @@ checks.
 
 ## CI Contracts
 
-- `.github/workflows/ci.yml` runs `just doctor`, `just ci`, the coverage gate,
-  LCOV/HTML generation, artifact uploads, and optional Codecov upload. Local
-  verification must exercise every changed step that can run locally.
+- `.github/workflows/ci.yml` runs `just rust doctor`, `just ci verify`, the
+  coverage gate, LCOV/HTML generation, artifact uploads, and optional Codecov
+  upload. Local verification must exercise every changed step that can run locally.
 - Keep the required verification job name stable unless repository protection
   is updated in the same operational change.
 - Workflow permissions remain least-privilege. Do not grant write scopes to a
@@ -61,8 +62,8 @@ checks.
 - `mise.toml` owns the Rust version. `Justfile` and container CI resolve that
   pin with `mise config get tools.rust.version` and pass `RUST_VERSION` into
   Docker; Dockerfiles and Compose overlays must not duplicate the version.
-- A local `just docker-build` proves the image builds; it does not authorize a
-  registry push.
+- A local `just container build` proves the image builds; it does not authorize
+  a registry push.
 
 ## Review Gates
 
@@ -78,12 +79,12 @@ checks.
 
 ## Required Verification
 
-- `Justfile`: `just --list`, `just --show <changed-recipe>`, then execute the
-  harmless changed path.
+- `Justfile` or module files: `just --list --list-submodules`,
+  `just --show <module>::<verb>`, then execute the harmless changed path.
 - GitHub Actions: `actionlint -color` plus every referenced local `just` recipe.
-- Coverage logic: `just coverage-ci` and applicable artifact generation.
-- Pages: `just site-build` and inspect the generated root/coverage links.
-- Container: `just docker-build` with a local tag.
+- Coverage logic: `just coverage check` and applicable artifact generation.
+- Pages: `just site build` and inspect the generated root/coverage links.
+- Container: `just container build` with a local tag.
 
 ## Prohibited Shortcuts
 

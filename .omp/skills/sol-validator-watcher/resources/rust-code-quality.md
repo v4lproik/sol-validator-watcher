@@ -214,12 +214,12 @@ public contracts require stricter evolution, documentation, and error-type disci
 - Do not recommend or commit language or library features newer than the Rust
   version pinned in `mise.toml` without updating the pin and verifying the
   migration.
-- `just clippy` is the lint contract. Fix lints rather than suppressing them.
-  When a narrow exception is real, prefer `#[expect(lint, reason = \"...\")]`
-  so stale suppressions become visible. Do not add `#![deny(warnings)]` to
-  source; CI already applies `-D warnings`.
+- `just rust clippy` is the lint contract. Fix lints rather than suppressing
+  them. When a narrow exception is real, prefer
+  `#[expect(lint, reason = \"...\")]` so stale suppressions become visible. Do
+  not add `#![deny(warnings)]` to source; CI already applies `-D warnings`.
 - A broader lint-policy change must be its own reviewable change with cleanup,
-  `just verify`, and no unexplained global allows.
+  `just ci verify`, and no unexplained global allows.
 
 ## Documentation and Comments
 

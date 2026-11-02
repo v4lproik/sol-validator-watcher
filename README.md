@@ -137,26 +137,26 @@ When `economics.mode: single-validator` is enabled, the watcher runs a startup c
 Start the stack:
 
 ```bash
-just stack-up-devnet
+just stack up devnet
 ```
 
 For a hosted mainnet RPC profile:
 
 ```bash
-just run config=etc/config.mainnet.yaml
+just rust run debug etc/config.mainnet.yaml
 ```
 
 Or with the local Compose stack:
 
 ```bash
-just stack-up-mainnet
+just stack up mainnet
 ```
 
 If Prometheus was already running before you added or changed a watcher profile, reload it so the
 new scrape target is picked up:
 
 ```bash
-just stack-reload-prometheus
+just stack reload prometheus
 ```
 
 The committed `etc/config.mainnet.yaml` uses
@@ -167,10 +167,10 @@ serve both `getInflationReward` and previous-epoch `getBlockProduction`.
 
 Then verify:
 
-- `just stack-ps-devnet`
-- `just stack-logs-devnet`
-- `just stack-ps-mainnet`
-- `just stack-logs-mainnet`
+- `just stack ps devnet`
+- `just stack logs devnet`
+- `just stack ps mainnet`
+- `just stack logs mainnet`
 - `http://127.0.0.1:9090/targets`
 - `http://127.0.0.1:3001`
 
@@ -181,24 +181,25 @@ If you run more than one watcher profile, select a concrete Grafana `Network` va
 Run everything through `just`:
 
 ```bash
-just doctor
-just fmt
-just check
-just clippy
-just test
-just coverage-ci
-just site-build
-just run config=etc/config.devnet.yaml
-just run config=etc/config.mainnet.yaml
-just stack-up-devnet
-just stack-up-mainnet
-just stack-reload-prometheus
-just stack-up-validator
-just stack-up-surfpool
-just stack-down
+just rust doctor
+just rust fmt
+just rust check
+just rust clippy
+just rust test
+just ci verify
+just coverage check
+just site build
+just rust run debug etc/config.devnet.yaml
+just rust run debug etc/config.mainnet.yaml
+just stack up devnet
+just stack up mainnet
+just stack reload prometheus
+just stack up validator
+just stack up surfpool
+just stack down
 ```
 
-`just run` loads `.env` automatically when it exists, and Docker Compose uses the same `.env` file for the template values.
+`just rust run` loads `.env` automatically when it exists, and Docker Compose uses the same `.env` file for the template values.
 
 ## Compose stack
 
@@ -223,8 +224,8 @@ The overview dashboard works immediately on `scope:all-network`. The breakdown d
 
 GitHub Actions runs:
 
-- formatting, clippy, and tests through `just ci`
-- coverage through `just coverage-ci`
+- formatting, Clippy, build, and tests through `just ci verify`
+- coverage through `just coverage check`
 - coverage artifacts upload
 - optional Codecov upload
 - container publishing to GHCR

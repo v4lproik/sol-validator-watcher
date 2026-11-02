@@ -11,18 +11,18 @@ mise install
 All project commands should go through `just`:
 
 ```bash
-just doctor
-just fmt
-just clippy
-just test
-just coverage-ci
+just rust doctor
+just rust fmt
+just rust clippy
+just rust test
+just coverage check
 ```
 
 ## Development flow
 
 1. Make the change.
-2. Run `just ci`.
-3. Run `just coverage-ci` if the change affects Rust code.
+2. Run `just ci verify`.
+3. Run `just coverage check` if the change affects Rust code.
 4. If you changed dashboards, validate them with:
 
 ```bash
@@ -50,7 +50,7 @@ Recommended GitHub Project fields:
 
 - Keep example configs free of secrets.
 - Route local workflows through `just`, not ad-hoc shell commands.
-- When testing Docker profiles, prefer the profile-specific commands such as `just stack-up-devnet` and `just stack-logs-devnet`.
+- When testing Docker profiles, prefer module commands such as `just stack up devnet` and `just stack logs devnet`.
 
 ## Commit style
 

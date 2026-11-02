@@ -11,8 +11,8 @@
 
 ## Verification
 
-- [ ] `just ci`
-- [ ] `just coverage-ci` if Rust code changed
+- [ ] `just ci verify`
+- [ ] `just coverage check` if Rust code changed
 - [ ] dashboard JSON validated if dashboards changed
 
 ## Operational notes

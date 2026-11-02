@@ -24,8 +24,8 @@ matching resources. Read every matching resource when work crosses categories.
 4. Reuse the existing owner and `just` command. Do not create a second client,
    policy map, config path, fallback convention, or ad hoc workflow.
 5. Verify the narrow invariant and then smoke the real boundary.
-6. Run `just verify` on the final revision before every commit or push. Run all
-   additional category gates listed in `AGENTS.md`.
+6. Run `just ci verify` on the final revision before every commit or push. Run
+   all additional category gates listed in `AGENTS.md`.
 
 ## Component Index
 

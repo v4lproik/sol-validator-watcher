@@ -7,17 +7,17 @@ then complete the repository's required local gates.
 
 ## Local Gates
 
-- Run `just verify` on the final revision before every commit or push. It owns
-  formatting, all-target/all-feature Clippy with warnings denied, build, and the
-  default tests.
-- Run `just coverage-ci` when coverage logic or thresholds change. Record the
-  threshold and result.
-- Run `just test-surfpool` when real validator/RPC compatibility is part of the
+- Run `just ci verify` on the final revision before every commit or push. It
+  owns formatting, all-target/all-feature Clippy with warnings denied, build,
+  and the default tests.
+- Run `just coverage check` when coverage logic or thresholds change. Record
+  the threshold and result.
+- Run `just surfpool test` when real validator/RPC compatibility is part of the
   claim. `SURFPOOL_E2E` is opt-in; a skipped default test is not E2E evidence.
-- Run `just site-build` for Pages or coverage publishing changes.
+- Run `just site build` for Pages or coverage publishing changes.
 - Run `actionlint -color` for GitHub Actions changes.
-- Run affected `just stack-config-*` recipes for Compose changes before starting
-  any stack.
+- Run affected `just stack config <target>` commands for Compose changes before
+  starting any stack.
 - A verification result becomes stale when a tested file changes. Rerun the
   affected gate before push.
 
@@ -89,7 +89,7 @@ Throwaway smoke fixtures stay outside the repository and are removed afterward.
    covered where reachable?
 5. Is time, I/O, port allocation, and cleanup deterministic?
 6. Which real smoke demonstrates the end-to-end behavior?
-7. Which extra local gates apply beyond `just verify`?
+7. Which extra local gates apply beyond `just ci verify`?
 8. Is the exact revision unchanged since those gates passed?
 
 ## Prohibited Shortcuts

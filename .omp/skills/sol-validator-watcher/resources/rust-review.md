@@ -25,13 +25,13 @@ introduces a library API, apply the stricter public API rules in
 
 ## Tool Evidence
 
-- For a code change being prepared for handoff, `just verify` is the canonical
-  gate.
-- For a read-only review, do not run the mutating `just fmt`. Use available
-  non-mutating evidence (`just clippy`, `just build`, `just test`, existing CI)
-  and state exactly what ran.
-- Use `just coverage-ci` only when coverage policy or the requested review scope
-  requires it. Use `just test-surfpool` only for real validator compatibility.
+- For a code change being prepared for handoff, `just ci verify` is the
+  canonical gate.
+- For a read-only review, do not run the mutating `just rust fmt`. Use available
+  non-mutating evidence (`just rust clippy`, `just rust build`,
+  `just rust test`, existing CI) and state exactly what ran.
+- Use `just coverage check` only when coverage policy or the requested review
+  scope requires it. Use `just surfpool test` only for real validator compatibility.
 - Do not paste raw repeated compiler or Clippy output. Group one cause into one
   finding and cite the tool once.
 
