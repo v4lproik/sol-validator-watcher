@@ -377,7 +377,7 @@ mod tests {
         config::{
             Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsModeConfig,
             HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig,
-            ModesConfig, ProviderFeature, WatchedValidatorConfig,
+            ModesConfig, WatchedValidatorConfig,
         },
         mode::CommandId,
         source::SourceChain,
@@ -489,13 +489,13 @@ network = "mainnet-beta"
 [[connectors]]
 name = "primary"
 provider = "solana"
-features = ["rpc"]
+features = []
 rpc_url = "https://primary.example"
 
 [[connectors]]
 name = "fallback"
 provider = "helius"
-features = ["websocket"]
+features = []
 ws_url = "wss://fallback.example"
 
 [modes.health.commands]
@@ -529,14 +529,14 @@ network = "mainnet-beta"
 [[connectors]]
 name = "fallback"
 provider = "helius"
-features = ["rpc", "websocket"]
+features = []
 rpc_url = "https://fallback.example"
 ws_url = "wss://fallback.example"
 
 [[connectors]]
 name = "replacement"
 provider = "solana"
-features = ["rpc"]
+features = []
 rpc_url = "https://replacement.example"
 
 [modes.health.commands]
@@ -598,7 +598,7 @@ network = "mainnet-beta"
 [[connectors]]
 name = "primary"
 provider = "solana"
-features = ["rpc"]
+features = []
 rpc_url = "https://primary.example"
 
 [modes.health.commands]
@@ -631,7 +631,7 @@ network = "testnet"
 [[connectors]]
 name = "ws-only"
 provider = "helius"
-features = ["websocket"]
+features = []
 ws_url = "wss://ws-only.example"
 "#,
         )
@@ -668,7 +668,7 @@ ws_url = "wss://ws-only.example"
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
                 provider: "solana".to_string(),
-                features: vec![ProviderFeature::Rpc],
+                features: Vec::new(),
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
             }],

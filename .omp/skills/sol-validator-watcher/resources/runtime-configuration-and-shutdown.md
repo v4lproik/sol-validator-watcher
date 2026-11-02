@@ -24,21 +24,21 @@ liveness files, signals, and shutdown.
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
   variables fail with the config field/path context; never log resolved secrets.
 - Keep connectors inline in the profile. Each connector has one stable
-  `provider` name plus an explicit `features` array. The supported features are
-  `rpc`, `websocket`, and `historical-rpc`; historical RPC requires RPC.
+  `provider` name plus an explicit `features` array, which may be empty. The
+  current provider feature is `historical-data`; `rpc` and `websocket` are
+  transports, not features.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
-- Treat each connector's `rpc_url` and `ws_url` as transport configuration, not
-  inferred capability. A URL requires its matching feature; do not add duplicate
-  transport toggles.
+- Treat each connector's `rpc_url` and `ws_url` as its transport configuration.
+  Do not duplicate those transports in `features` or add transport toggles.
 - Normalize names, URLs, commitments, labels, and public keys once, then validate
   the normalized value.
-- Reject unknown fields, missing providers/features, duplicate features,
-  inconsistent feature/transport declarations, zero ports/timeouts/intervals,
-  duplicate connector names, unsupported commitments, invalid websocket
-  schemes, missing required routes, unknown or duplicate route entries, routes
-  lacking the command's required feature, and impossible economics mode/target
-  combinations before client construction.
+- Reject unknown fields, missing providers or feature arrays, duplicate
+  features, zero ports/timeouts/intervals, duplicate connector names,
+  unsupported commitments, invalid websocket schemes, missing required routes,
+  unknown or duplicate route entries, RPC routes without RPC transport, routes
+  missing an optional provider feature required by the command, and impossible
+  economics mode/target combinations before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
   `ws_url` is empty; expose them as unavailable and skip them at execution.
 - Removed split-config and single-connection fields stay unsupported. Do not
@@ -102,7 +102,7 @@ liveness files, signals, and shutdown.
 ## Boundary Proof
 
 Use config unit tests for strict parsing/validation, every committed profile,
-canonical provider features, provider-feature dependency rules, and exact
+canonical provider features, transport/feature separation, and exact
 command-route order. Use task tests for completion/error/panic/shutdown
 outcomes. Smoke the binary with controlled RPC endpoints, fetch `/healthz` and
 `/metrics`, trigger shutdown, and observe a clean exit when runtime wiring

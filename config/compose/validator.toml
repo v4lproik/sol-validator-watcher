@@ -8,7 +8,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 [[connectors]]
 name = "external-validator"
 provider = "solana-validator"
-features = ["rpc", "websocket"]
+features = []
 rpc_url = "${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}"
 rpc_timeout_sec = ${SOL_WATCHER_RPC_TIMEOUT_SEC:-30}
 ws_url = "${SOL_VALIDATOR_WS_URL:-}"

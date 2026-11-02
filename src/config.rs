@@ -12,32 +12,28 @@ pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderFeature {
-    Rpc,
-    Websocket,
-    HistoricalRpc,
+    HistoricalData,
 }
 
 impl ProviderFeature {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Rpc => "rpc",
-            Self::Websocket => "websocket",
-            Self::HistoricalRpc => "historical-rpc",
+            Self::HistoricalData => "historical-data",
         }
     }
 
-    pub const fn required_for(command: CommandId) -> Self {
+    pub const fn required_for(command: CommandId) -> Option<Self> {
         match command {
-            CommandId::WsHealth => Self::Websocket,
             CommandId::InflationRewards | CommandId::RewardEpochBlockProduction => {
-                Self::HistoricalRpc
+                Some(Self::HistoricalData)
             }
             CommandId::RpcHealth
+            | CommandId::WsHealth
             | CommandId::EpochInfo
             | CommandId::VoteAccounts
             | CommandId::CurrentBlockProduction
             | CommandId::CurrentLeaderSchedule
-            | CommandId::NextLeaderSchedule => Self::Rpc,
+            | CommandId::NextLeaderSchedule => None,
         }
     }
 }
@@ -151,15 +147,20 @@ pub struct WatchedValidatorConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectorConfig {
     pub name: String,
     pub provider: String,
     pub features: Vec<ProviderFeature>,
+    #[serde(default)]
     pub rpc_url: Option<String>,
+    #[serde(default = "default_rpc_timeout_sec")]
     pub rpc_timeout_sec: u64,
+    #[serde(default)]
     pub ws_url: Option<String>,
+    #[serde(default = "default_ws_timeout_sec")]
     pub ws_timeout_sec: u64,
+    #[serde(default = "default_commitment")]
     pub commitment: String,
 }
 
@@ -226,9 +227,6 @@ impl ConnectorConfig {
         if self.provider.is_empty() {
             bail!("connectors[{index}].provider must not be empty");
         }
-        if self.features.is_empty() {
-            bail!("connectors[{index}].features must contain at least one provider feature");
-        }
         let mut seen_features = HashSet::with_capacity(self.features.len());
         for feature in &self.features {
             if !seen_features.insert(*feature) {
@@ -238,17 +236,8 @@ impl ConnectorConfig {
                 );
             }
         }
-        if self.supports(ProviderFeature::HistoricalRpc) && !self.supports(ProviderFeature::Rpc) {
-            bail!("connectors[{index}].features historical-rpc requires provider feature rpc");
-        }
         if self.rpc_url.is_none() && self.ws_url.is_none() {
             bail!("connectors[{index}] must define rpc_url and/or ws_url");
-        }
-        if self.rpc_url.is_some() && !self.supports(ProviderFeature::Rpc) {
-            bail!("connectors[{index}].rpc_url requires provider feature rpc");
-        }
-        if self.ws_url.is_some() && !self.supports(ProviderFeature::Websocket) {
-            bail!("connectors[{index}].ws_url requires provider feature websocket");
         }
         if self.rpc_timeout_sec == 0 {
             bail!("connectors[{index}].rpc_timeout_sec must be greater than 0");
@@ -431,6 +420,7 @@ impl Config {
                 bail!("{path} requires modes.economics.enabled = true");
             }
 
+            let required_transport = command.transport();
             let required_feature = ProviderFeature::required_for(command);
             let mut seen = HashSet::with_capacity(route.len());
             for connector_name in route {
@@ -444,18 +434,20 @@ impl Config {
                     .with_context(|| {
                         format!("{path} references unknown connector {connector_name:?}")
                     })?;
-                if !connector.supports(required_feature) {
-                    bail!(
-                        "{path} references connector {:?}, which lacks provider feature {:?}",
-                        connector.name,
-                        required_feature.as_str()
-                    );
-                }
-                if required_feature != ProviderFeature::Websocket && !connector.has_rpc() {
+                if required_transport == crate::mode::Transport::Rpc && !connector.has_rpc() {
                     bail!(
                         "{path} references connector {:?}, which has no configured RPC transport",
                         connector.name
                     );
+                }
+                if let Some(feature) = required_feature {
+                    if !connector.supports(feature) {
+                        bail!(
+                            "{path} references connector {:?}, which lacks provider feature {:?}",
+                            connector.name,
+                            feature.as_str()
+                        );
+                    }
                 }
             }
         }
@@ -644,19 +636,19 @@ network = "testnet"
 [[connectors]]
 name = "local-validator"
 provider = "solana-validator"
-features = ["rpc"]
+features = []
 rpc_url = "http://127.0.0.1:8899"
 
 [[connectors]]
 name = "helius-rpc"
 provider = "helius"
-features = ["rpc"]
+features = []
 rpc_url = "https://rpc.helius.example"
 
 [[connectors]]
 name = "helius-ws"
 provider = "helius"
-features = ["websocket"]
+features = []
 ws_url = "wss://ws.helius.example"
 
 [[watched_validators]]
@@ -685,11 +677,11 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
         assert_eq!(config.connectors.len(), 3);
         assert_eq!(config.connectors[0].name, "local-validator");
         assert_eq!(config.connectors[0].provider, "solana-validator");
-        assert_eq!(config.connectors[0].features, [ProviderFeature::Rpc]);
+        assert!(config.connectors[0].features.is_empty());
         assert_eq!(config.connectors[1].name, "helius-rpc");
         assert_eq!(config.connectors[1].provider, "helius");
         assert_eq!(config.connectors[2].name, "helius-ws");
-        assert_eq!(config.connectors[2].features, [ProviderFeature::Websocket]);
+        assert!(config.connectors[2].features.is_empty());
         assert_eq!(config.watched_validators.len(), 1);
         assert_eq!(
             config.modes.leadership.commands.current_block_production,
@@ -783,7 +775,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "profile {relative_path}"
             );
             assert_eq!(
-                config.connectors[0].supports(ProviderFeature::HistoricalRpc),
+                config.connectors[0].supports(ProviderFeature::HistoricalData),
                 has_history,
                 "profile {relative_path}"
             );
@@ -806,21 +798,41 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
     }
 
     #[test]
-    fn rejects_unknown_provider_feature() -> Result<()> {
+    fn rejects_transports_as_provider_features() -> Result<()> {
+        for feature in ["rpc", "websocket", "historical-rpc"] {
+            let raw = format!(
+                r#"
+network = "testnet"
+
+[[connectors]]
+name = "helius"
+provider = "helius"
+features = ["{feature}"]
+rpc_url = "https://rpc.helius.example"
+"#
+            );
+            let error = config_load_error("transport-provider-feature", &raw)?;
+
+            assert!(format!("{error:#}").contains("unknown variant"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_missing_provider_features() -> Result<()> {
         let error = config_load_error(
-            "unknown-provider-feature",
+            "missing-provider-features",
             r#"
 network = "testnet"
 
 [[connectors]]
 name = "helius"
 provider = "helius"
-features = ["enhanced-rpc"]
 rpc_url = "https://rpc.helius.example"
 "#,
         )?;
 
-        assert!(format!("{error:#}").contains("unknown variant"));
+        assert!(format!("{error:#}").contains("missing field `features`"));
         Ok(())
     }
 
@@ -830,7 +842,6 @@ rpc_url = "https://rpc.helius.example"
             (
                 ConnectorConfig {
                     name: "primary".to_string(),
-                    features: vec![ProviderFeature::Rpc],
                     rpc_url: Some("https://rpc.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -840,51 +851,14 @@ rpc_url = "https://rpc.helius.example"
                 ConnectorConfig {
                     name: "primary".to_string(),
                     provider: "solana".to_string(),
+                    features: vec![
+                        ProviderFeature::HistoricalData,
+                        ProviderFeature::HistoricalData,
+                    ],
                     rpc_url: Some("https://rpc.example".to_string()),
                     ..ConnectorConfig::default()
                 },
-                "features must contain at least one provider feature",
-            ),
-            (
-                ConnectorConfig {
-                    name: "primary".to_string(),
-                    provider: "solana".to_string(),
-                    features: vec![ProviderFeature::Rpc, ProviderFeature::Rpc],
-                    rpc_url: Some("https://rpc.example".to_string()),
-                    ..ConnectorConfig::default()
-                },
-                "contains duplicate provider feature \"rpc\"",
-            ),
-            (
-                ConnectorConfig {
-                    name: "primary".to_string(),
-                    provider: "solana".to_string(),
-                    features: vec![ProviderFeature::HistoricalRpc],
-                    rpc_url: Some("https://rpc.example".to_string()),
-                    ..ConnectorConfig::default()
-                },
-                "historical-rpc requires provider feature rpc",
-            ),
-            (
-                ConnectorConfig {
-                    name: "primary".to_string(),
-                    provider: "solana".to_string(),
-                    features: vec![ProviderFeature::Websocket],
-                    rpc_url: Some("https://rpc.example".to_string()),
-                    ..ConnectorConfig::default()
-                },
-                "rpc_url requires provider feature rpc",
-            ),
-            (
-                ConnectorConfig {
-                    name: "primary".to_string(),
-                    provider: "solana".to_string(),
-                    features: vec![ProviderFeature::Rpc],
-                    rpc_url: Some("https://rpc.example".to_string()),
-                    ws_url: Some("wss://rpc.example".to_string()),
-                    ..ConnectorConfig::default()
-                },
-                "ws_url requires provider feature websocket",
+                "contains duplicate provider feature \"historical-data\"",
             ),
         ];
 
@@ -907,28 +881,21 @@ rpc_url = "https://rpc.helius.example"
             r#"
 name = "test"
 provider = "helius"
-features = ["rpc", "websocket", "historical-rpc"]
+features = ["historical-data"]
 rpc_url = "https://rpc.example"
 ws_url = "wss://rpc.example"
 "#,
         )?;
 
         assert_eq!(connector.provider, "helius");
-        assert_eq!(
-            connector.features,
-            [
-                ProviderFeature::Rpc,
-                ProviderFeature::Websocket,
-                ProviderFeature::HistoricalRpc
-            ]
-        );
+        assert_eq!(connector.features, [ProviderFeature::HistoricalData]);
         assert_eq!(
             connector
                 .features
                 .iter()
                 .map(|feature| feature.as_str())
                 .collect::<Vec<_>>(),
-            ["rpc", "websocket", "historical-rpc"]
+            ["historical-data"]
         );
         Ok(())
     }
@@ -952,7 +919,7 @@ network = "testnet"
 [[connectors]]
 name = "primary"
 provider = "solana"
-features = ["rpc"]
+features = []
 rpc_url = "https://rpc.example"
 "#
                 ),
@@ -972,7 +939,7 @@ network = "testnet"
 [[connectors]]
 name = "primary"
 provider = "solana"
-features = ["rpc"]
+features = []
 rpc_url = "https://rpc.example"
 transport_mode = "poll-http"
 "#,
@@ -1005,7 +972,7 @@ transport_mode = "poll-http"
             connectors: vec![ConnectorConfig {
                 name: "ws-only".to_string(),
                 provider: "helius".to_string(),
-                features: vec![ProviderFeature::Websocket],
+                features: Vec::new(),
                 ws_url: Some("wss://ws.helius.example".to_string()),
                 ..ConnectorConfig::default()
             }],
@@ -1041,7 +1008,6 @@ transport_mode = "poll-http"
     fn rejects_invalid_ws_scheme() -> Result<()> {
         let mut connector = rpc_connector("primary");
         connector.ws_url = Some("https://api.mainnet-beta.solana.com".to_string());
-        connector.features.push(ProviderFeature::Websocket);
         let mut config = Config {
             connectors: vec![connector],
             ..Config::default()
@@ -1111,7 +1077,7 @@ transport_mode = "poll-http"
                 ConnectorConfig {
                     name: "ws-only".to_string(),
                     provider: "helius".to_string(),
-                    features: vec![ProviderFeature::Websocket],
+                    features: Vec::new(),
                     ws_url: Some("wss://ws.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1124,14 +1090,16 @@ transport_mode = "poll-http"
         let Err(error) = config.validate() else {
             anyhow::bail!("RPC command without RPC transport should be rejected");
         };
-        assert!(error.to_string().contains("lacks provider feature \"rpc\""));
+        assert!(error
+            .to_string()
+            .contains("has no configured RPC transport"));
         Ok(())
     }
 
     #[test]
-    fn rejects_economics_route_without_historical_rpc_feature() -> Result<()> {
+    fn rejects_economics_route_without_historical_data_feature() -> Result<()> {
         let mut connector = rpc_connector("primary");
-        connector.features = vec![ProviderFeature::Rpc];
+        connector.features = Vec::new();
         let mut config = Config {
             connectors: vec![connector],
             modes: modes_for("primary", None, true),
@@ -1144,11 +1112,11 @@ transport_mode = "poll-http"
         });
 
         let Err(error) = config.validate() else {
-            anyhow::bail!("economics route without historical RPC should be rejected");
+            anyhow::bail!("economics route without historical data should be rejected");
         };
         assert!(error
             .to_string()
-            .contains("lacks provider feature \"historical-rpc\""));
+            .contains("lacks provider feature \"historical-data\""));
         Ok(())
     }
 
@@ -1340,7 +1308,7 @@ rpc_url = "${WATCHER_RPC_URL}"
         ConnectorConfig {
             name: name.to_string(),
             provider: "solana".to_string(),
-            features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
+            features: vec![ProviderFeature::HistoricalData],
             rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
             ..ConnectorConfig::default()
         }

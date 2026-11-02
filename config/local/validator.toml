@@ -7,7 +7,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 [[connectors]]
 name = "local-validator"
 provider = "solana-validator"
-features = ["rpc"]
+features = []
 rpc_url = "http://127.0.0.1:8899"
 rpc_timeout_sec = 30
 ws_timeout_sec = 10

@@ -9,7 +9,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 [[connectors]]
 name = "devnet-rpc"
 provider = "helius"
-features = ["rpc", "websocket", "historical-rpc"]
+features = ["historical-data"]
 rpc_url = "${SOL_DEVNET_RPC_URL}"
 rpc_timeout_sec = 30
 ws_url = "${SOL_DEVNET_WS_URL}"

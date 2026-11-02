@@ -79,7 +79,7 @@ poll_interval_sec = 15
             r#"[[connectors]]
 name = "connector-{index}"
 provider = "benchmark-provider"
-features = ["rpc", "websocket"]
+features = []
 rpc_url = "https://rpc-{index}.example"
 rpc_timeout_sec = 30
 ws_url = "wss://rpc-{index}.example"

@@ -1,7 +1,7 @@
 use crate::{
     collector::{command::SourceCommand, RpcClient},
     config::{Config, ConnectorConfig, ProviderFeature},
-    mode::{CommandId, ModeId, COMMAND_COUNT},
+    mode::{CommandId, ModeId, Transport, COMMAND_COUNT},
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
@@ -14,6 +14,8 @@ pub struct SourceSelection {
     pub command: CommandId,
     pub connector: Arc<str>,
     pub provider: Arc<str>,
+    pub transport: Transport,
+    pub feature: Option<ProviderFeature>,
     pub precedence: usize,
 }
 
@@ -29,7 +31,8 @@ pub struct SourceRoute<'a> {
     pub command: CommandId,
     pub connector: &'a str,
     pub provider: &'a str,
-    pub feature: ProviderFeature,
+    pub transport: Transport,
+    pub feature: Option<ProviderFeature>,
     pub precedence: usize,
     pub available: bool,
 }
@@ -75,6 +78,8 @@ impl Connector {
             command,
             connector: Arc::clone(&self.name),
             provider: Arc::clone(&self.provider),
+            transport: command.transport(),
+            feature: ProviderFeature::required_for(command),
             precedence,
         }
     }
@@ -127,15 +132,17 @@ impl SourceChain {
                 .enumerate()
                 .map(move |(index, connector_index)| {
                     let connector = &self.connectors[*connector_index];
-                    let available = match command {
-                        CommandId::WsHealth => connector.ws_client.is_some(),
-                        _ => connector.rpc_client.is_some(),
+                    let transport = command.transport();
+                    let available = match transport {
+                        Transport::Rpc => connector.rpc_client.is_some(),
+                        Transport::Websocket => connector.ws_client.is_some(),
                     };
                     SourceRoute {
                         mode: command.mode(),
                         command,
                         connector: connector.name.as_ref(),
                         provider: connector.provider.as_ref(),
+                        transport,
                         feature: ProviderFeature::required_for(command),
                         precedence: index + 1,
                         available,

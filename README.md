@@ -49,13 +49,13 @@ Run `just` to discover all module commands. Configuration templates live in [`co
 [[connectors]]
 name = "validator"
 provider = "solana-validator"
-features = ["rpc"]
+features = []
 rpc_url = "http://validator:8899"
 
 [[connectors]]
 name = "hosted"
 provider = "helius"
-features = ["rpc", "historical-rpc"]
+features = ["historical-data"]
 rpc_url = "${SOL_MAINNET_RPC_URL}"
 
 [modes.consensus.commands]
@@ -68,9 +68,9 @@ current_leader_schedule = ["validator", "hosted"]
 next_leader_schedule = ["validator", "hosted"]
 ```
 
-Supported features are `rpc`, `websocket`, and `historical-rpc`. Standard health, consensus, and leadership commands require `rpc`; WebSocket health requires `websocket`; economics commands require `historical-rpc`, which also requires `rpc`. Provider names identify the service supplying the capability and are exported with connector, route, and selected-source metrics.
+`rpc_url` and `ws_url` define the available `rpc` and `websocket` transports; they are not provider features. The current watcher-specific provider feature is `historical-data`. Economics commands require that feature because they query prior-epoch rewards and block production. Standard health, consensus, and leadership commands require only the matching transport. Provider names identify the service supplying each command result and are exported with connector, route, and selected-source metrics.
 
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects missing providers or features, duplicate features, feature/transport mismatches, unknown names, duplicate route entries, missing required routes, and routes whose connectors lack the command's required feature. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects missing providers or feature arrays, duplicate features, unknown names, duplicate route entries, missing required routes, routes without the command's transport, and routes lacking an optional feature required by that command. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
 
 ## Contributing
 

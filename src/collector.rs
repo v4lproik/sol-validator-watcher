@@ -1,9 +1,9 @@
 pub mod command;
 
 use crate::{
-    config::Config,
+    config::{Config, ProviderFeature},
     labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
-    mode::{CommandId, ModeId},
+    mode::{CommandId, ModeId, Transport},
     source::{SourceChain, SourceSelection},
 };
 use anyhow::{bail, Context, Result};
@@ -433,6 +433,8 @@ pub struct SnapshotDataSource {
     pub command: CommandId,
     pub connector: Arc<str>,
     pub provider: Arc<str>,
+    pub transport: Transport,
+    pub feature: Option<ProviderFeature>,
     pub precedence: usize,
 }
 
@@ -443,6 +445,8 @@ impl From<SourceSelection> for SnapshotDataSource {
             command: source.command,
             connector: source.connector,
             provider: source.provider,
+            transport: source.transport,
+            feature: source.feature,
             precedence: source.precedence,
         }
     }
@@ -1359,7 +1363,7 @@ mod tests {
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
                 provider: "mock-solana".to_string(),
-                features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
+                features: vec![ProviderFeature::HistoricalData],
                 rpc_url: Some(rpc_url.clone()),
                 rpc_timeout_sec: 5,
                 ..ConnectorConfig::default()
@@ -1422,7 +1426,7 @@ mod tests {
                 ConnectorConfig {
                     name: "local-validator".to_string(),
                     provider: "solana-validator".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(primary_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1430,7 +1434,7 @@ mod tests {
                 ConnectorConfig {
                     name: "helius-fallback".to_string(),
                     provider: "helius".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(fallback_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1492,7 +1496,7 @@ mod tests {
                 ConnectorConfig {
                     name: "local-validator".to_string(),
                     provider: "solana-validator".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(primary_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1500,7 +1504,7 @@ mod tests {
                 ConnectorConfig {
                     name: "helius-fallback".to_string(),
                     provider: "helius".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(fallback_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1547,7 +1551,7 @@ mod tests {
                 ConnectorConfig {
                     name: "first".to_string(),
                     provider: "solana-validator".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(first_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1555,7 +1559,7 @@ mod tests {
                 ConnectorConfig {
                     name: "second".to_string(),
                     provider: "helius".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(second_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1600,7 +1604,7 @@ mod tests {
                 ConnectorConfig {
                     name: "first".to_string(),
                     provider: "solana-validator".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(first_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1608,7 +1612,7 @@ mod tests {
                 ConnectorConfig {
                     name: "second".to_string(),
                     provider: "helius".to_string(),
-                    features: vec![ProviderFeature::Rpc],
+                    features: Vec::new(),
                     rpc_url: Some(second_rpc_url),
                     rpc_timeout_sec: 5,
                     ..ConnectorConfig::default()
@@ -1640,7 +1644,7 @@ mod tests {
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
                 provider: "mock-solana".to_string(),
-                features: vec![ProviderFeature::Rpc, ProviderFeature::HistoricalRpc],
+                features: vec![ProviderFeature::HistoricalData],
                 rpc_url: Some(rpc_url),
                 rpc_timeout_sec: 5,
                 ..ConnectorConfig::default()
@@ -1716,7 +1720,7 @@ mod tests {
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
                 provider: "solana-validator".to_string(),
-                features: vec![ProviderFeature::Rpc, ProviderFeature::Websocket],
+                features: Vec::new(),
                 rpc_url: Some("https://rpc.example".to_string()),
                 ws_url: Some("wss://rpc.example".to_string()),
                 ..ConnectorConfig::default()
@@ -1802,7 +1806,7 @@ mod tests {
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
                 provider: "solana-validator".to_string(),
-                features: vec![ProviderFeature::Rpc],
+                features: Vec::new(),
                 rpc_url: Some("https://rpc.example".to_string()),
                 ..ConnectorConfig::default()
             }],

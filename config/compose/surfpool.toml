@@ -8,7 +8,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 [[connectors]]
 name = "surfpool"
 provider = "surfpool"
-features = ["rpc", "websocket"]
+features = []
 rpc_url = "http://surfpool:8899"
 rpc_timeout_sec = 5
 ws_url = "ws://surfpool:8900"

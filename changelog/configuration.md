@@ -12,4 +12,4 @@
 - Added strict built-in mode command routes whose connector arrays define the complete priority and fallback order for each command.
 - Rejected missing required routes, unknown or duplicate route names, disabled economics routes, and RPC commands assigned to connectors without RPC transport.
 - Replaced provider-specific connector kinds with explicit `provider` names and watcher-relevant `features` arrays.
-- Added strict provider-feature validation: historical RPC requires RPC, transport URLs require their matching feature, and every command route requires the feature used by that command.
+- Separated transport from provider capabilities: `rpc_url` and `ws_url` determine available transports, feature arrays may be empty, and prior-epoch economics routes require `historical-data`.
