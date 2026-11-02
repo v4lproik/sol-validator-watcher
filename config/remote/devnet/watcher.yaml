@@ -10,7 +10,7 @@ liveness_file: /tmp/sol-validator-watcher.liveness
 connectors:
   - name: devnet-rpc
     kind: standard-validator+rpc
-    connection_file: validator.devnet.toml
+    connection_file: connection.toml
 
 watched_validators:
   - vote_account: FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f

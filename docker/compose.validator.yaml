@@ -8,7 +8,7 @@ services:
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/config/config.compose.validator.yaml
+      - /app/config/compose/validator/watcher.yaml
     environment:
       RUST_LOG: info
       SOL_WATCHER_NETWORK: ${SOL_WATCHER_NETWORK:-external-validator}
@@ -23,7 +23,7 @@ services:
       SOL_WATCHER_COMMITMENT: ${SOL_WATCHER_COMMITMENT:-confirmed}
       SOL_WATCHER_DELINQUENT_SLOT_DISTANCE: ${SOL_WATCHER_DELINQUENT_SLOT_DISTANCE:-128}
     volumes:
-      - ../config/config.compose.validator.yaml:/app/config/config.compose.validator.yaml:ro
+      - ../config/compose/validator:/app/config/compose/validator:ro
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:

@@ -21,4 +21,4 @@ COPY config ./config
 EXPOSE 8000
 
 ENTRYPOINT ["sol-validator-watcher"]
-CMD ["--config", "/app/config/config.local.yaml"]
+CMD ["--config", "/app/config/local/validator/watcher.yaml"]

@@ -39,7 +39,7 @@ Open Prometheus at <http://127.0.0.1:9090> and Grafana at <http://127.0.0.1:3001
 just stack down
 ```
 
-Run `just` to discover all module commands. Configuration templates live in [`config/`](config/); keep credentials in the ignored root `.env`.
+Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each profile colocates `watcher.yaml` and `connection.toml`. Keep credentials in the ignored root `.env`.
 
 ## Contributing
 

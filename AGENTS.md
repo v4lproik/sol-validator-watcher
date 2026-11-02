@@ -52,7 +52,7 @@ or site scripts directly.
 | `just rust clippy` | Lint all targets and features with warnings denied |
 | `just rust test` | Run the default Rust test suite |
 | `just rust build [debug\|release]` | Build the selected profile; defaults to debug |
-| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `config/config.local.yaml` |
+| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `config/local/validator/watcher.yaml` |
 | `just rust clean` | Remove Cargo build artifacts |
 
 ### Verification and coverage
