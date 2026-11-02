@@ -27,6 +27,10 @@ liveness files, signals, and shutdown.
   `provider` name plus an explicit `features` array, which may be empty. The
   current provider feature is `historical-data`; `rpc` and `websocket` are
   transports, not features.
+- Each `ModeId` owns its finite source requirements. Health permits RPC and
+  WebSocket; consensus and leadership require RPC; economics requires RPC plus
+  `historical-data`. A command selects one requirement from its mode, and its
+  configured route supplies the ordered providers.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
 - Treat each connector's `rpc_url` and `ws_url` as its transport configuration.
@@ -37,7 +41,7 @@ liveness files, signals, and shutdown.
   features, zero ports/timeouts/intervals, duplicate connector names,
   unsupported commitments, invalid websocket schemes, missing required routes,
   unknown or duplicate route entries, RPC routes without RPC transport, routes
-  missing an optional provider feature required by the command, and impossible
+  missing an optional provider feature required by the mode, and impossible
   economics mode/target combinations before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
   `ws_url` is empty; expose them as unavailable and skip them at execution.

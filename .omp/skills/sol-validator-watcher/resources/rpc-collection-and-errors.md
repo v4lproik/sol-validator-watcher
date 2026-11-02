@@ -44,9 +44,10 @@ probes, and economics collection.
 - Connector declaration order is inventory, not fallback policy. Do not add
   numeric priorities, capability overrides, hidden sorting, or global
   connector-order fallback.
-- Command eligibility separates transport from provider capability. Standard RPC
-  commands require an `rpc_url`, WebSocket health uses `ws_url`, and reward
-  history commands additionally require the `historical-data` provider feature.
+- Mode source requirements separate transport from provider capability. Health
+  permits RPC and WebSocket sources, consensus and leadership require RPC, and
+  economics requires RPC plus `historical-data`. Each command selects one of
+  its mode's requirements; each configured connector supplies the provider.
   Validate the complete route before polling; do not discover declared
   capability by trial and error.
 - Required and optional execution are separate policies. Required commands

@@ -1,7 +1,7 @@
 use crate::{
     collector::{command::SourceCommand, RpcClient},
-    config::{Config, ConnectorConfig, ProviderFeature},
-    mode::{CommandId, ModeId, Transport, COMMAND_COUNT},
+    config::{Config, ConnectorConfig},
+    mode::{CommandId, ModeId, ProviderFeature, Transport, COMMAND_COUNT},
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
@@ -73,13 +73,14 @@ impl Connector {
     }
 
     fn selection(&self, command: CommandId, precedence: usize) -> SourceSelection {
+        let requirement = command.source_requirement();
         SourceSelection {
             mode: command.mode(),
             command,
             connector: Arc::clone(&self.name),
             provider: Arc::clone(&self.provider),
-            transport: command.transport(),
-            feature: ProviderFeature::required_for(command),
+            transport: requirement.transport,
+            feature: requirement.feature,
             precedence,
         }
     }
@@ -132,8 +133,8 @@ impl SourceChain {
                 .enumerate()
                 .map(move |(index, connector_index)| {
                     let connector = &self.connectors[*connector_index];
-                    let transport = command.transport();
-                    let available = match transport {
+                    let requirement = command.source_requirement();
+                    let available = match requirement.transport {
                         Transport::Rpc => connector.rpc_client.is_some(),
                         Transport::Websocket => connector.ws_client.is_some(),
                     };
@@ -142,8 +143,8 @@ impl SourceChain {
                         command,
                         connector: connector.name.as_ref(),
                         provider: connector.provider.as_ref(),
-                        transport,
-                        feature: ProviderFeature::required_for(command),
+                        transport: requirement.transport,
+                        feature: requirement.feature,
                         precedence: index + 1,
                         available,
                     }

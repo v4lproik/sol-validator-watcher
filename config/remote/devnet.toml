@@ -1,18 +1,19 @@
-# Template only. Keep real RPC credentials in .env or exported environment variables.
+# Template only. Keep the Helius API key in .env or an exported environment variable.
 network = "devnet"
 metrics_port = 8000
 poll_interval_sec = 15
 delinquent_slot_distance = 128
 liveness_file = "/tmp/sol-validator-watcher.liveness"
 
-# Each command route is an explicit connector fallback order.
+# Each command route maps its mode to the provider, required feature, and transport
+# resolved through this connector.
 [[connectors]]
-name = "devnet-rpc"
+name = "helius-devnet"
 provider = "helius"
 features = ["historical-data"]
-rpc_url = "${SOL_DEVNET_RPC_URL}"
+rpc_url = "https://devnet.helius-rpc.com/?api-key=${HELIUS_DEVNET_API_KEY}"
 rpc_timeout_sec = 30
-ws_url = "${SOL_DEVNET_WS_URL}"
+ws_url = "wss://devnet.helius-rpc.com/?api-key=${HELIUS_DEVNET_API_KEY}"
 ws_timeout_sec = 10
 commitment = "confirmed"
 
@@ -21,27 +22,25 @@ vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
 labels = ["operator:kiln", "validator:kiln-devnet"]
 
 [modes.health.commands]
-rpc_health = ["devnet-rpc"]
-ws_health = ["devnet-rpc"]
+rpc_health = ["helius-devnet"]
+ws_health = ["helius-devnet"]
 
 [modes.consensus.commands]
-epoch_info = ["devnet-rpc"]
-vote_accounts = ["devnet-rpc"]
+epoch_info = ["helius-devnet"]
+vote_accounts = ["helius-devnet"]
 
 [modes.leadership.commands]
-current_block_production = ["devnet-rpc"]
-current_leader_schedule = ["devnet-rpc"]
-next_leader_schedule = ["devnet-rpc"]
+current_block_production = ["helius-devnet"]
+current_leader_schedule = ["helius-devnet"]
+next_leader_schedule = ["helius-devnet"]
 
 [modes.economics]
-enabled = false
-# Enable economics only on RPC endpoints that can serve getInflationReward and
-# previous-epoch getBlockProduction, then add both command routes and a target:
-#
-# [modes.economics.commands]
-# inflation_rewards = ["devnet-rpc"]
-# reward_epoch_block_production = ["devnet-rpc"]
-#
-# [modes.economics.validator]
-# vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
-# labels = ["operator:kiln", "validator:kiln-devnet"]
+enabled = true
+
+[modes.economics.commands]
+inflation_rewards = ["helius-devnet"]
+reward_epoch_block_production = ["helius-devnet"]
+
+[modes.economics.validator]
+vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
+labels = ["operator:kiln", "validator:kiln-devnet"]
