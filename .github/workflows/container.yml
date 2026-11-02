@@ -65,7 +65,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/Dockerfile
           build-args: |
             RUST_VERSION=${{ steps.rust.outputs.version }}
           push: true

@@ -12,9 +12,9 @@ operator-facing semantics.
   resets, rendering, and unit conversion.
 - `collector::Snapshot` is the input contract. Collection code does not write
   Prometheus collectors directly.
-- Dashboard JSON under `deploy/grafana/dashboards/` consumes the exported metric
-  contract. Provisioning under `deploy/grafana/provisioning/` owns local loading.
-- `deploy/prometheus/prometheus.yml` owns local scraping.
+- Dashboard JSON under `docker/grafana/dashboards/` consumes the exported metric
+  contract. Provisioning under `docker/grafana/provisioning/` owns local loading.
+- `docker/prometheus/prometheus.yml` owns local scraping.
 
 ## Metric Invariants
 

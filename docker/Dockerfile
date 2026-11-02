@@ -16,9 +16,9 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /app/target/release/sol-validator-watcher /usr/local/bin/sol-validator-watcher
-COPY etc ./etc
+COPY config ./config
 
 EXPOSE 8000
 
 ENTRYPOINT ["sol-validator-watcher"]
-CMD ["--config", "/app/etc/config.local.yaml"]
+CMD ["--config", "/app/config/config.local.yaml"]
