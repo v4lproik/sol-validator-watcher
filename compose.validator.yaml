@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        RUST_VERSION: ${RUST_VERSION:-}
+        RUST_VERSION: ${RUST_VERSION:?RUST_VERSION must come from mise.toml}
     image: sol-validator-watcher:local
     command:
       - --config

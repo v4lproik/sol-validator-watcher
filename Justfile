@@ -120,37 +120,37 @@ stack-reload-prometheus:
   curl -fsS -X POST http://localhost:9090/-/reload
 
 stack-logs-surfpool:
-  docker compose -f compose.yaml -f compose.surfpool.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml logs -f
 
 stack-logs-validator:
-  docker compose -f compose.yaml -f compose.validator.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.validator.yaml logs -f
 
 stack-logs-devnet:
-  docker compose -f compose.yaml -f compose.devnet.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.devnet.yaml logs -f
 
 stack-logs-mainnet:
-  docker compose -f compose.yaml -f compose.mainnet.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.mainnet.yaml logs -f
 
 stack-logs-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml logs -f
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml logs -f
 
 stack-ps-surfpool:
-  docker compose -f compose.yaml -f compose.surfpool.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml ps
 
 stack-ps-validator:
-  docker compose -f compose.yaml -f compose.validator.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.validator.yaml ps
 
 stack-ps-devnet:
-  docker compose -f compose.yaml -f compose.devnet.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.devnet.yaml ps
 
 stack-ps-mainnet:
-  docker compose -f compose.yaml -f compose.mainnet.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.mainnet.yaml ps
 
 stack-ps-all:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml ps
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml ps
 
 stack-down:
-  docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml down --remove-orphans
+  RUST_VERSION="$(mise config get tools.rust.version)" docker compose -f compose.yaml -f compose.surfpool.yaml -f compose.validator.yaml -f compose.devnet.yaml -f compose.mainnet.yaml down --remove-orphans
 
 clean:
   mise exec -- cargo clean
