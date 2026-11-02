@@ -15,8 +15,8 @@ image builds, stack inspection, and teardown.
 - `docker/Dockerfile` and `docker/Dockerfile.dockerignore` own the image build.
 - `config/` contains committed templates and connector configuration;
   credentials stay in `.env` or exported environment variables.
-- `deploy/prometheus/` and `deploy/grafana/` own local observability
-  provisioning.
+- `docker/prometheus/` and `docker/grafana/` own local observability
+  provisioning beside the Compose files that mount them.
 - The root `Justfile` and modules under `just/` expose the supported Compose
   file combinations. Do not rebuild those combinations from memory.
 
