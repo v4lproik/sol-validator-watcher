@@ -1,4 +1,6 @@
-FROM rust:1.84-bookworm AS builder
+# Build callers replace this sentinel with the Rust pin from mise.toml.
+ARG RUST_VERSION=required
+FROM rust:${RUST_VERSION}-bookworm AS builder
 
 WORKDIR /app
 COPY Cargo.toml ./

@@ -1051,7 +1051,7 @@ fn build_record(
         .by_identity
         .get(&info.node_pubkey)
         .copied()
-        .map_or((0, 0), |entry| entry);
+        .unwrap_or((0, 0));
     let reward_epoch_blocks_produced = context
         .reward_epoch_by_identity
         .get(&info.node_pubkey)

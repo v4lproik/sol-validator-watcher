@@ -2,6 +2,8 @@ services:
   watcher-validator:
     build:
       context: .
+      args:
+        RUST_VERSION: ${RUST_VERSION:-}
     image: sol-validator-watcher:local
     command:
       - --config

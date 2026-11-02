@@ -70,9 +70,9 @@ or site scripts directly.
 | Command family | Purpose |
 | --- | --- |
 | `just doctor-docker` / `just doctor-surfpool` | Verify optional local dependencies |
-| `just docker-build [tag]` | Build the watcher image |
+| `just docker-build [tag]` | Build the watcher image with the Rust version pinned in `mise.toml` |
 | `just stack-config-{surfpool,validator,devnet,mainnet,all}` | Render the selected Compose configuration without starting it |
-| `just stack-up-{surfpool,validator,devnet,mainnet,all}` | Build and start the selected stack |
+| `just stack-up-{surfpool,validator,devnet,mainnet,all}` | Build with the Rust version pinned in `mise.toml` and start the selected stack |
 | `just stack-logs-{surfpool,validator,devnet,mainnet,all}` | Follow logs for the selected stack |
 | `just stack-ps-{surfpool,validator,devnet,mainnet,all}` | Inspect selected stack containers |
 | `just stack-reload-prometheus` | Reload local Prometheus configuration |

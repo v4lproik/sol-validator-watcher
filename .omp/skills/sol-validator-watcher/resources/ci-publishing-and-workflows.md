@@ -58,6 +58,9 @@ checks.
 - Preserve branch/tag/SHA metadata and default-branch `latest` behavior.
 - Build context, Dockerfile path, cache, labels, and tags must describe the same
   source revision.
+- `mise.toml` owns the Rust version. `Justfile` and container CI resolve that
+  pin with `mise config get tools.rust.version` and pass `RUST_VERSION` into
+  Docker; Dockerfiles and Compose overlays must not duplicate the version.
 - A local `just docker-build` proves the image builds; it does not authorize a
   registry push.
 
