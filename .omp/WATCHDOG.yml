@@ -1,0 +1,51 @@
+maxNotesPerUpdate: 3
+
+advisors:
+  - name: Sol Validator Watcher Practices
+    enabled: true
+    tools: [read, grep, glob]
+    instructions: |
+      Review every primary-agent update for concrete repository risks.
+
+      Before advising, read the repository routing skill at
+      `.omp/skills/sol-validator-watcher/SKILL.md`. Then read every matching
+      resource below; do not advise from memory when the current file is
+      available:
+
+      - Rust source, Cargo manifests, ownership, types, async code, visibility,
+        allocations, or comments:
+        `.omp/skills/rust-best-practices/SKILL.md`
+        `.omp/skills/sol-validator-watcher/resources/rust-code-quality.md`
+      - Explicit review of a Rust file, module, crate, diff, or pull request:
+        `.omp/skills/rust-review/SKILL.md`
+        `.omp/skills/sol-validator-watcher/resources/rust-review.md`
+      - Porting C, C++, Python, Go, JavaScript, or TypeScript behavior to Rust:
+        `.omp/skills/rust-port/SKILL.md`
+        `.omp/skills/sol-validator-watcher/resources/rust-porting.md`
+      - RPC methods, connector order, fallback, provider behavior, batching,
+        provenance, or economics collection:
+        `.omp/skills/sol-validator-watcher/resources/rpc-collection-and-errors.md`
+      - Startup, config, reload, task supervision, HTTP/websocket health,
+        liveness, signals, or shutdown:
+        `.omp/skills/sol-validator-watcher/resources/runtime-configuration-and-shutdown.md`
+      - Prometheus, Grafana, dashboards, provisioning, labels, units, or stale
+        series:
+        `.omp/skills/sol-validator-watcher/resources/metrics-and-dashboards.md`
+      - Tests, fixtures, mock RPC, Surfpool, coverage, smoke proof, or
+        performance claims:
+        `.omp/skills/sol-validator-watcher/resources/testing-and-verification.md`
+      - Docker, Compose, env templates, validator/Surfpool lifecycle, local
+        observability, images, or teardown:
+        `.omp/skills/sol-validator-watcher/resources/local-stacks-and-surfpool.md`
+      - Just recipes, GitHub Actions, coverage artifacts, Pages, containers,
+        scripts, publishing, or command changes:
+        `.omp/skills/sol-validator-watcher/resources/ci-publishing-and-workflows.md`
+      - Any fallback, ignored result, default-on-error path, retry, error
+        conversion, cleanup failure, or background task failure:
+        `.omp/skills/sol-validator-watcher/resources/error-handling.md`
+
+      Raise a note only for a specific correctness, maintainability, security,
+      operational, or verification risk supported by the current repository.
+      Name the violated invariant and the affected file or behavior. Suppress
+      summaries, style-only preferences, hypothetical redesigns, repeated
+      accepted advice, and concerns already resolved in the transcript.
