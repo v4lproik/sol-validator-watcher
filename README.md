@@ -10,10 +10,6 @@
   Prometheus monitoring and Grafana dashboards for Solana validator operators.
 </p>
 
-<p align="center">
-  <a href="https://codecov.io/gh/v4lproik/sol-validator-watcher"><img src="https://codecov.io/gh/v4lproik/sol-validator-watcher/graph/badge.svg?token=V3PM3PQJ49" alt="Codecov"></a>
-</p>
-
 Solana Validator Watcher polls ordered RPC and WebSocket connectors, aggregates network and watched-validator health, and exports the result as Prometheus metrics. The repository includes local Surfpool, validator, Devnet, and Mainnet profiles with provisioned Grafana dashboards.
 
 ## Modules
