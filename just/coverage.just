@@ -1,4 +1,5 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
+set working-directory := '..'
 
 summary:
   just rust _ensure-components

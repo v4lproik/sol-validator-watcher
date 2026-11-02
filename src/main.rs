@@ -42,7 +42,7 @@ use tracing::{error, info, warn};
 #[command(name = "sol-validator-watcher")]
 #[command(about = "Prometheus watcher for Solana validators")]
 struct Cli {
-    #[arg(long, default_value = "etc/config.local.yaml")]
+    #[arg(long, default_value = "config/config.local.yaml")]
     config: PathBuf,
 }
 

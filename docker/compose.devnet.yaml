@@ -1,19 +1,20 @@
 services:
   watcher-devnet:
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         RUST_VERSION: ${RUST_VERSION:?RUST_VERSION must come from mise.toml}
     image: sol-validator-watcher:local
     command:
       - --config
-      - /app/etc/config.devnet.yaml
+      - /app/config/config.devnet.yaml
     environment:
       RUST_LOG: info
       SOL_DEVNET_RPC_URL: ${SOL_DEVNET_RPC_URL}
       SOL_DEVNET_WS_URL: ${SOL_DEVNET_WS_URL}
     volumes:
-      - ./etc/config.devnet.yaml:/app/etc/config.devnet.yaml:ro
+      - ../config/config.devnet.yaml:/app/config/config.devnet.yaml:ro
     ports:
       - "${WATCHER_DEVNET_METRICS_PORT:-8002}:8000"
     restart: on-failure

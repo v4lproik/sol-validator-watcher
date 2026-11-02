@@ -8,15 +8,17 @@ image builds, stack inspection, and teardown.
 
 ## Ownership and Boundaries
 
-- `compose.yaml` owns the shared observability and watcher base.
-- `compose.surfpool.yaml`, `compose.validator.yaml`, `compose.devnet.yaml`, and
-  `compose.mainnet.yaml` are explicit overlays for distinct environments.
-- `etc/` contains committed templates and connector configuration; credentials
-  stay in `.env` or exported environment variables.
+- `docker/compose.yaml` owns the shared observability and watcher base.
+- `docker/compose.surfpool.yaml`, `docker/compose.validator.yaml`,
+  `docker/compose.devnet.yaml`, and `docker/compose.mainnet.yaml` are explicit
+  overlays for distinct environments.
+- `docker/Dockerfile` and `docker/Dockerfile.dockerignore` own the image build.
+- `config/` contains committed templates and connector configuration;
+  credentials stay in `.env` or exported environment variables.
 - `deploy/prometheus/` and `deploy/grafana/` own local observability
   provisioning.
-- The `Justfile` exposes the supported Compose file combinations. Do not rebuild
-  those combinations from memory.
+- The root `Justfile` and modules under `just/` expose the supported Compose
+  file combinations. Do not rebuild those combinations from memory.
 
 ## Invariants
 

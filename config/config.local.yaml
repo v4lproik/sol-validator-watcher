@@ -1,5 +1,8 @@
 network: mainnet-beta
-validator_connection_file: validator.local.toml
+connectors:
+  - name: local-validator
+    kind: standard-validator+rpc
+    connection_file: validator.local.toml
 validator_mode: consensus
 validator_websocket_enabled: false
 metrics_port: 8000
