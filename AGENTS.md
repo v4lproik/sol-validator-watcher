@@ -51,8 +51,9 @@ or site scripts directly.
 | `just rust fmt` | Format Rust sources |
 | `just rust clippy` | Lint all targets and features with warnings denied |
 | `just rust test` | Run the default Rust test suite |
+| `just rust bench` | Run the configuration-loading performance benchmark |
 | `just rust build [debug\|release]` | Build the selected profile; defaults to debug |
-| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `config/local/validator/watcher.yaml` |
+| `just rust run [debug\|release] [config]` | Run with `.env`, a profile, and a config; defaults to debug and `config/local/validator.toml` |
 | `just rust clean` | Remove Cargo build artifacts |
 
 ### Verification and coverage

@@ -6,6 +6,7 @@ WORKDIR /app
 COPY Cargo.toml ./
 COPY Cargo.lock ./
 COPY src ./src
+COPY benches ./benches
 RUN cargo build --locked --release
 
 FROM debian:bookworm-slim
@@ -21,4 +22,4 @@ COPY config ./config
 EXPOSE 8000
 
 ENTRYPOINT ["sol-validator-watcher"]
-CMD ["--config", "/app/config/local/validator/watcher.yaml"]
+CMD ["--config", "/app/config/local/validator.toml"]

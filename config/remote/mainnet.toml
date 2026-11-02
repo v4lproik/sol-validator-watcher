@@ -1,0 +1,41 @@
+# Template only. Keep real RPC credentials in .env or exported environment variables.
+network = "mainnet-beta"
+metrics_port = 8000
+poll_interval_sec = 15
+delinquent_slot_distance = 128
+liveness_file = "/tmp/sol-validator-watcher.liveness"
+
+# Connectors are tried in declaration order for each metric.
+[[connectors]]
+name = "mainnet-rpc"
+kind = "helius+rpc"
+rpc_url = "${SOL_MAINNET_RPC_URL}"
+rpc_timeout_sec = 30
+ws_url = "${SOL_MAINNET_WS_URL}"
+ws_timeout_sec = 10
+commitment = "confirmed"
+
+[[watched_validators]]
+vote_account = "BeRtYZ7SVQozwTby6ajQzrHtKYkn4qoKyRfb3NDAedtA"
+labels = ["validator:big-berty", "state:delinquent"]
+
+[[watched_validators]]
+vote_account = "3dXXxEaV4fZqw1PL7VezfDkiJV5W4WTtRjh2EHgKSthF"
+labels = ["validator:hedgehog-spiky", "state:delinquent"]
+
+[[watched_validators]]
+vote_account = "PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp"
+labels = ["validator:puffin", "state:top-voter"]
+
+[[watched_validators]]
+vote_account = "D7WodK26tETSqyWBW35vvMGfige9afLEyTsm1Pvvropd"
+labels = ["validator:litx", "state:top-voter"]
+
+[economics]
+mode = "disabled"
+# Enable single-validator economics only on RPC endpoints that can serve
+# getInflationReward and previous-epoch getBlockProduction.
+#
+# [economics.validator]
+# vote_account = "PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp"
+# labels = ["validator:puffin", "focus:economics"]

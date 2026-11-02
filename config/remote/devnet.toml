@@ -1,0 +1,29 @@
+# Template only. Keep real RPC credentials in .env or exported environment variables.
+network = "devnet"
+metrics_port = 8000
+poll_interval_sec = 15
+delinquent_slot_distance = 128
+liveness_file = "/tmp/sol-validator-watcher.liveness"
+
+# Connectors are tried in declaration order for each metric.
+[[connectors]]
+name = "devnet-rpc"
+kind = "standard-validator+rpc"
+rpc_url = "${SOL_DEVNET_RPC_URL}"
+rpc_timeout_sec = 30
+ws_url = "${SOL_DEVNET_WS_URL}"
+ws_timeout_sec = 10
+commitment = "confirmed"
+
+[[watched_validators]]
+vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
+labels = ["operator:kiln", "validator:kiln-devnet"]
+
+[economics]
+mode = "disabled"
+# Enable single-validator economics only on RPC endpoints that can serve
+# getInflationReward and previous-epoch getBlockProduction.
+#
+# [economics.validator]
+# vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"
+# labels = ["operator:kiln", "validator:kiln-devnet"]

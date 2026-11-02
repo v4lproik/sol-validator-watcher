@@ -511,7 +511,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "clamp_max(((1 - min(sol_watcher_up{network=~\"$network\"})) * 2) + ((1 - min(sol_rpc_up{network=~\"$network\"})) * 2) + (((max(sol_watcher_config_info{network=~\"$network\",validator_websocket_enabled=\"true\"}) or vector(0)) * (1 - min(sol_ws_up{network=~\"$network\"}))) * 2) + (clamp_min(time() - min(timestamp(sol_slot{network=~\"$network\"})), 0) > bool 60), 2)",
+          "expr": "clamp_max(((1 - min(sol_watcher_up{network=~\"$network\"})) * 2) + ((1 - min(sol_rpc_up{network=~\"$network\"})) * 2) + (((max(sol_watcher_config_info{network=~\"$network\",ws_configured=\"true\"}) or vector(0)) * (1 - min(sol_ws_up{network=~\"$network\"}))) * 2) + (clamp_min(time() - min(timestamp(sol_slot{network=~\"$network\"})), 0) > bool 60), 2)",
           "instant": true,
           "legendFormat": "data_path_state",
           "range": false,

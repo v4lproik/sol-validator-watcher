@@ -1,6 +1,0 @@
-rpc_url = "http://surfpool:8899"
-rpc_timeout_sec = 5
-transport_mode = "poll-http-and-ws"
-ws_url = "ws://surfpool:8900"
-ws_timeout_sec = 5
-commitment = "confirmed"

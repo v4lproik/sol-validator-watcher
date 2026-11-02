@@ -18,7 +18,7 @@ Solana Validator Watcher polls ordered RPC and WebSocket connectors, aggregates 
 | --- | --- | --- | --- |
 | Watcher | Solana RPC collection, connector fallback, labels, and validator aggregation | [`src/collector.rs`](src/collector.rs), [`src/labels.rs`](src/labels.rs), [`src/websocket.rs`](src/websocket.rs) | [`changelog/watcher.md`](changelog/watcher.md) |
 | Runtime | Process startup, polling, HTTP serving, reload, task supervision, and shutdown | [`src/main.rs`](src/main.rs), [`src/tasks.rs`](src/tasks.rs) | [`changelog/runtime.md`](changelog/runtime.md) |
-| Configuration | YAML/TOML loading, environment expansion, validation, and committed profiles | [`src/config.rs`](src/config.rs), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
+| Configuration | TOML loading, environment expansion, validation, and committed profiles | [`src/config.rs`](src/config.rs), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
 | Observability | Prometheus metrics, scraping, Grafana provisioning, dashboards, and the Pages site | [`src/metrics.rs`](src/metrics.rs), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/), [`site/`](site/) | [`changelog/observability.md`](changelog/observability.md) |
 | Operations | Container image, Compose profiles, Surfpool, and local stack lifecycle | [`docker/`](docker/) | [`changelog/operations.md`](changelog/operations.md) |
 | Tooling | Just commands, CI, coverage, publishing, scripts, and repository guidance | [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
@@ -39,7 +39,7 @@ Open Prometheus at <http://127.0.0.1:9090> and Grafana at <http://127.0.0.1:3001
 just stack down
 ```
 
-Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each profile colocates `watcher.yaml` and `connection.toml`. Keep credentials in the ignored root `.env`.
+Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each runnable profile is one ordered TOML file. Keep credentials in the ignored root `.env`.
 
 ## Contributing
 

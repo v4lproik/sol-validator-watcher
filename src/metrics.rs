@@ -97,14 +97,12 @@ impl Metrics {
         let sol_watcher_config_info = IntGaugeVec::new(
             Opts::new(
                 "sol_watcher_config_info",
-                "Watcher transport, validator mode, and economics mode configuration",
+                "Watcher transport and economics mode configuration",
             ),
             &[
                 "network",
                 "transport_mode",
-                "validator_mode",
                 "economics_mode",
-                "validator_websocket_enabled",
                 "ws_configured",
             ],
         )?;
@@ -480,9 +478,9 @@ impl Metrics {
     }
 
     pub fn update_runtime_config(&self, config: &Config) {
-        let connectors = config.effective_connectors();
+        let connectors = &config.connectors;
         let ws_configured = connectors.iter().any(ConnectorConfig::has_ws);
-        let transport_mode = if config.validator_websocket_enabled && ws_configured {
+        let transport_mode = if ws_configured {
             "poll-http-and-ws"
         } else {
             "poll-http"
@@ -494,9 +492,7 @@ impl Metrics {
             .with_label_values(&[
                 &config.network,
                 transport_mode,
-                config.validator_mode.as_str(),
                 config.economics.mode.as_str(),
-                bool_label(config.validator_websocket_enabled),
                 bool_label(ws_configured),
             ])
             .set(1);
@@ -764,10 +760,7 @@ mod tests {
     use super::{bool_label, Metrics};
     use crate::{
         collector::{ScopeMetrics, Snapshot, ValidatorStatus, WatchedValidatorMetrics},
-        config::{
-            Config, ConnectorConfig, ConnectorKind, TransportMode, ValidatorConnectionConfig,
-            ValidatorMode,
-        },
+        config::{Config, ConnectorConfig, ConnectorKind},
     };
     use anyhow::Result;
     use std::collections::BTreeMap;
@@ -842,14 +835,6 @@ mod tests {
         metrics.set_ws_up("mainnet-beta", true);
         metrics.update_runtime_config(&Config {
             network: "mainnet-beta".to_string(),
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-                transport_mode: TransportMode::PollHttpAndWs,
-                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-                ..ValidatorConnectionConfig::default()
-            },
-            validator_mode: ValidatorMode::ConsensusAndRpc,
-            validator_websocket_enabled: true,
             connectors: vec![
                 ConnectorConfig {
                     name: "local-validator".to_string(),
@@ -869,15 +854,22 @@ mod tests {
                     ws_url: Some("wss://ws.helius.example".to_string()),
                     ..ConnectorConfig::default()
                 },
+                ConnectorConfig {
+                    name: "full-rpc".to_string(),
+                    kind: ConnectorKind::StandardValidatorFullRpc,
+                    rpc_url: Some("https://full-rpc.example".to_string()),
+                    ..ConnectorConfig::default()
+                },
             ],
             ..Config::default()
         });
         metrics.update_snapshot(&snapshot);
         let rendered = metrics.render()?;
 
-        assert!(rendered.contains("sol_watcher_config_info{economics_mode=\"disabled\",network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",validator_mode=\"consensus-and-rpc\",validator_websocket_enabled=\"true\",ws_configured=\"true\"} 1"));
+        assert!(rendered.contains("sol_watcher_config_info{economics_mode=\"disabled\",network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
         assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",has_rpc=\"true\",has_ws=\"false\",kind=\"standard-validator\",network=\"mainnet-beta\",precedence=\"1\"} 1"));
         assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",has_rpc=\"false\",has_ws=\"true\",kind=\"helius+enhanced-wss\",network=\"mainnet-beta\",precedence=\"3\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"full-rpc\",has_rpc=\"true\",has_ws=\"false\",kind=\"validator+full-rpc\",network=\"mainnet-beta\",precedence=\"4\"} 1"));
         assert!(rendered.contains("sol_metric_source_info{connector=\"local-validator\",kind=\"standard-validator\",metric=\"epoch-info\",network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_metric_source_info{connector=\"helius-rpc\",kind=\"helius+enhanced-rpc\",metric=\"inflation-rewards\",network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
@@ -905,14 +897,13 @@ mod tests {
 
         metrics.update_runtime_config(&Config {
             network: network.to_string(),
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-                transport_mode: TransportMode::PollHttpAndWs,
+            connectors: vec![ConnectorConfig {
+                name: "primary".to_string(),
+                kind: ConnectorKind::StandardValidator,
+                rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-                ..ValidatorConnectionConfig::default()
-            },
-            validator_mode: ValidatorMode::Consensus,
-            validator_websocket_enabled: true,
+                ..ConnectorConfig::default()
+            }],
             ..Config::default()
         });
         metrics.update_snapshot(&Snapshot {

@@ -1,0 +1,18 @@
+network = "${SOL_WATCHER_NETWORK:-external-validator}"
+metrics_port = 8000
+poll_interval_sec = ${SOL_WATCHER_POLL_INTERVAL_SEC:-15}
+delinquent_slot_distance = ${SOL_WATCHER_DELINQUENT_SLOT_DISTANCE:-128}
+liveness_file = "/tmp/sol-validator-watcher.liveness"
+
+# Connectors are tried in declaration order for each metric.
+[[connectors]]
+name = "external-validator"
+kind = "standard-validator+rpc"
+rpc_url = "${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}"
+rpc_timeout_sec = ${SOL_WATCHER_RPC_TIMEOUT_SEC:-30}
+ws_url = "${SOL_VALIDATOR_WS_URL:-}"
+ws_timeout_sec = ${SOL_WATCHER_WS_TIMEOUT_SEC:-10}
+commitment = "${SOL_WATCHER_COMMITMENT:-confirmed}"
+
+[economics]
+mode = "disabled"

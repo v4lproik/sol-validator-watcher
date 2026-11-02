@@ -14,9 +14,8 @@ image builds, stack inspection, and teardown.
   overlays for distinct environments.
 - `docker/Dockerfile` and `docker/Dockerfile.dockerignore` own the image build.
 - `config/` groups committed profiles by address context under `local/`,
-  `compose/`, and `remote/`; each profile colocates `watcher.yaml` and
-  `connection.toml`. Credentials stay in `.env` or exported environment
-  variables.
+  `compose/`, and `remote/`; each runnable profile is one ordered TOML file.
+  Credentials stay in `.env` or exported environment variables.
 - `docker/prometheus/` and `docker/grafana/` own local observability
   provisioning beside the Compose files that mount them.
 - The root `Justfile` and modules under `just/` expose the supported Compose
