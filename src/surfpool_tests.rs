@@ -2,7 +2,7 @@ use crate::{
     collector::{collect_snapshot, RpcClient},
     config::{Config, TransportMode, ValidatorConnectionConfig, ValidatorMode},
     metrics::Metrics,
-    websocket::WebsocketProbeClient,
+    source::SourceChain,
 };
 use anyhow::{bail, Context, Result};
 use std::{
@@ -39,27 +39,17 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
         delinquent_slot_distance: Some(128),
         ..Config::default()
     };
-    let connection = &config.validator_connection;
-    let client = RpcClient::new(
-        connection.rpc_url.clone(),
-        Duration::from_secs(connection.rpc_timeout_sec),
-        connection.commitment_config()?,
-    )?;
-    let ws_client = WebsocketProbeClient::new(
-        config
-            .validator_connection
-            .ws_url
-            .clone()
-            .context("transport_mode requires ws_url")?,
-        Duration::from_secs(connection.ws_timeout_sec),
-    );
+    let sources = SourceChain::from_config(&config)?;
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
     runtime
-        .block_on(ws_client.probe())
-        .context("failed to probe surfpool websocket")?;
+        .block_on(sources.ensure_rpc_healthy())
+        .context("failed to probe surfpool RPC")?;
+    if !runtime.block_on(sources.websocket_healthy()) {
+        bail!("failed to probe surfpool websocket");
+    }
     let snapshot = runtime
-        .block_on(collect_snapshot(&client, &config))
+        .block_on(collect_snapshot(&sources, &config))
         .context("failed to collect snapshot from surfpool")?;
 
     let metrics = Metrics::new()?;

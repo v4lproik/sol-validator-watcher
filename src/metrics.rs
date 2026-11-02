@@ -111,7 +111,7 @@ impl Metrics {
         let sol_connector_info = IntGaugeVec::new(
             Opts::new(
                 "sol_connector_info",
-                "Configured connector stack, including precedence order and available transports",
+                "Configured connector stack, including declaration order and available transports",
             ),
             &[
                 "network",
@@ -125,7 +125,7 @@ impl Metrics {
         let sol_metric_source_info = IntGaugeVec::new(
             Opts::new(
                 "sol_metric_source_info",
-                "Connector selected for each collected metric family after precedence resolution",
+                "Connector selected for each collected metric family after priority resolution",
             ),
             &["network", "metric", "connector", "kind"],
         )?;
@@ -540,8 +540,8 @@ impl Metrics {
             self.sol_metric_source_info
                 .with_label_values(&[
                     &snapshot.network,
-                    source.metric.as_str(),
-                    source.connector.as_str(),
+                    source.command.as_str(),
+                    source.connector.as_ref(),
                     source.kind.as_str(),
                 ])
                 .set(1);
@@ -768,6 +768,7 @@ mod tests {
             Config, ConnectorConfig, ConnectorKind, TransportMode, ValidatorConnectionConfig,
             ValidatorMode,
         },
+        provider::{CommandId, ProviderDriver},
     };
     use anyhow::Result;
     use std::collections::BTreeMap;
@@ -825,14 +826,18 @@ mod tests {
             }],
             data_sources: vec![
                 crate::collector::SnapshotDataSource {
-                    metric: "epoch-info".to_string(),
-                    connector: "local-validator".to_string(),
-                    kind: "standard-validator".to_string(),
+                    command: CommandId::EpochInfo,
+                    connector: "local-validator".into(),
+                    kind: ConnectorKind::StandardValidator,
+                    driver: ProviderDriver::StandardRpc,
+                    effective_priority: 0,
                 },
                 crate::collector::SnapshotDataSource {
-                    metric: "inflation-rewards".to_string(),
-                    connector: "helius-rpc".to_string(),
-                    kind: "helius+enhanced-rpc".to_string(),
+                    command: CommandId::InflationRewards,
+                    connector: "helius-rpc".into(),
+                    kind: ConnectorKind::HeliusEnhancedRpc,
+                    driver: ProviderDriver::EnhancedRpc,
+                    effective_priority: 50,
                 },
             ],
         };
@@ -941,9 +946,11 @@ mod tests {
                 future_leader_slots: 0,
             }],
             data_sources: vec![crate::collector::SnapshotDataSource {
-                metric: "epoch-info".to_string(),
-                connector: "primary".to_string(),
-                kind: "standard-validator+rpc".to_string(),
+                command: CommandId::EpochInfo,
+                connector: "primary".into(),
+                kind: ConnectorKind::StandardValidatorRpc,
+                driver: ProviderDriver::StandardRpc,
+                effective_priority: 0,
             }],
         });
 

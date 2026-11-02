@@ -1,3 +1,6 @@
+use crate::provider::{
+    Capability, CapabilityPriorityOverrides, CommandPriorityOverrides, ProviderDriver,
+};
 use anyhow::{bail, Context, Result};
 use figment::{
     providers::{Format, Serialized, Toml},
@@ -117,6 +120,17 @@ impl ConnectorKind {
             Self::HeliusEnhancedRpc => "helius+enhanced-rpc",
             Self::HeliusWs => "helius+ws",
             Self::HeliusEnhancedWss => "helius+enhanced-wss",
+        }
+    }
+
+    pub const fn driver(self) -> ProviderDriver {
+        match self {
+            Self::StandardValidator
+            | Self::StandardValidatorRpc
+            | Self::StandardValidatorFullRpc
+            | Self::HeliusRpc => ProviderDriver::StandardRpc,
+            Self::HeliusEnhancedRpc => ProviderDriver::EnhancedRpc,
+            Self::HeliusWs | Self::HeliusEnhancedWss => ProviderDriver::WebsocketProbe,
         }
     }
 }
@@ -248,6 +262,9 @@ impl ValidatorConnectionConfig {
 pub struct ConnectorConfig {
     pub name: String,
     pub kind: ConnectorKind,
+    pub priority: i32,
+    pub capabilities: CapabilityPriorityOverrides,
+    pub commands: CommandPriorityOverrides,
     pub rpc_url: Option<String>,
     pub rpc_timeout_sec: u64,
     pub ws_url: Option<String>,
@@ -261,6 +278,9 @@ impl Default for ConnectorConfig {
         Self {
             name: String::new(),
             kind: ConnectorKind::default(),
+            priority: 0,
+            capabilities: CapabilityPriorityOverrides::default(),
+            commands: CommandPriorityOverrides::default(),
             rpc_url: None,
             rpc_timeout_sec: default_rpc_timeout_sec(),
             ws_url: None,
@@ -279,6 +299,9 @@ impl ConnectorConfig {
         Self {
             name: "primary".to_string(),
             kind: ConnectorKind::StandardValidatorRpc,
+            priority: 0,
+            capabilities: CapabilityPriorityOverrides::default(),
+            commands: CommandPriorityOverrides::default(),
             rpc_url: Some(connection.rpc_url.clone()),
             rpc_timeout_sec: connection.rpc_timeout_sec,
             ws_url: connection.ws_url.clone(),
@@ -339,6 +362,38 @@ impl ConnectorConfig {
             })
     }
 
+    fn supports_capability(&self, capability: Capability) -> bool {
+        match capability {
+            Capability::HealthRpc => {
+                self.rpc_url.is_some() && self.kind.driver().supports(capability)
+            }
+            Capability::HealthWs => self.ws_url.is_some(),
+            _ => self.rpc_url.is_some() && self.kind.driver().supports(capability),
+        }
+    }
+
+    fn validate_priority_overrides(&self, index: usize) -> Result<()> {
+        for capability in self.capabilities.keys().copied() {
+            if !self.supports_capability(capability) {
+                bail!(
+                    "connectors[{index}].capabilities configures unsupported capability {}",
+                    capability.as_str()
+                );
+            }
+        }
+
+        for command in self.commands.keys().copied() {
+            if !self.supports_capability(command.capability()) {
+                bail!(
+                    "connectors[{index}].commands configures unsupported command {}",
+                    command.as_str()
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     fn normalize(&mut self) {
         self.name = self.name.trim().to_string();
         self.rpc_url = self
@@ -369,6 +424,7 @@ impl ConnectorConfig {
         if self.ws_timeout_sec == 0 {
             bail!("connectors[{index}].ws_timeout_sec must be greater than 0");
         }
+        self.validate_priority_overrides(index)?;
 
         self.commitment_config()?;
         if let Some(ws_url) = self.ws_url.as_deref() {
@@ -743,7 +799,10 @@ mod tests {
         expand_env_vars_with, Config, ConnectorKind, EconomicsConfig, EconomicsMode, TransportMode,
         ValidatorConnectionConfig, ValidatorMode, WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
     };
-    use anyhow::{Context, Result};
+    use crate::provider::{
+        Capability, CapabilityPriorityOverrides, CommandId, CommandPriorityOverrides,
+    };
+    use anyhow::{bail, Context, Result};
     use std::{
         env, fs,
         path::{Path, PathBuf},
@@ -952,9 +1011,15 @@ validator_websocket_enabled: true
 connectors:
   - name: local-validator
     kind: standard-validator
+    priority: 100
     rpc_url: http://127.0.0.1:8899
   - name: helius-rpc
     kind: helius+enhanced_rpc
+    priority: 50
+    capabilities:
+      leader_schedule: 90
+    commands:
+      next_leader_schedule: 100
     rpc_url: https://rpc.helius.example
   - name: helius-ws
     kind: helius+enhanced_wss
@@ -967,13 +1032,50 @@ connectors:
         assert_eq!(cfg.connectors.len(), 3);
         assert_eq!(cfg.connectors[0].name, "local-validator");
         assert_eq!(cfg.connectors[0].kind, ConnectorKind::StandardValidator);
+        assert_eq!(cfg.connectors[0].priority, 100);
         assert_eq!(cfg.connectors[1].kind, ConnectorKind::HeliusEnhancedRpc);
+        assert_eq!(
+            cfg.connectors[1].capabilities,
+            CapabilityPriorityOverrides::from([(Capability::LeaderSchedule, 90)])
+        );
+        assert_eq!(
+            cfg.connectors[1].commands,
+            CommandPriorityOverrides::from([(CommandId::NextLeaderSchedule, 100)])
+        );
         assert_eq!(cfg.connectors[2].kind, ConnectorKind::HeliusEnhancedWss);
         assert_eq!(
             cfg.validator_connection.rpc_url,
             "http://127.0.0.1:8899".to_string()
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_command_priority_for_unsupported_connector() -> Result<()> {
+        let raw = r#"
+network: mainnet-beta
+validator_websocket_enabled: true
+connectors:
+  - name: websocket-only
+    kind: helius+enhanced_wss
+    ws_url: wss://ws.helius.example
+    commands:
+      epoch_info: 100
+  - name: rpc
+    kind: standard-validator+rpc
+    rpc_url: https://rpc.example
+"#;
+        let mut config: Config = serde_yaml::from_str(raw)?;
+
+        let error = match config.validate(Path::new("config.yaml")) {
+            Ok(()) => bail!("unsupported command priority unexpectedly validated"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("configures unsupported command epoch-info"));
         Ok(())
     }
 

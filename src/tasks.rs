@@ -115,6 +115,12 @@ impl TaskManager {
     }
 }
 
+impl Default for TaskManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{TaskExit, TaskManager};

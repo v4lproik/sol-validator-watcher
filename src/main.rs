@@ -6,28 +6,16 @@
 )]
 #![deny(clippy::unwrap_used)]
 
-mod collector;
-mod config;
-mod labels;
-mod metrics;
-#[cfg(test)]
-mod surfpool_tests;
-mod tasks;
-mod websocket;
-
-use crate::{
-    collector::{
-        collect_snapshot_with_connectors, ensure_economics_supported_with_connectors, RpcClient,
-        RpcConnectorRef,
-    },
-    config::Config,
-    metrics::Metrics,
-    tasks::{Shutdown, TaskExit, TaskManager},
-    websocket::WebsocketProbeClient,
-};
 use anyhow::{anyhow, Context, Result};
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use clap::Parser;
+use sol_validator_watcher::{
+    collector::{collect_snapshot, ensure_economics_supported},
+    config::Config,
+    metrics::Metrics,
+    source::SourceChain,
+    tasks::{Shutdown, TaskExit, TaskManager},
+};
 use std::{
     env, fs,
     net::SocketAddr,
@@ -51,17 +39,10 @@ struct AppState {
     metrics: Arc<Metrics>,
 }
 
-struct RuntimeConnector {
-    name: String,
-    kind: crate::config::ConnectorKind,
-    rpc_client: Option<RpcClient>,
-    ws_client: Option<WebsocketProbeClient>,
-}
-
 struct RuntimeState {
     config_path: PathBuf,
     config: Config,
-    connectors: Vec<RuntimeConnector>,
+    source_chain: SourceChain,
     config_modified: SystemTime,
     metrics_port: u16,
     economics_capabilities_verified: bool,
@@ -72,12 +53,12 @@ impl RuntimeState {
         let config = Config::load(&config_path)?;
         let config_modified = config_mtime(&config_path)?;
         let metrics_port = config.metrics_port;
-        let connectors = build_runtime_connectors(&config)?;
+        let source_chain = SourceChain::from_config(&config)?;
 
         Ok(Self {
             config_path,
             config,
-            connectors,
+            source_chain,
             config_modified,
             metrics_port,
             economics_capabilities_verified: false,
@@ -103,7 +84,7 @@ impl RuntimeState {
             || self.config.validator_websocket_enabled != next.validator_websocket_enabled;
 
         if connectors_changed {
-            self.connectors = build_runtime_connectors(&next)?;
+            self.source_chain = SourceChain::from_config(&next)?;
         }
 
         info!(
@@ -118,19 +99,6 @@ impl RuntimeState {
         self.config_modified = modified;
         self.economics_capabilities_verified = false;
         Ok(())
-    }
-
-    fn rpc_connectors(&self) -> Vec<RpcConnectorRef<'_>> {
-        self.connectors
-            .iter()
-            .filter_map(|connector| {
-                connector.rpc_client.as_ref().map(|client| RpcConnectorRef {
-                    name: connector.name.as_str(),
-                    kind: connector.kind,
-                    client,
-                })
-            })
-            .collect()
     }
 }
 
@@ -181,7 +149,7 @@ async fn run_watcher_loop(
     info!(
         network = runtime.config.network,
         watched_validators = runtime.config.watched_validators.len(),
-        connectors = runtime.connectors.len(),
+        connectors = runtime.source_chain.connector_count(),
         validator_mode = runtime.config.validator_mode.as_str(),
         economics_mode = runtime.config.economics.mode.as_str(),
         "starting Solana validator watcher"
@@ -196,11 +164,10 @@ async fn run_watcher_loop(
         metrics.update_runtime_config(&runtime.config);
         guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
         ensure_economics_capabilities_ready(&mut runtime).await?;
-        let rpc_connectors = runtime.rpc_connectors();
 
-        let snapshot = collect_snapshot_with_connectors(&rpc_connectors, &runtime.config)
+        let snapshot = collect_snapshot(&runtime.source_chain, &runtime.config)
             .await
-            .context("failed to collect snapshot from configured RPC connectors")?;
+            .context("failed to collect snapshot from configured sources")?;
         if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
             warn!(
                 configured_watched_validators = runtime.config.watched_validators.len(),
@@ -231,53 +198,16 @@ async fn run_watcher_loop(
 async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
     metrics.set_rpc_up(&runtime.config.network, false);
     metrics.set_ws_up(&runtime.config.network, false);
-    let mut last_rpc_error = None;
-    for connector in &runtime.connectors {
-        let Some(client) = connector.rpc_client.as_ref() else {
-            continue;
-        };
 
-        match client.ensure_healthy().await {
-            Ok(()) => {
-                metrics.set_rpc_up(&runtime.config.network, true);
-                last_rpc_error = None;
-                break;
-            }
-            Err(err) => {
-                warn!(
-                    connector = connector.name,
-                    connector_kind = connector.kind.as_str(),
-                    error = ?err,
-                    "RPC connector health check failed; trying next connector"
-                );
-                last_rpc_error = Some(err);
-            }
-        }
-    }
+    runtime
+        .source_chain
+        .ensure_rpc_healthy()
+        .await
+        .context("RPC health guard failed for all configured connectors")?;
+    metrics.set_rpc_up(&runtime.config.network, true);
 
-    if let Some(err) = last_rpc_error {
-        return Err(err).context("RPC health guard failed for all configured connectors");
-    }
-
-    for connector in &runtime.connectors {
-        let Some(ws_client) = connector.ws_client.as_ref() else {
-            continue;
-        };
-
-        match ws_client.probe().await {
-            Ok(()) => {
-                metrics.set_ws_up(&runtime.config.network, true);
-                break;
-            }
-            Err(err) => {
-                warn!(
-                    connector = connector.name,
-                    connector_kind = connector.kind.as_str(),
-                    error = ?err,
-                    "websocket connector health check failed; trying next connector"
-                );
-            }
-        }
+    if runtime.source_chain.websocket_healthy().await {
+        metrics.set_ws_up(&runtime.config.network, true);
     }
 
     Ok(())
@@ -293,8 +223,7 @@ async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Resu
         "validating economics RPC capabilities"
     );
 
-    let rpc_connectors = runtime.rpc_connectors();
-    ensure_economics_supported_with_connectors(&rpc_connectors, &runtime.config)
+    ensure_economics_supported(&runtime.source_chain, &runtime.config)
         .await
         .context("failed to validate economics RPC capabilities for configured connectors")?;
 
@@ -305,7 +234,7 @@ async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Resu
 
 fn economics_capability_check_required(runtime: &RuntimeState) -> bool {
     !runtime.economics_capabilities_verified
-        && runtime.config.economics.mode != crate::config::EconomicsMode::Disabled
+        && runtime.config.economics.mode != sol_validator_watcher::config::EconomicsMode::Disabled
 }
 
 async fn run_http_server(
@@ -362,49 +291,6 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
-fn build_runtime_connectors(config: &Config) -> Result<Vec<RuntimeConnector>> {
-    let connector_configs = config.effective_connectors();
-
-    let mut connectors = Vec::with_capacity(connector_configs.len());
-    for connector in connector_configs {
-        let rpc_client = match connector.rpc_url.as_ref() {
-            Some(rpc_url) => Some(RpcClient::new(
-                rpc_url.clone(),
-                Duration::from_secs(connector.rpc_timeout_sec),
-                connector.commitment_config()?,
-            )?),
-            None => None,
-        };
-        let ws_client = if config.validator_websocket_enabled {
-            connector.ws_url.as_ref().map(|url| {
-                WebsocketProbeClient::new(
-                    url.clone(),
-                    Duration::from_secs(connector.ws_timeout_sec),
-                )
-            })
-        } else {
-            None
-        };
-
-        connectors.push(RuntimeConnector {
-            name: connector.name,
-            kind: connector.kind,
-            rpc_client,
-            ws_client,
-        });
-    }
-
-    Ok(connectors)
-}
-
-#[cfg(test)]
-fn new_ws_probe_client(config: &Config) -> Option<WebsocketProbeClient> {
-    let connection = &config.validator_connection;
-    connection.ws_url.as_ref().map(|url| {
-        WebsocketProbeClient::new(url.clone(), Duration::from_secs(connection.ws_timeout_sec))
-    })
-}
-
 fn config_mtime(path: &Path) -> Result<SystemTime> {
     fs::metadata(path)
         .with_context(|| format!("failed to stat config file {}", path.display()))?
@@ -459,82 +345,22 @@ fn init_tracing() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_runtime_connectors, config_mtime, economics_capability_check_required,
-        ensure_economics_capabilities_ready, new_ws_probe_client, update_liveness_file,
-        RuntimeState,
-    };
-    use crate::config::{
-        Config, EconomicsConfig, EconomicsMode, TransportMode, ValidatorConnectionConfig,
-        ValidatorMode, WatchedValidatorConfig,
+        config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
+        update_liveness_file, RuntimeState,
     };
     use anyhow::{Context, Result};
+    use sol_validator_watcher::{
+        config::{
+            Config, EconomicsConfig, EconomicsMode, ValidatorConnectionConfig,
+            WatchedValidatorConfig,
+        },
+        source::SourceChain,
+    };
     use std::{
         env, fs,
         path::PathBuf,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
-
-    #[test]
-    fn new_ws_probe_client_respects_ws_configuration() {
-        let with_ws = Config {
-            validator_connection: ValidatorConnectionConfig {
-                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
-                transport_mode: TransportMode::PollHttpAndWs,
-                ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
-                ..ValidatorConnectionConfig::default()
-            },
-            validator_mode: ValidatorMode::ConsensusAndRpc,
-            validator_websocket_enabled: true,
-            ..Config::default()
-        };
-        let without_ws = Config {
-            validator_connection: ValidatorConnectionConfig {
-                ws_url: None,
-                transport_mode: TransportMode::PollHttp,
-                ..with_ws.validator_connection.clone()
-            },
-            validator_websocket_enabled: false,
-            ..with_ws.clone()
-        };
-
-        assert!(new_ws_probe_client(&with_ws).is_some());
-        assert!(new_ws_probe_client(&without_ws).is_none());
-    }
-
-    #[test]
-    fn build_runtime_connectors_preserves_declared_order_and_transport_capabilities() -> Result<()>
-    {
-        let config = Config {
-            validator_websocket_enabled: true,
-            connectors: vec![
-                crate::config::ConnectorConfig {
-                    name: "local-validator".to_string(),
-                    kind: crate::config::ConnectorKind::StandardValidator,
-                    rpc_url: Some("http://127.0.0.1:8899".to_string()),
-                    ..crate::config::ConnectorConfig::default()
-                },
-                crate::config::ConnectorConfig {
-                    name: "helius-ws".to_string(),
-                    kind: crate::config::ConnectorKind::HeliusEnhancedWss,
-                    ws_url: Some("wss://ws.helius.example".to_string()),
-                    ..crate::config::ConnectorConfig::default()
-                },
-            ],
-            ..Config::default()
-        };
-
-        let connectors = build_runtime_connectors(&config)?;
-
-        assert_eq!(connectors.len(), 2);
-        assert_eq!(connectors[0].name, "local-validator");
-        assert!(connectors[0].rpc_client.is_some());
-        assert!(connectors[0].ws_client.is_none());
-        assert_eq!(connectors[1].name, "helius-ws");
-        assert!(connectors[1].rpc_client.is_none());
-        assert!(connectors[1].ws_client.is_some());
-
-        Ok(())
-    }
 
     #[test]
     fn update_liveness_file_writes_timestamp() -> Result<()> {
@@ -669,12 +495,12 @@ poll_interval_sec: 15
             },
             ..Config::default()
         };
-        let connectors = build_runtime_connectors(&config)?;
+        let source_chain = SourceChain::from_config(&config)?;
 
         Ok(RuntimeState {
             config_path: PathBuf::from("config.yaml"),
             config,
-            connectors,
+            source_chain,
             config_modified: UNIX_EPOCH,
             metrics_port: 8000,
             economics_capabilities_verified: false,
