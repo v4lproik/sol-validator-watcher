@@ -36,6 +36,9 @@ clippy: ensure-rust-components
 test:
   mise exec -- cargo test
 
+bench:
+  mise exec -- cargo bench
+
 verify:
   just fmt
   just clippy
