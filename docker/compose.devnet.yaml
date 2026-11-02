@@ -11,7 +11,8 @@ services:
       - /app/config/remote/devnet.toml
     environment:
       RUST_LOG: info
-      HELIUS_DEVNET_API_KEY: ${HELIUS_DEVNET_API_KEY}
+      SOL_DEVNET_RPC_URL: ${SOL_DEVNET_RPC_URL}
+      SOL_DEVNET_WS_URL: ${SOL_DEVNET_WS_URL}
     volumes:
       - ../config/remote/devnet.toml:/app/config/remote/devnet.toml:ro
     ports:

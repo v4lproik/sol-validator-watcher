@@ -9,4 +9,4 @@
 - Replaced the README with a minimal project and module index that routes detailed history to module-owned changelogs.
 - Added an end-to-end configuration-loading benchmark for one- and 48-connector profiles, including command-route parsing and validation.
 - Updated runtime configuration guidance to keep transport ownership inside connectors.
-- Documented mode source requirements and secret-safe verification for key-backed provider profiles.
+- Documented mode source requirements and secret-safe verification for complete credential-bearing provider URLs.

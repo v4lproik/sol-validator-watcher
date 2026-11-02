@@ -716,7 +716,13 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
             let config = Config::load_with(&path, |raw| {
                 expand_env_vars_with(raw, |key| {
                     let value = match key {
-                        "HELIUS_DEVNET_API_KEY" => Some("test-api-key".to_string()),
+                        "SOL_DEVNET_RPC_URL" => Some(
+                            "https://devnet.example/custom/rpc?api-key=test-key&region=us"
+                                .to_string(),
+                        ),
+                        "SOL_DEVNET_WS_URL" => Some(
+                            "wss://devnet.example/custom/ws?api-key=test-key&region=us".to_string(),
+                        ),
                         "SOL_MAINNET_RPC_URL" => Some("http://127.0.0.1:8899".to_string()),
                         "SOL_MAINNET_WS_URL" => Some("ws://127.0.0.1:8900".to_string()),
                         _ => None,
@@ -749,6 +755,14 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
             );
 
             if relative_path == "config/remote/devnet.toml" {
+                assert_eq!(
+                    config.connectors[0].rpc_url.as_deref(),
+                    Some("https://devnet.example/custom/rpc?api-key=test-key&region=us")
+                );
+                assert_eq!(
+                    config.connectors[0].ws_url.as_deref(),
+                    Some("wss://devnet.example/custom/ws?api-key=test-key&region=us")
+                );
                 assert!(config.modes.economics.enabled);
                 assert_eq!(
                     config.modes.route(CommandId::InflationRewards),

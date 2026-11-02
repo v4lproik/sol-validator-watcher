@@ -56,8 +56,8 @@ rpc_url = "http://validator:8899"
 name = "helius-devnet"
 provider = "helius"
 features = ["historical-data"]
-rpc_url = "https://devnet.helius-rpc.com/?api-key=${HELIUS_DEVNET_API_KEY}"
-ws_url = "wss://devnet.helius-rpc.com/?api-key=${HELIUS_DEVNET_API_KEY}"
+rpc_url = "${SOL_DEVNET_RPC_URL}"
+ws_url = "${SOL_DEVNET_WS_URL}"
 
 [modes.health.commands]
 rpc_health = ["validator", "helius-devnet"]
@@ -82,6 +82,8 @@ The Helius Devnet profile maps modes to these source requirements:
 | Consensus | `helius` | RPC | None |
 | Leadership | `helius` | RPC | None |
 | Economics | `helius` | RPC | `historical-data` |
+
+The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token.
 
 `rpc_url` and `ws_url` define the available `rpc` and `websocket` transports; they are not provider features. The current watcher-specific provider feature is `historical-data`. Economics commands require that feature because they query prior-epoch rewards and block production. Standard health, consensus, and leadership commands require only the matching transport. Provider names identify the service supplying each command result and are exported with connector, route, and selected-source metrics.
 
