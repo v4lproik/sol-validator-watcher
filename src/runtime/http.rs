@@ -8,11 +8,20 @@ use crate::{
     tasks::{Shutdown, TaskExit},
     watcher_state::{WatcherState, ADMISSION_CLEAN_POLL_ROUNDS},
 };
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use axum::{extract::State, http::StatusCode, routing::get, Router};
-use std::{net::SocketAddr, sync::Arc};
-use tokio::net::TcpListener;
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    time::timeout,
+};
 use tracing::{error, info};
+
+const HEALTHCHECK_TIMEOUT: Duration = Duration::from_secs(2);
+const HEALTHCHECK_REQUEST: &[u8] =
+    b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+const HEALTHY_STATUS_PREFIX: &[u8; 12] = b"HTTP/1.1 200";
 
 /// Shared HTTP handler state.
 #[derive(Clone)]
@@ -30,13 +39,13 @@ impl AppState {
         }
     }
 }
+
 /// Serves metrics, liveness, and readiness until cooperative shutdown.
 pub(super) async fn run_http_server(
     state: AppState,
-    metrics_port: u16,
+    address: SocketAddr,
     mut shutdown: Shutdown,
 ) -> Result<TaskExit> {
-    let address = SocketAddr::from(([0, 0, 0, 0], metrics_port));
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
         .route("/healthz", get(health_handler))
@@ -57,6 +66,31 @@ pub(super) async fn run_http_server(
 
     Ok(TaskExit::Finished)
 }
+
+/// Probes the process-liveness endpoint used by the container health check.
+pub(crate) async fn check_health(address: SocketAddr) -> Result<()> {
+    timeout(HEALTHCHECK_TIMEOUT, async {
+        let mut stream = TcpStream::connect(address)
+            .await
+            .with_context(|| format!("failed to connect to health endpoint on {address}"))?;
+        stream
+            .write_all(HEALTHCHECK_REQUEST)
+            .await
+            .context("failed to send health request")?;
+        let mut status_prefix = [0_u8; HEALTHY_STATUS_PREFIX.len()];
+        stream
+            .read_exact(&mut status_prefix)
+            .await
+            .context("failed to read health response status")?;
+        if status_prefix != *HEALTHY_STATUS_PREFIX {
+            bail!("health endpoint returned unexpected status prefix {status_prefix:?}");
+        }
+        Ok(())
+    })
+    .await
+    .with_context(|| format!("health check timed out after {HEALTHCHECK_TIMEOUT:?}"))?
+}
+
 async fn metrics_handler(
     State(state): State<AppState>,
 ) -> Result<(StatusCode, String), StatusCode> {

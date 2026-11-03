@@ -22,8 +22,15 @@ services:
       SOL_WATCHER_DELINQUENT_SLOT_DISTANCE: ${SOL_WATCHER_DELINQUENT_SLOT_DISTANCE:-128}
     volumes:
       - ../config/compose/validator.toml:/app/config/compose/validator.toml:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
-      - "${WATCHER_VALIDATOR_METRICS_PORT:-8001}:8000"
+      - "127.0.0.1:${WATCHER_VALIDATOR_METRICS_PORT:-8001}:8000"
     restart: on-failure

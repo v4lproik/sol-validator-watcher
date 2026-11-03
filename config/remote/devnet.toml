@@ -1,5 +1,7 @@
-# Template only. Keep complete credential-bearing RPC and WebSocket URLs in .env or exported environment variables.
+# Container-oriented profile: publish port 8000 on a loopback host address.
+# Keep complete credential-bearing RPC and WebSocket URLs in .env or exported environment variables.
 network = "devnet"
+metrics_host = "0.0.0.0"
 metrics_port = 8000
 poll_interval_sec = 15
 delinquent_slot_distance = 128

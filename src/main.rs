@@ -25,8 +25,8 @@ mod watcher_state;
 mod websocket;
 
 use anyhow::{anyhow, Context, Result};
-use clap::Parser;
-use std::{env, path::PathBuf};
+use clap::{Parser, Subcommand};
+use std::{env, net::SocketAddr, path::PathBuf};
 use tracing::error;
 
 #[derive(Parser, Debug)]
@@ -35,12 +35,27 @@ use tracing::error;
 struct Cli {
     #[arg(long, default_value = "config/local/validator.toml")]
     config: PathBuf,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Probe the process-liveness endpoint and exit.
+    Healthcheck {
+        /// Watcher HTTP address to probe.
+        #[arg(long, default_value = "127.0.0.1:8000")]
+        address: SocketAddr,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing()?;
     let cli = Cli::parse();
+    if let Some(Command::Healthcheck { address }) = cli.command {
+        return runtime::check_health(address).await;
+    }
     if let Err(err) = runtime::run(cli.config).await {
         error!(error = ?err, "watcher exiting due to fatal error");
         return Err(err);

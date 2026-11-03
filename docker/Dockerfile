@@ -13,6 +13,8 @@ FROM debian:bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
+    && groupadd --gid 10001 watcher \
+    && useradd --uid 10001 --gid watcher --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin watcher \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,6 +22,10 @@ COPY --from=builder /app/target/release/sol-validator-watcher /usr/local/bin/sol
 COPY config ./config
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD ["sol-validator-watcher", "healthcheck"]
+STOPSIGNAL SIGINT
+USER watcher:watcher
 
 ENTRYPOINT ["sol-validator-watcher"]
 CMD ["--config", "/app/config/local/validator.toml"]

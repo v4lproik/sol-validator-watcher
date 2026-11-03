@@ -27,6 +27,7 @@ use crate::{
 use anyhow::{Context, Result};
 use std::{
     fs,
+    net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
@@ -555,7 +556,7 @@ fn disabled_economics_runtime() -> Result<RuntimeState> {
         sources,
         rpc_telemetry,
         config_modified: UNIX_EPOCH,
-        metrics_port: 8000,
+        metrics_address: SocketAddr::from(([127, 0, 0, 1], 8000)),
         connector_capabilities_verified: false,
         economics_capabilities_verified: false,
     })

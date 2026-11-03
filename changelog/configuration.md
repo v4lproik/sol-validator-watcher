@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a typed `metrics_host` setting that defaults omitted profiles to loopback while container-loaded profiles explicitly bind their private-network listener.
 - Moved configuration ownership into a dedicated module tree with separate load, validation, and environment-expansion tests.
 - Added Rust documentation for TOML profile fields, connector declarations, mode enablement, and ordered command-route semantics.
 - Replaced paired YAML watcher and TOML connection files with one ordered TOML file per runnable profile.

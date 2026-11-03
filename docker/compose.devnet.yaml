@@ -15,6 +15,13 @@ services:
       SOL_DEVNET_WS_URL: ${SOL_DEVNET_WS_URL}
     volumes:
       - ../config/remote/devnet.toml:/app/config/remote/devnet.toml:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "${WATCHER_DEVNET_METRICS_PORT:-8002}:8000"
+      - "127.0.0.1:${WATCHER_DEVNET_METRICS_PORT:-8002}:8000"
     restart: on-failure

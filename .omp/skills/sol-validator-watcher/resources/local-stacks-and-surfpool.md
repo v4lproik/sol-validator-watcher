@@ -46,6 +46,15 @@ image builds, stack inspection, and teardown.
   directory and CLI defaults.
 - Keep host and container port roles explicit. Avoid adding an overlapping
   default port across overlays.
+- Published local-stack ports bind to `127.0.0.1`. Watcher profiles bind their
+  HTTP server to `0.0.0.0` only inside the Compose network so Prometheus can
+  scrape them.
+- The watcher image runs as a fixed non-root user. Watcher Compose services
+  drop all capabilities, prohibit privilege escalation, use a read-only root
+  filesystem, and provide a bounded `/tmp` tmpfs for the liveness file.
+- The image health check must call the watcher's `/healthz` probe without
+  installing a second HTTP client. Recoverable dependency failures affect
+  readiness, not container health.
 - Never commit `.env`, RPC credentials, websocket tokens, private validator
   material, or rendered secret values.
 
@@ -71,6 +80,10 @@ image builds, stack inspection, and teardown.
 7. If a live start is required, what observable watcher/Prometheus/Grafana or
    validator result proves it?
 8. How is the stack stopped without deleting unrelated state?
+9. Does the rendered watcher service preserve the non-root image user,
+   read-only root, bounded writable paths, dropped capabilities, and
+   no-new-privileges policy?
+10. Are every published host port and local Grafana surface loopback-only?
 
 ## Prohibited Shortcuts
 
@@ -89,7 +102,9 @@ image builds, stack inspection, and teardown.
 
 - Compose-only change: matching `just stack config <target>` output.
 - Image/build-context change: `just container build` plus a representative
-  container invocation.
+  container invocation that checks the configured user and health command.
+  Run it with a read-only root and the declared `/tmp` tmpfs, fetch `/healthz`,
+  observe healthy status, and verify clean signal handling.
 - Surfpool/validator lifecycle change: doctor, focused opt-in E2E, and observed
   metrics.
 - Prometheus/Grafana wiring: start the narrow stack, confirm targets/data source,

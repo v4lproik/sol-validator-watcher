@@ -213,7 +213,11 @@
               <article class="snippet-card">
                 <p class="snippet-title">Run</p>
                 <pre><code>docker run --rm \
-  -p 8000:8000 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m,mode=1777 \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  -p 127.0.0.1:8000:8000 \
   -v "$(pwd)/config:/app/config:ro" \
   ghcr.io/v4lproik/sol-validator-watcher:latest \
   --config /app/config/remote/devnet.toml</code></pre>
