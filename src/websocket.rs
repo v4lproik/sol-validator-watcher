@@ -1,8 +1,14 @@
+//! WebSocket reachability probes.
+//!
+//! A successful probe proves transport reachability only; RPC method capability
+//! is verified independently by the RPC collector.
+
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 
+/// Connector-local client for bounded WebSocket connection probes.
 #[derive(Clone)]
 pub struct WebsocketProbeClient {
     url: String,
@@ -10,10 +16,12 @@ pub struct WebsocketProbeClient {
 }
 
 impl WebsocketProbeClient {
+    /// Creates a probe client for one URL and connection timeout.
     pub fn new(url: String, timeout: Duration) -> Self {
         Self { url, timeout }
     }
 
+    /// Opens and immediately closes a WebSocket connection.
     pub async fn probe(&self) -> Result<()> {
         let connect_future = connect_async(self.url.as_str());
         let (stream, _) = timeout(self.timeout, connect_future)

@@ -1,3 +1,8 @@
+//! Top-level runtime wiring for supervised process tasks.
+//!
+//! This module constructs the shared state once, registers every long-running
+//! task with the task manager, and delegates shutdown coordination to it.
+
 use super::{
     http::{run_http_server, AppState},
     poller::run_watcher_loop,
@@ -13,6 +18,7 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::signal;
 use tracing::info;
 
+/// Builds and supervises the watcher actor, poller, HTTP server, and signal task.
 pub(crate) async fn run(config_path: PathBuf) -> Result<()> {
     let watcher_state_mailbox = WatcherStateMailbox::new();
     let runtime = RuntimeState::load(config_path, watcher_state_mailbox.rpc_telemetry())?;

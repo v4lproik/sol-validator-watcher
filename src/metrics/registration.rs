@@ -1,8 +1,14 @@
+//! Construction and registration of the watcher's Prometheus collectors.
+//!
+//! All descriptors are registered in one registry so metric names and label sets
+//! remain a single, auditable operational contract.
+
 use super::{register, Metrics};
 use anyhow::Result;
 use prometheus::{GaugeVec, IntGaugeVec, Opts, Registry};
 
 impl Metrics {
+    /// Constructs and registers the complete Prometheus metric contract.
     pub fn new() -> Result<Self> {
         let registry = Registry::new();
 

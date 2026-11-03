@@ -19,6 +19,9 @@ fmt: _ensure-components
 check:
   mise exec -- cargo check
 
+doc:
+  RUSTDOCFLAGS="-D warnings" mise exec -- cargo doc --no-deps --document-private-items
+
 clippy: _ensure-components
   mise exec -- cargo clippy --all-targets --all-features -- -D warnings
 

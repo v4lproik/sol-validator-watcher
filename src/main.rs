@@ -1,3 +1,8 @@
+//! Solana validator watcher binary.
+//!
+//! This crate keeps `main` as the composition root: it parses the CLI, initializes
+//! tracing, and delegates process ownership to the runtime module.
+
 #![deny(
     clippy::dbg_macro,
     clippy::expect_used,

@@ -1,14 +1,21 @@
+//! Cooperative supervision for the watcher's long-running tasks.
+//!
+//! The task manager broadcasts shutdown after the first request or failure and
+//! waits for every registered task, preserving the first causal error.
+
 use anyhow::{anyhow, Context, Result};
 use std::future::Future;
 use tokio::{sync::watch, task::JoinSet};
 use tracing::{error, info};
 
+/// Cloneable receiver for the process-wide cooperative shutdown signal.
 #[derive(Clone)]
 pub struct Shutdown {
     receiver: watch::Receiver<bool>,
 }
 
 impl Shutdown {
+    /// Waits until shutdown is requested, returning immediately if already cancelled.
     pub async fn cancelled(&mut self) {
         if *self.receiver.borrow() {
             return;
@@ -18,9 +25,12 @@ impl Shutdown {
     }
 }
 
+/// Intentional completion state returned by a supervised task.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskExit {
+    /// Task stopped because its work or cooperative shutdown completed.
     Finished,
+    /// Task initiated process-wide shutdown.
     ShutdownRequested,
 }
 
@@ -29,12 +39,14 @@ struct TaskCompletion {
     exit: TaskExit,
 }
 
+/// First-failure supervisor for all long-running process tasks.
 pub struct TaskManager {
     shutdown: watch::Sender<bool>,
     tasks: JoinSet<Result<TaskCompletion>>,
 }
 
 impl TaskManager {
+    /// Creates a supervisor with no registered tasks.
     pub fn new() -> Self {
         let (shutdown, _) = watch::channel(false);
         Self {
@@ -43,12 +55,14 @@ impl TaskManager {
         }
     }
 
+    /// Returns a shutdown receiver tied to this supervisor.
     pub fn shutdown_handle(&self) -> Shutdown {
         Shutdown {
             receiver: self.shutdown.subscribe(),
         }
     }
 
+    /// Registers a named task whose completion must remain supervised.
     pub fn spawn<F>(&mut self, name: &'static str, task: F)
     where
         F: Future<Output = Result<TaskExit>> + Send + 'static,
@@ -59,6 +73,10 @@ impl TaskManager {
         });
     }
 
+    /// Runs until every task exits, broadcasting shutdown after the first trigger.
+    ///
+    /// Unexpected normal exits, task errors, and join failures preserve the first
+    /// causal error while the remaining tasks shut down.
     pub async fn run(mut self) -> Result<()> {
         let mut first_error = None;
         let mut shutdown_requested = false;

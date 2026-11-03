@@ -1,3 +1,8 @@
+//! Transactional orchestration of one collected watcher snapshot.
+//!
+//! Each command resolves through its own source route. Provenance is recorded
+//! only after a command succeeds, and optional absence remains explicit.
+
 use super::{
     aggregate::{
         aggregate_records, build_economics_metrics, build_record, estimated_epoch_end_unixtime,
@@ -10,6 +15,10 @@ use super::{
 use crate::{config::Config, labels::LabelMatcher, mode::ModeId, source::SourceChain};
 use anyhow::Result;
 
+/// Exercises every required economics command before economics collection starts.
+///
+/// This validates the configured target against live vote accounts and confirms
+/// that balance, prior-epoch reward, and block-production routes are usable.
 pub async fn ensure_economics_supported(sources: &SourceChain, config: &Config) -> Result<()> {
     if !config.modes.economics.enabled {
         return Ok(());
@@ -54,6 +63,11 @@ pub async fn ensure_economics_supported(sources: &SourceChain, config: &Config) 
     Ok(())
 }
 
+/// Collects one coherent snapshot through the configured per-command source routes.
+///
+/// Consensus inputs and enabled economics inputs are required. Leadership inputs
+/// are optional as a group: missing data marks leadership down while preserving
+/// the rest of the snapshot.
 pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<Snapshot> {
     let epoch_command = command::GetEpochInfo;
     let vote_accounts_command = command::GetVoteAccounts {

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Updated the public module index and repository engineering guidance for the domain-oriented Rust source tree.
+- Added `just rust doc` to build warning-free documentation for private production modules and APIs.
 - Updated `just rust run`, the Pages container example, and repository guidance to use the self-contained TOML profiles.
 - Added modular `just <module> <verb>` workflows for Rust, coverage, CI, containers, stacks, Surfpool, and the Pages site.
 - Centralized the Rust toolchain pin in `mise.toml` for local, Compose, and container builds.

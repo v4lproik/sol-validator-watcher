@@ -1,3 +1,8 @@
+//! Pure conversion of decoded Solana records into operator-facing aggregates.
+//!
+//! Aggregation owns validator and scope calculations, economics derivation, and
+//! epoch timing; it performs no transport or Prometheus I/O.
+
 use super::{
     model::{
         AccountBalances, EconomicsMetrics, EpochCreditsSample, RewardSample, ScopeMetrics,
@@ -116,6 +121,7 @@ impl ScopeAccumulator {
         }
     }
 }
+/// Shared immutable inputs used to normalize one vote account.
 pub(super) struct RecordBuildContext<'a> {
     pub(super) matcher: &'a LabelMatcher,
     pub(super) current_epoch: u64,
@@ -130,6 +136,7 @@ pub(super) struct RecordBuildContext<'a> {
     pub(super) latest_epoch_rewards: &'a HashMap<String, RewardSample>,
 }
 
+/// Normalizes one decoded vote account with leadership, reward, and scope data.
 pub(super) fn build_record(
     info: VoteAccountInfo,
     status: ValidatorStatus,
@@ -209,6 +216,7 @@ pub(super) fn build_record(
     }
 }
 
+/// Aggregates normalized validator records into deterministic scope and detail rows.
 pub(super) fn aggregate_records(
     network: String,
     epoch: u64,
@@ -303,6 +311,7 @@ pub(super) fn aggregate_records(
     }
 }
 
+/// Projects a watched validator record into its exported metric values.
 pub(super) fn build_watched_validator_metrics(
     record: &ValidatorRecord,
     current_slot: u64,
@@ -346,6 +355,7 @@ pub(super) fn build_watched_validator_metrics(
     }
 }
 
+/// Returns the complete prior-epoch slot range when it is retained.
 pub(super) fn reward_epoch_block_range(
     epoch_start_slot: u64,
     slots_in_epoch: u64,
@@ -370,12 +380,16 @@ pub(super) fn reward_epoch_block_range(
     })
 }
 
+/// Resolved identity and vote-account pair used by economics collection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct EconomicsTarget {
+    /// Validator identity account address.
     pub(super) identity: String,
+    /// Validator vote-account address.
     pub(super) vote_account: String,
 }
 
+/// Resolves the configured economics selector against live vote accounts.
 pub(super) fn resolve_economics_target(
     config: &Config,
     vote_accounts: &VoteAccounts,
@@ -408,6 +422,7 @@ pub(super) fn resolve_economics_target(
     })
 }
 
+/// Derives vote-account tax reserve values from current account balances.
 pub(super) fn build_economics_metrics(
     target: &EconomicsTarget,
     balances: AccountBalances,
@@ -430,6 +445,7 @@ pub(super) fn build_economics_metrics(
     }
 }
 
+/// Estimates epoch completion from the current clock and average slot duration.
 pub(super) fn estimated_epoch_end_unixtime(
     slots_remaining: u64,
     average_slot_time_seconds: Option<f64>,
@@ -441,6 +457,7 @@ pub(super) fn estimated_epoch_end_unixtime(
     estimated_epoch_end_unixtime_at(slots_remaining, average_slot_time_seconds, now)
 }
 
+/// Estimates epoch completion relative to an explicit Unix timestamp.
 pub(super) fn estimated_epoch_end_unixtime_at(
     slots_remaining: u64,
     average_slot_time_seconds: Option<f64>,
@@ -449,6 +466,7 @@ pub(super) fn estimated_epoch_end_unixtime_at(
     average_slot_time_seconds.map(|slot_time| now_unixtime + slots_remaining as f64 * slot_time)
 }
 
+/// Returns a percentage, using zero for a zero denominator.
 pub(super) fn ratio(numerator: u64, denominator: u64) -> f64 {
     if denominator == 0 {
         return 0.0;

@@ -1,21 +1,39 @@
+//! Immutable watcher-state snapshots and bounded RPC response counters.
+//!
+//! Models contain no synchronization; mutation is owned by the watcher-state
+//! actor.
+
 use std::sync::Arc;
 
+/// Saturating cumulative RPC response and failed-attempt counters.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct RpcResponseCounts {
+    /// Responses received with any HTTP status.
     pub total: u64,
+    /// Responses with a 2xx status.
     pub successful_2xx: u64,
+    /// Responses with a 3xx status.
     pub redirection_3xx: u64,
+    /// Responses with a 4xx status.
     pub client_error_4xx: u64,
+    /// Responses with a 5xx status.
     pub server_error_5xx: u64,
+    /// Responses outside standard HTTP status classes.
     pub other: u64,
+    /// Responses with status 200.
     pub status_200: u64,
+    /// Responses with status 403.
     pub status_403: u64,
+    /// Responses with status 429.
     pub status_429: u64,
+    /// Responses with status 500.
     pub status_500: u64,
+    /// RPC attempts that failed at transport, protocol, or semantic boundaries.
     pub failed_attempts: u64,
 }
 
 impl RpcResponseCounts {
+    /// Records one received HTTP response in its class and selected exact-status buckets.
     pub(super) fn record_response(&mut self, status: u16) {
         self.total = self.total.saturating_add(1);
         match status {
@@ -36,10 +54,12 @@ impl RpcResponseCounts {
         *exact_count = exact_count.saturating_add(1);
     }
 
+    /// Records one failed RPC attempt.
     pub(super) fn record_failure(&mut self) {
         self.failed_attempts = self.failed_attempts.saturating_add(1);
     }
 
+    /// Returns the saturating field-wise delta from an earlier snapshot.
     pub(crate) fn delta_since(self, previous: Self) -> Self {
         Self {
             total: self.total.saturating_sub(previous.total),
@@ -65,16 +85,23 @@ impl RpcResponseCounts {
     }
 }
 
+/// Immutable state published by the watcher-state actor.
 #[derive(Clone, Debug)]
 pub(crate) struct WatcherStateSnapshot {
+    /// Active network label.
     pub network: Arc<str>,
+    /// Polling rounds completed for the active runtime.
     pub completed_poll_rounds: u64,
+    /// Consecutive completed rounds without a failed RPC attempt.
     pub clean_poll_rounds: u8,
+    /// Whether admission has reached the required clean-round streak.
     pub ready: bool,
+    /// Cumulative process-lifetime RPC counters.
     pub rpc_responses: RpcResponseCounts,
 }
 
 impl WatcherStateSnapshot {
+    /// Creates non-ready state for a network with zeroed counters.
     pub(super) fn new(network: &str) -> Self {
         Self {
             network: Arc::from(network),
@@ -86,8 +113,11 @@ impl WatcherStateSnapshot {
     }
 }
 
+/// A completed poll transition and the state published with it.
 #[derive(Debug)]
 pub(crate) struct PollCompletion {
+    /// Whether this transition newly admitted the watcher as ready.
     pub admitted: bool,
+    /// State after applying the completed poll.
     pub state: WatcherStateSnapshot,
 }

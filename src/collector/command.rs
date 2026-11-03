@@ -1,15 +1,25 @@
+//! Typed watcher commands mapped to concrete Solana RPC operations.
+//!
+//! Commands describe one operation and output type. Route selection and fallback
+//! remain the responsibility of the source chain.
+
 use super::{AccountBalances, BlockProduction, EpochInfo, RewardSample, RpcClient, VoteAccounts};
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 
+/// One typed collector operation executable by an RPC client.
 pub(crate) trait SourceCommand {
+    /// Stable routing identifier for this operation.
     const ID: CommandId;
+    /// Decoded value returned on success.
     type Output;
 
+    /// Executes the operation against one already-selected connector.
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output>;
 }
 
+/// Required Solana RPC health command.
 pub(crate) struct GetHealth;
 
 impl SourceCommand for GetHealth {
@@ -21,6 +31,7 @@ impl SourceCommand for GetHealth {
     }
 }
 
+/// Required current epoch-information command.
 pub(crate) struct GetEpochInfo;
 
 impl SourceCommand for GetEpochInfo {
@@ -32,7 +43,9 @@ impl SourceCommand for GetEpochInfo {
     }
 }
 
+/// Required vote-account command.
 pub(crate) struct GetVoteAccounts {
+    /// Optional cluster-specific distance used to classify delinquent accounts.
     pub delinquent_slot_distance: Option<u64>,
 }
 
@@ -48,6 +61,7 @@ impl SourceCommand for GetVoteAccounts {
     }
 }
 
+/// Optional recent-performance command that derives average slot duration.
 pub(crate) struct GetRecentPerformanceSamples;
 
 impl SourceCommand for GetRecentPerformanceSamples {
@@ -62,6 +76,7 @@ impl SourceCommand for GetRecentPerformanceSamples {
     }
 }
 
+/// Optional block-production command for the current epoch range.
 pub(crate) struct GetCurrentBlockProduction;
 
 impl SourceCommand for GetCurrentBlockProduction {
@@ -76,7 +91,9 @@ impl SourceCommand for GetCurrentBlockProduction {
     }
 }
 
+/// Optional leader-schedule command covering the current slot.
 pub(crate) struct GetLeaderSchedule {
+    /// Absolute slot used to select the schedule.
     pub slot: u64,
 }
 
@@ -92,7 +109,9 @@ impl SourceCommand for GetLeaderSchedule {
     }
 }
 
+/// Optional leader-schedule command for the next epoch boundary.
 pub(crate) struct GetNextLeaderSchedule {
+    /// First absolute slot of the next epoch.
     pub slot: u64,
 }
 
@@ -108,8 +127,11 @@ impl SourceCommand for GetNextLeaderSchedule {
     }
 }
 
+/// Required identity and vote-account balance command.
 pub(crate) struct GetAccountBalances<'a> {
+    /// Validator identity account address.
     pub identity: &'a str,
+    /// Validator vote-account address.
     pub vote_account: &'a str,
 }
 
@@ -125,8 +147,11 @@ impl SourceCommand for GetAccountBalances<'_> {
     }
 }
 
+/// Required prior-epoch inflation-reward command.
 pub(crate) struct GetInflationRewards<'a> {
+    /// Vote accounts whose rewards are requested.
     pub addresses: &'a [String],
+    /// Reward epoch to query.
     pub epoch: u64,
 }
 
@@ -142,8 +167,11 @@ impl SourceCommand for GetInflationRewards<'_> {
     }
 }
 
+/// Required prior-epoch block-production command.
 pub(crate) struct GetRewardEpochBlockProduction {
+    /// First slot of the current epoch.
     pub epoch_start_slot: u64,
+    /// Number of slots in the current epoch.
     pub slots_in_epoch: u64,
 }
 

@@ -1,3 +1,8 @@
+//! Collector domain records and completed snapshot models.
+//!
+//! These types carry bounded collection results into aggregation and Prometheus
+//! publication without coupling collection code to metric collectors.
+
 use super::aggregate::ratio;
 use crate::{
     labels::LABEL_SCOPE_WATCHED,
@@ -6,13 +11,17 @@ use crate::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
+/// Cluster-reported voting state for a validator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ValidatorStatus {
+    /// The vote account is participating in the current set.
     Current,
+    /// The vote account is not keeping pace with cluster voting.
     Delinquent,
 }
 
 impl ValidatorStatus {
+    /// Returns the stable Prometheus label value.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Current => "current",
@@ -21,94 +30,155 @@ impl ValidatorStatus {
     }
 }
 
+/// Vote credits earned in one epoch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EpochCreditsSample {
+    /// Epoch containing the sample.
     pub epoch: u64,
+    /// Credits earned during that epoch.
     pub earned: u64,
 }
 
+/// Inflation reward earned in one epoch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RewardSample {
+    /// Epoch in which the reward was paid.
     pub epoch: u64,
+    /// Reward amount in lamports.
     pub amount_lamports: u64,
 }
 
+/// Balances needed to derive validator economics metrics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct AccountBalances {
+    /// Identity-account balance in lamports.
     pub identity_lamports: u64,
+    /// Vote-account balance in lamports.
     pub vote_account_lamports: u64,
+    /// Current rent-exempt minimum for the vote account, when its data size is known.
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
 }
 
+/// Operator-account balances and vote-account tax reserve estimates.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EconomicsMetrics {
+    /// Validator identity account address.
     pub identity: String,
+    /// Validator vote-account address.
     pub vote_account: String,
+    /// Identity-account balance in lamports.
     pub identity_balance_lamports: u64,
+    /// Vote-account balance in lamports.
     pub vote_account_balance_lamports: u64,
+    /// Rent-exempt minimum for the vote account.
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
+    /// Vote-account balance available after preserving rent exemption.
     pub vat_reserve_lamports: Option<u64>,
+    /// Whole future epochs covered by the available reserve.
     pub vat_epochs_available: Option<u64>,
+    /// Whether the reserve covers the next epoch's estimated commission tax.
     pub vat_next_epoch_funded: Option<bool>,
 }
 
+/// Per-validator values exported for explicitly watched validators.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WatchedValidatorMetrics {
+    /// Validator identity account address.
     pub identity: String,
+    /// Validator vote-account address.
     pub vote_account: String,
+    /// Current or delinquent cluster status.
     pub status: ValidatorStatus,
+    /// Metric scopes to which this validator contributes.
     pub scopes: Vec<String>,
+    /// Activated stake delegated to the vote account, in lamports.
     pub activated_stake_lamports: u64,
+    /// Vote credits earned in the bounded sample epoch.
     pub latest_epoch_vote_credits: Option<u64>,
+    /// Earned vote credits as a percentage of the scope's ideal credits.
     pub vote_efficiency_pct: Option<f64>,
+    /// Current slot minus the validator's last voted slot.
     pub last_vote_slot_lag: u64,
+    /// Current slot minus the validator's rooted slot.
     pub root_slot_lag: u64,
+    /// Vote-account commission percentage.
     pub commission_pct: u8,
+    /// Inflation reward earned in the bounded reward epoch.
     pub latest_epoch_reward_lamports: u64,
+    /// Blocks produced during the bounded reward epoch.
     pub latest_epoch_rewarded_blocks_produced: u64,
+    /// Blocks produced in assigned leader slots during the current epoch.
     pub blocks_produced: u64,
+    /// Assigned current-epoch leader slots without a produced block.
     pub blocks_missed: u64,
+    /// Percentage of assigned current-epoch leader slots with a produced block.
     pub block_production_rate: f64,
+    /// Assigned leader slots later than the current slot.
     pub future_leader_slots: u64,
+    /// Next assigned leader slot, when one remains.
     pub next_leader_slot: Option<u64>,
+    /// Slots from the current slot to the next assignment.
     pub slots_until_next_leader: Option<u64>,
+    /// Estimated seconds from now to the next assignment.
     pub seconds_until_next_leader: Option<f64>,
 }
 
+/// Normalized validator record used as the aggregation input.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatorRecord {
+    /// Validator identity account address.
     pub identity: String,
+    /// Validator vote-account address.
     pub vote_account: String,
+    /// Current or delinquent cluster status.
     pub status: ValidatorStatus,
+    /// Activated stake delegated to the vote account, in lamports.
     pub activated_stake_lamports: u64,
+    /// Vote-account commission percentage.
     pub commission: u8,
+    /// Most recent slot voted by the validator.
     pub last_vote: u64,
+    /// Most recent rooted slot reported by the validator.
     pub root_slot: u64,
+    /// Latest bounded vote-credit sample.
     pub latest_epoch_credits: Option<EpochCreditsSample>,
+    /// Latest bounded inflation-reward sample.
     pub latest_epoch_reward: Option<RewardSample>,
+    /// Blocks produced during the reward sample epoch.
     pub latest_epoch_rewarded_blocks_produced: u64,
+    /// Leader slots assigned during the current epoch.
     pub current_epoch_leader_slots: u64,
+    /// Blocks produced during the current epoch.
     pub current_epoch_blocks_produced: u64,
+    /// Assigned leader slots later than the current slot.
     pub future_leader_slots: u64,
+    /// Next assigned leader slot, when one remains.
     pub next_leader_slot: Option<u64>,
+    /// Slots from the current slot to the next assignment.
     pub slots_until_next_leader: Option<u64>,
+    /// Estimated seconds from now to the next assignment.
     pub seconds_until_next_leader: Option<f64>,
+    /// Metric scopes to which this validator contributes.
     pub scopes: Vec<String>,
 }
 
 impl ValidatorRecord {
+    /// Reports whether the record belongs to the built-in watched scope.
     pub(super) fn is_watched(&self) -> bool {
         self.scopes.iter().any(|scope| scope == LABEL_SCOPE_WATCHED)
     }
 
+    /// Returns saturating last-vote lag at `current_slot`.
     pub(super) fn last_vote_slot_lag(&self, current_slot: u64) -> u64 {
         current_slot.saturating_sub(self.last_vote)
     }
 
+    /// Returns saturating root lag at `current_slot`.
     pub(super) fn root_slot_lag(&self, current_slot: u64) -> u64 {
         current_slot.saturating_sub(self.root_slot)
     }
 
+    /// Returns credits only when the record and aggregate sample epochs match.
     pub(super) fn matching_epoch_credits(&self, sample_epoch: Option<u64>) -> Option<u64> {
         self.latest_epoch_credits
             .as_ref()
@@ -116,6 +186,7 @@ impl ValidatorRecord {
             .map(|credits| credits.earned)
     }
 
+    /// Returns reward lamports only when the record and aggregate epochs match.
     pub(super) fn matching_epoch_reward_lamports(
         &self,
         reward_sample_epoch: Option<u64>,
@@ -126,6 +197,7 @@ impl ValidatorRecord {
             .map(|reward| reward.amount_lamports)
     }
 
+    /// Returns vote efficiency only for matching samples with a nonzero ideal.
     pub(super) fn vote_efficiency_pct(
         &self,
         ideal_epoch_credits: Option<u64>,
@@ -137,70 +209,115 @@ impl ValidatorRecord {
         Some(ratio(credits, ideal))
     }
 
+    /// Returns assigned current-epoch slots without a produced block.
     pub(super) fn blocks_missed(&self) -> u64 {
         self.current_epoch_leader_slots
             .saturating_sub(self.current_epoch_blocks_produced)
     }
 }
 
+/// Aggregated health, voting, rewards, and leadership values for one scope.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScopeMetrics {
+    /// Number of current validators.
     pub current_count: u64,
+    /// Number of delinquent validators.
     pub delinquent_count: u64,
+    /// Activated stake delegated to current validators, in lamports.
     pub current_stake_lamports: u64,
+    /// Activated stake delegated to delinquent validators, in lamports.
     pub delinquent_stake_lamports: u64,
+    /// Sum of vote credits earned in the bounded sample epoch.
     pub latest_epoch_vote_credits: Option<u64>,
+    /// Sum of inflation rewards in the bounded reward epoch.
     pub latest_epoch_reward_lamports: u64,
+    /// Sum of blocks produced during the bounded reward epoch.
     pub latest_epoch_rewarded_blocks_produced: u64,
+    /// Stake-weighted vote efficiency percentage.
     pub vote_efficiency_pct: Option<f64>,
+    /// Stake-weighted last-vote slot lag.
     pub last_vote_slot_lag: f64,
+    /// Stake-weighted root slot lag.
     pub root_slot_lag: f64,
+    /// Stake-weighted commission percentage.
     pub average_commission_pct: f64,
+    /// Blocks produced in assigned leader slots during the current epoch.
     pub blocks_produced: u64,
+    /// Assigned current-epoch leader slots without a produced block.
     pub blocks_missed: u64,
+    /// Percentage of assigned current-epoch leader slots with a produced block.
     pub block_production_rate: f64,
+    /// Assigned leader slots later than the current slot.
     pub future_leader_slots: u64,
 }
 
 impl ScopeMetrics {
+    /// Returns current plus delinquent activated stake.
     pub(crate) fn activated_stake_lamports(&self) -> u64 {
         self.current_stake_lamports + self.delinquent_stake_lamports
     }
 }
 
+/// One complete collection result consumed by metrics rendering.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Snapshot {
+    /// Stable network label.
     pub network: String,
+    /// Current epoch.
     pub epoch: u64,
+    /// Current absolute slot.
     pub slot: u64,
+    /// Percentage of the current epoch completed.
     pub epoch_progress_pct: f64,
+    /// Slots remaining in the current epoch.
     pub epoch_slots_remaining: u64,
+    /// Average slot duration derived from recent performance samples.
     pub average_slot_time_seconds: Option<f64>,
+    /// Estimated Unix timestamp at which the current epoch will end.
     pub estimated_epoch_end_unixtime: Option<f64>,
+    /// Epoch represented by vote-credit and efficiency values.
     pub vote_credits_sample_epoch: Option<u64>,
+    /// Epoch represented by reward values.
     pub reward_sample_epoch: Option<u64>,
+    /// Aggregated values keyed by stable scope label.
     pub scopes: BTreeMap<String, ScopeMetrics>,
+    /// Detailed values for explicitly watched validators.
     pub watched_validators: Vec<WatchedValidatorMetrics>,
+    /// Successful source provenance for collected commands.
     pub data_sources: Vec<SnapshotDataSource>,
+    /// Enabled collection-mode outcomes for this polling round.
     pub mode_statuses: Vec<ModeStatus>,
+    /// Operator economics values when economics mode is enabled and collected.
     pub economics: Option<EconomicsMetrics>,
 }
 
+/// Success state for one enabled collection mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ModeStatus {
+    /// Collection mode.
     pub mode: ModeId,
+    /// Whether every required input for the mode was collected.
     pub up: bool,
 }
 
+/// Snapshot-stable provenance for one successfully collected command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotDataSource {
+    /// Mode that owns the command.
     pub mode: ModeId,
+    /// Command that supplied data.
     pub command: CommandId,
+    /// Stable configured connector name.
     pub connector: Arc<str>,
+    /// Operator-declared provider name.
     pub provider: Arc<str>,
+    /// Transport used by the command.
     pub transport: Transport,
+    /// Solana RPC profile declared by the connector.
     pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    /// Provider feature required by the command, if any.
     pub feature: Option<ProviderFeature>,
+    /// One-based fallback position of the successful connector.
     pub precedence: usize,
 }
 

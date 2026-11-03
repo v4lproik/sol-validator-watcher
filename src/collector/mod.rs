@@ -1,3 +1,8 @@
+//! Solana RPC collection and snapshot construction.
+//!
+//! The submodules separate typed commands, wire transport, domain records, pure
+//! aggregation, and collection orchestration behind this facade.
+
 mod aggregate;
 pub mod command;
 mod model;

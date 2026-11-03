@@ -1,3 +1,8 @@
+//! Watcher-state actor, command handles, and periodic state reporting.
+//!
+//! The actor serializes poll transitions with RPC outcomes so readiness and
+//! exported counters describe one coherent event order.
+
 use super::{PollCompletion, RpcResponseCounts, WatcherStateSnapshot};
 use crate::{
     metrics::Metrics,
@@ -11,14 +16,17 @@ use tokio::{
 };
 use tracing::info;
 
+/// Consecutive clean polling rounds required before readiness admission.
 pub(crate) const ADMISSION_CLEAN_POLL_ROUNDS: u8 = 5;
 const WATCHER_STATE_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Builder that creates all handles before transferring the receiver to the actor.
 pub(crate) struct WatcherStateMailbox {
     commands: mpsc::UnboundedSender<WatcherStateCommand>,
     command_receiver: mpsc::UnboundedReceiver<WatcherStateCommand>,
 }
 
+/// Cloneable RPC event producer preserving actor command ordering.
 #[derive(Clone)]
 pub(crate) struct RpcTelemetry {
     commands: mpsc::UnboundedSender<WatcherStateCommand>,
@@ -26,12 +34,14 @@ pub(crate) struct RpcTelemetry {
     _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
 }
 
+/// Cloneable control and snapshot handle for watcher readiness.
 #[derive(Clone)]
 pub(crate) struct WatcherState {
     commands: mpsc::UnboundedSender<WatcherStateCommand>,
     snapshots: watch::Receiver<WatcherStateSnapshot>,
 }
 
+/// Single owner of readiness transitions and RPC response counters.
 pub(crate) struct WatcherStateActor {
     commands: mpsc::UnboundedReceiver<WatcherStateCommand>,
     snapshots: watch::Sender<WatcherStateSnapshot>,
@@ -82,6 +92,7 @@ impl fmt::Display for StateTransitionError {
 impl std::error::Error for StateTransitionError {}
 
 impl WatcherStateMailbox {
+    /// Creates an unstarted mailbox.
     pub(crate) fn new() -> Self {
         let (commands, command_receiver) = mpsc::unbounded_channel();
         Self {
@@ -90,6 +101,7 @@ impl WatcherStateMailbox {
         }
     }
 
+    /// Returns an RPC telemetry producer attached to this mailbox.
     pub(crate) fn rpc_telemetry(&self) -> RpcTelemetry {
         RpcTelemetry {
             commands: self.commands.clone(),
@@ -98,6 +110,7 @@ impl WatcherStateMailbox {
         }
     }
 
+    /// Initializes published state and consumes the mailbox into its actor and handle.
     pub(crate) fn start(
         self,
         network: &str,
@@ -129,12 +142,14 @@ impl WatcherStateMailbox {
 }
 
 impl RpcTelemetry {
+    /// Queues one received HTTP response status for classification.
     pub(crate) fn record_response(&self, status: u16) -> Result<()> {
         self.commands
             .send(WatcherStateCommand::RecordRpcResponse { status })
             .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC response"))
     }
 
+    /// Queues one failed RPC attempt not represented by a usable HTTP response.
     pub(crate) fn record_failure(&self) -> Result<()> {
         self.commands
             .send(WatcherStateCommand::RecordRpcFailure)
@@ -152,6 +167,7 @@ impl RpcTelemetry {
 }
 
 impl WatcherState {
+    /// Resets readiness admission and switches the active network atomically.
     pub(crate) async fn reset_admission(&self, network: &str) -> Result<()> {
         let (reply, acknowledgment) = oneshot::channel();
         self.commands
@@ -165,6 +181,7 @@ impl WatcherState {
             .context("watcher state actor stopped while resetting admission")
     }
 
+    /// Opens a polling round before any RPC attempt is dispatched.
     pub(crate) async fn begin_poll(&self) -> Result<()> {
         let (reply, acknowledgment) = oneshot::channel();
         self.commands
@@ -176,6 +193,10 @@ impl WatcherState {
         Ok(())
     }
 
+    /// Completes the active poll and returns the resulting admission transition.
+    ///
+    /// Any failed RPC attempt recorded between `begin_poll` and this call resets the
+    /// clean-round streak.
     pub(crate) async fn complete_poll(&self) -> Result<PollCompletion> {
         let (reply, completion) = oneshot::channel();
         self.commands
@@ -187,6 +208,7 @@ impl WatcherState {
             .map_err(Into::into)
     }
 
+    /// Returns the latest readiness flag and clean-round streak.
     pub(crate) fn readiness(&self) -> (bool, u8) {
         let snapshot = self.snapshots.borrow();
         (snapshot.ready, snapshot.clean_poll_rounds)
@@ -199,6 +221,7 @@ impl WatcherState {
 }
 
 impl WatcherStateActor {
+    /// Runs the single-owner state loop until shutdown or command-channel closure.
     pub(crate) async fn run(mut self, mut shutdown: Shutdown) -> Result<TaskExit> {
         let mut ticker = interval(WATCHER_STATE_REPORT_INTERVAL);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);

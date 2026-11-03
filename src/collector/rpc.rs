@@ -1,3 +1,8 @@
+//! Solana JSON-RPC transport, wire models, batching, and capability probes.
+//!
+//! This module owns protocol decoding and HTTP outcome classification. It does
+//! not choose connectors or apply cross-connector fallback policy.
+
 use super::model::{AccountBalances, RewardSample};
 use crate::{
     mode::{ProviderFeature, SolanaRpcCompatibility},
@@ -9,8 +14,10 @@ use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tracing::warn;
 
+/// Largest inclusive slot range sent in one `getBlockProduction` request.
 pub(super) const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
 const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
+/// Connector-local Solana JSON-RPC client with shared response telemetry.
 #[derive(Clone)]
 pub struct RpcClient {
     http: Client,
@@ -20,6 +27,7 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    /// Builds a client for one endpoint, timeout, and commitment level.
     pub fn new(
         url: String,
         timeout: Duration,
@@ -39,6 +47,10 @@ impl RpcClient {
         })
     }
 
+    /// Probes every standard RPC method and provider feature the connector declares.
+    ///
+    /// Probes use bounded, valid requests and fail before collection if the endpoint
+    /// cannot satisfy its declared contract.
     pub async fn verify_capabilities(
         &self,
         solana_rpc_compatibility: SolanaRpcCompatibility,
@@ -170,6 +182,7 @@ impl RpcClient {
         Ok(())
     }
 
+    /// Returns current epoch and absolute-slot information.
     pub(super) async fn get_epoch_info(&self) -> Result<EpochInfo> {
         self.call(
             "getEpochInfo",
@@ -184,6 +197,7 @@ impl RpcClient {
         self.call("getHealth", [(); 0]).await
     }
 
+    /// Returns current and delinquent vote accounts.
     pub(super) async fn get_vote_accounts(
         &self,
         delinquent_slot_distance: Option<u64>,
@@ -199,6 +213,9 @@ impl RpcClient {
         .await
     }
 
+    /// Derives average slot duration from the latest performance sample.
+    ///
+    /// Returns `None` when the endpoint has no usable sample.
     pub(super) async fn get_average_slot_time_seconds(&self) -> Result<Option<f64>> {
         let samples: Vec<RecentPerformanceSample> =
             self.call("getRecentPerformanceSamples", [1]).await?;
@@ -214,6 +231,7 @@ impl RpcClient {
         ))
     }
 
+    /// Returns block production for the endpoint's current default range.
     pub(super) async fn get_current_epoch_block_production(&self) -> Result<BlockProduction> {
         let response: RpcValueResponse<BlockProduction> = self
             .call(
@@ -228,6 +246,9 @@ impl RpcClient {
         Ok(response.value)
     }
 
+    /// Returns merged block production for an inclusive slot range.
+    ///
+    /// Large ranges are split into bounded sequential requests.
     pub(super) async fn get_block_production_for_range(
         &self,
         first_slot: u64,
@@ -273,6 +294,7 @@ impl RpcClient {
         Ok(block_production)
     }
 
+    /// Returns the leader schedule containing `slot`, if retained by the endpoint.
     pub(super) async fn get_leader_schedule(
         &self,
         slot: u64,
@@ -289,10 +311,12 @@ impl RpcClient {
         .await
     }
 
+    /// Returns the earliest slot retained by the endpoint.
     pub(super) async fn get_minimum_ledger_slot(&self) -> Result<u64> {
         self.call("minimumLedgerSlot", [(); 0]).await
     }
 
+    /// Returns identity and vote-account balances plus the vote account's rent floor.
     pub(super) async fn get_account_balances(
         &self,
         identity: &str,
@@ -358,6 +382,10 @@ impl RpcClient {
         })
     }
 
+    /// Returns available inflation rewards keyed by requested address.
+    ///
+    /// Requests are batched to the endpoint limit. Missing or negative rewards are
+    /// omitted rather than represented as zero.
     pub(super) async fn get_inflation_rewards(
         &self,
         addresses: &[String],
@@ -412,6 +440,7 @@ impl RpcClient {
         Ok(by_address)
     }
 
+    /// Requires `getHealth` to return exactly `"ok"`.
     pub(crate) async fn ensure_healthy(&self) -> Result<()> {
         let health = self
             .get_health()
@@ -440,6 +469,10 @@ impl RpcClient {
         }
     }
 
+    /// Executes one JSON-RPC request whose valid result may be JSON `null`.
+    ///
+    /// Transport, HTTP, payload, and JSON-RPC failures increment failed-attempt
+    /// telemetry before being returned.
     pub(super) async fn call_optional<T, P>(
         &self,
         method: &'static str,
@@ -569,11 +602,14 @@ struct DataSlice {
     length: usize,
 }
 
+/// Wire configuration for `getBlockProduction`.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct GetBlockProductionConfig<'a> {
+    /// Requested commitment.
     pub(super) commitment: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional inclusive slot range.
     pub(super) range: Option<SlotRange>,
 }
 
@@ -584,10 +620,13 @@ struct GetInflationRewardConfig<'a> {
     epoch: u64,
 }
 
+/// Inclusive absolute slot range.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct SlotRange {
+    /// First requested slot.
     pub(super) first_slot: u64,
+    /// Last requested slot.
     pub(super) last_slot: u64,
 }
 
@@ -625,9 +664,11 @@ struct JsonRpcError {
     code: i64,
 }
 
+/// Standard Solana RPC response wrapper containing a `value`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct RpcValueResponse<T> {
+    /// Decoded response value.
     pub(super) value: T,
 }
 
@@ -644,36 +685,54 @@ struct AccountValue {
     space: Option<u64>,
 }
 
+/// Decoded fields used from `getEpochInfo`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct EpochInfo {
+    /// Current epoch.
     pub(super) epoch: u64,
+    /// Current zero-based slot offset within the epoch.
     pub(super) slot_index: u64,
+    /// Total slots in the epoch.
     pub(super) slots_in_epoch: u64,
+    /// Current absolute slot.
     pub(super) absolute_slot: u64,
 }
 
+/// Decoded current and delinquent lists from `getVoteAccounts`.
 #[derive(Deserialize)]
 pub(crate) struct VoteAccounts {
+    /// Vote accounts participating in the current set.
     pub(super) current: Vec<VoteAccountInfo>,
+    /// Vote accounts classified as delinquent.
     pub(super) delinquent: Vec<VoteAccountInfo>,
 }
 
+/// Decoded fields used from one vote-account record.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct VoteAccountInfo {
+    /// Vote-account address.
     pub(super) vote_pubkey: String,
+    /// Validator identity address.
     pub(super) node_pubkey: String,
+    /// Activated stake in lamports.
     pub(super) activated_stake: u64,
+    /// Commission percentage.
     pub(super) commission: u8,
+    /// Tuples of epoch, cumulative credits, and prior cumulative credits.
     pub(super) epoch_credits: Vec<(u64, u64, u64)>,
+    /// Most recent voted slot.
     pub(super) last_vote: u64,
+    /// Most recent rooted slot.
     pub(super) root_slot: u64,
 }
 
+/// Decoded `getBlockProduction` values keyed by validator identity.
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockProduction {
+    /// Assigned leader slots and produced blocks for each identity.
     pub(super) by_identity: HashMap<String, (u64, u64)>,
 }
 

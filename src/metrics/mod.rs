@@ -1,3 +1,8 @@
+//! Prometheus metric ownership and snapshot publication.
+//!
+//! This module owns the exported metric contract, including descriptors, labels,
+//! reset behavior, rendering, and unit conversion.
+
 use crate::{
     collector::{Snapshot, WatchedValidatorMetrics},
     config::{Config, ConnectorConfig},
@@ -11,6 +16,7 @@ mod registration;
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 
+/// Single owner of Prometheus collectors and their reset/update semantics.
 #[derive(Clone)]
 pub struct Metrics {
     registry: Registry,
@@ -82,6 +88,7 @@ pub struct Metrics {
 }
 
 impl Metrics {
+    /// Encodes the current registry in Prometheus text exposition format.
     pub fn render(&self) -> Result<String> {
         let metric_families = self.registry.gather();
         let mut output = Vec::new();
@@ -92,6 +99,7 @@ impl Metrics {
         String::from_utf8(output).context("metrics were not valid UTF-8")
     }
 
+    /// Replaces the process-liveness series with the current network value.
     pub fn set_watcher_up(&self, network: &str, is_up: bool) {
         self.sol_watcher_up.reset();
         self.sol_watcher_up
@@ -99,6 +107,10 @@ impl Metrics {
             .set(i64::from(is_up));
     }
 
+    /// Publishes one coherent watcher-state snapshot.
+    ///
+    /// Response counters are cumulative since process start; stale network series
+    /// are removed before the new values are written.
     pub fn update_watcher_state(
         &self,
         network: &str,
@@ -150,6 +162,7 @@ impl Metrics {
             .set(metric_count(responses.failed_attempts));
     }
 
+    /// Replaces the latest HTTP RPC health series.
     pub fn set_rpc_up(&self, network: &str, is_up: bool) {
         self.sol_rpc_up.reset();
         self.sol_rpc_up
@@ -157,6 +170,7 @@ impl Metrics {
             .set(i64::from(is_up));
     }
 
+    /// Replaces the latest WebSocket health series.
     pub fn set_ws_up(&self, network: &str, is_up: bool) {
         self.sol_ws_up.reset();
         self.sol_ws_up
@@ -164,12 +178,14 @@ impl Metrics {
             .set(i64::from(is_up));
     }
 
+    /// Sets collection health for one mode.
     pub fn set_mode_up(&self, network: &str, mode: ModeId, is_up: bool) {
         self.sol_mode_up
             .with_label_values(&[network, mode.as_str()])
             .set(i64::from(is_up));
     }
 
+    /// Publishes the active connector and command-route configuration for a poll.
     pub fn begin_poll(&self, config: &Config, sources: &SourceChain) {
         self.update_runtime_config(config, sources);
     }
@@ -246,6 +262,10 @@ impl Metrics {
         }
     }
 
+    /// Replaces dynamic collection metrics with one completed snapshot.
+    ///
+    /// Optional values that are absent from the snapshot remain absent rather than
+    /// retaining a stale series or being exported as zero.
     pub fn update_snapshot(&self, snapshot: &Snapshot) {
         self.sol_mode_command_source_info.reset();
         self.sol_mode_up.reset();

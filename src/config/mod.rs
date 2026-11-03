@@ -1,3 +1,8 @@
+//! Self-contained TOML profile loading, normalization, and validation.
+//!
+//! Configuration is expanded and validated before runtime construction. Command
+//! arrays are the complete ordered fallback policy for their commands.
+
 use crate::mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -7,66 +12,93 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Reserved label that identifies the validator used for economics collection.
 pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
 
+/// Ordered connector routes for health commands.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HealthCommands {
+    /// Connector names used for HTTP RPC health, in fallback order.
     pub rpc_health: Vec<String>,
+    /// Connector names used for WebSocket health, in fallback order.
     pub ws_health: Vec<String>,
 }
 
+/// Ordered connector routes for consensus commands.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ConsensusCommands {
+    /// Connector names used for epoch information, in fallback order.
     pub epoch_info: Vec<String>,
+    /// Connector names used for vote accounts, in fallback order.
     pub vote_accounts: Vec<String>,
+    /// Connector names used for recent performance samples, in fallback order.
     pub recent_performance_samples: Vec<String>,
 }
 
+/// Ordered connector routes for leadership commands.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct LeadershipCommands {
+    /// Connector names used for current block production, in fallback order.
     pub current_block_production: Vec<String>,
+    /// Connector names used for the current leader schedule, in fallback order.
     pub current_leader_schedule: Vec<String>,
+    /// Connector names used for the next leader schedule, in fallback order.
     pub next_leader_schedule: Vec<String>,
 }
 
+/// Ordered connector routes for economics commands.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct EconomicsCommands {
+    /// Connector names used for identity and vote-account balances.
     pub account_balances: Vec<String>,
+    /// Connector names used for prior-epoch inflation rewards.
     pub inflation_rewards: Vec<String>,
+    /// Connector names used for prior-epoch block production.
     pub reward_epoch_block_production: Vec<String>,
 }
 
+/// Health-mode command routes.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HealthModeConfig {
+    /// Commands owned by health mode.
     pub commands: HealthCommands,
 }
 
+/// Consensus-mode command routes.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ConsensusModeConfig {
+    /// Commands owned by consensus mode.
     pub commands: ConsensusCommands,
 }
 
+/// Leadership-mode command routes.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct LeadershipModeConfig {
+    /// Commands owned by leadership mode.
     pub commands: LeadershipCommands,
 }
 
+/// Optional single-validator economics mode and its command routes.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct EconomicsModeConfig {
+    /// Whether economics collection is active.
     pub enabled: bool,
+    /// Explicit economics target, or `None` to resolve it from the reserved label.
     pub validator: Option<WatchedValidatorConfig>,
+    /// Commands owned by economics mode.
     pub commands: EconomicsCommands,
 }
 
 impl EconomicsModeConfig {
+    /// Returns the stable mode label used in configuration metadata.
     pub const fn as_str(&self) -> &'static str {
         if self.enabled {
             "single-validator"
@@ -76,16 +108,22 @@ impl EconomicsModeConfig {
     }
 }
 
+/// Complete collection-mode configuration.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ModesConfig {
+    /// Health-mode routes.
     pub health: HealthModeConfig,
+    /// Consensus-mode routes.
     pub consensus: ConsensusModeConfig,
+    /// Leadership-mode routes.
     pub leadership: LeadershipModeConfig,
+    /// Economics-mode enablement, target, and routes.
     pub economics: EconomicsModeConfig,
 }
 
 impl ModesConfig {
+    /// Returns the ordered connector names configured for a command.
     pub fn route(&self, command: CommandId) -> &[String] {
         match command {
             CommandId::RpcHealth => &self.health.commands.rpc_health,
@@ -106,6 +144,7 @@ impl ModesConfig {
         }
     }
 
+    /// Reports whether a mode participates in collection.
     pub const fn enabled(&self, mode: ModeId) -> bool {
         match mode {
             ModeId::Health | ModeId::Consensus | ModeId::Leadership => true,
@@ -114,32 +153,46 @@ impl ModesConfig {
     }
 }
 
+/// Validator selector and metric labels from one `[[watched_validators]]` entry.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WatchedValidatorConfig {
+    /// Optional identity account address.
     pub identity: Option<String>,
+    /// Optional vote-account address.
     pub vote_account: Option<String>,
     #[serde(default)]
+    /// Additional validated `category:value` labels.
     pub labels: Vec<String>,
 }
 
+/// One RPC and/or WebSocket connector declaration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectorConfig {
+    /// Stable name referenced by command routes.
     pub name: String,
+    /// Operator-facing provider name used in metrics and diagnostics.
     pub provider: String,
+    /// Explicit non-standard provider capabilities.
     pub features: Vec<ProviderFeature>,
     #[serde(default)]
+    /// Standard Solana RPC method profile, required when `rpc_url` is present.
     pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     #[serde(default)]
+    /// HTTP JSON-RPC endpoint.
     pub rpc_url: Option<String>,
     #[serde(default = "default_rpc_timeout_sec")]
+    /// HTTP request timeout in seconds.
     pub rpc_timeout_sec: u64,
     #[serde(default)]
+    /// WebSocket endpoint used only for connectivity probes.
     pub ws_url: Option<String>,
     #[serde(default = "default_ws_timeout_sec")]
+    /// WebSocket connection timeout in seconds.
     pub ws_timeout_sec: u64,
     #[serde(default = "default_commitment")]
+    /// Solana commitment level sent with compatible RPC requests.
     pub commitment: String,
 }
 
@@ -160,18 +213,22 @@ impl Default for ConnectorConfig {
 }
 
 impl ConnectorConfig {
+    /// Reports whether this connector has an HTTP RPC endpoint.
     pub fn has_rpc(&self) -> bool {
         self.rpc_url.is_some()
     }
 
+    /// Reports whether this connector has a WebSocket endpoint.
     pub fn has_ws(&self) -> bool {
         self.ws_url.is_some()
     }
 
+    /// Reports whether this connector declares a provider feature.
     pub fn supports(&self, feature: ProviderFeature) -> bool {
         self.features.contains(&feature)
     }
 
+    /// Returns a validated Solana commitment string.
     pub fn commitment_config(&self) -> Result<String> {
         match self.commitment.as_str() {
             "processed" | "confirmed" | "finalized" => Ok(self.commitment.clone()),
@@ -254,16 +311,25 @@ impl ConnectorConfig {
     }
 }
 
+/// Fully expanded, normalized, and validated watcher configuration.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    /// Stable network label.
     pub network: String,
+    /// Connector declarations in deterministic configuration order.
     pub connectors: Vec<ConnectorConfig>,
+    /// Mode enablement and per-command fallback routes.
     pub modes: ModesConfig,
+    /// Port on which the metrics HTTP server listens.
     pub metrics_port: u16,
+    /// Delay between completed polling rounds, in seconds.
     pub poll_interval_sec: u64,
+    /// Optional cluster-specific delinquent vote distance.
     pub delinquent_slot_distance: Option<u64>,
+    /// Optional file whose timestamp is refreshed after successful snapshots.
     pub liveness_file: Option<PathBuf>,
+    /// Validators selected for detailed metrics and labels.
     pub watched_validators: Vec<WatchedValidatorConfig>,
 }
 
@@ -307,6 +373,7 @@ fn default_commitment() -> String {
 }
 
 impl Config {
+    /// Loads one TOML profile after environment expansion, normalization, and validation.
     pub fn load(path: &Path) -> Result<Self> {
         Self::load_with(path, expand_env_vars)
     }

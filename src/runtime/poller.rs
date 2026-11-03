@@ -1,3 +1,8 @@
+//! Polling lifecycle, dependency guards, and liveness-file updates.
+//!
+//! A polling round reloads configuration transactionally, validates capabilities,
+//! collects one snapshot, publishes metrics, and then commits readiness state.
+
 use super::state::RuntimeState;
 use crate::{
     collector::{
@@ -20,6 +25,10 @@ use std::{
 use tokio::time::sleep;
 use tracing::{info, warn};
 
+/// Runs complete polling rounds until shutdown or a fatal collection error.
+///
+/// Metrics, liveness, and readiness are committed only after snapshot collection
+/// succeeds.
 pub(super) async fn run_watcher_loop(
     mut runtime: RuntimeState,
     metrics: Arc<Metrics>,
@@ -157,6 +166,7 @@ async fn guard_dependencies_healthy(
     ))
 }
 
+/// Marks every enabled collection mode except health as unavailable.
 pub(super) fn mark_collection_modes_down(config: &Config, metrics: &Metrics) {
     for mode in [ModeId::Consensus, ModeId::Leadership, ModeId::Economics] {
         if config.modes.enabled(mode) {
@@ -181,6 +191,7 @@ async fn ensure_connector_capabilities_ready(runtime: &mut RuntimeState) -> Resu
     Ok(())
 }
 
+/// Performs the one-time live economics route check when economics is enabled.
 pub(super) async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Result<()> {
     if !economics_capability_check_required(runtime) {
         return Ok(());
@@ -200,9 +211,13 @@ pub(super) async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeSta
     Ok(())
 }
 
+/// Reports whether the active runtime still requires economics route verification.
 pub(super) fn economics_capability_check_required(runtime: &RuntimeState) -> bool {
     !runtime.economics_capabilities_verified && runtime.config.modes.economics.enabled
 }
+/// Writes the current Unix timestamp to the configured liveness file.
+///
+/// A missing path disables the file. Parent directories are created as needed.
 pub(super) fn update_liveness_file(path: Option<&Path>) -> Result<()> {
     let Some(path) = path else {
         return Ok(());

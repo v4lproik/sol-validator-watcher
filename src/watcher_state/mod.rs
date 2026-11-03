@@ -1,3 +1,8 @@
+//! Single-writer runtime state for readiness and RPC response telemetry.
+//!
+//! Handles submit ordered events to the actor and read coherent snapshots without
+//! exposing the actor's mutable state.
+
 mod actor;
 mod model;
 

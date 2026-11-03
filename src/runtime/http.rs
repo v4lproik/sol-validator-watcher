@@ -1,3 +1,8 @@
+//! HTTP surfaces for Prometheus metrics, process health, and traffic readiness.
+//!
+//! `/healthz` reports process liveness, while `/readyz` reflects the watcher-state
+//! actor's clean-poll admission contract.
+
 use crate::{
     metrics::Metrics,
     tasks::{Shutdown, TaskExit},
@@ -9,6 +14,7 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
+/// Shared HTTP handler state.
 #[derive(Clone)]
 pub(super) struct AppState {
     metrics: Arc<Metrics>,
@@ -16,6 +22,7 @@ pub(super) struct AppState {
 }
 
 impl AppState {
+    /// Creates handler state from the metric registry and watcher-state handle.
     pub(super) fn new(metrics: Arc<Metrics>, watcher_state: WatcherState) -> Self {
         Self {
             metrics,
@@ -23,6 +30,7 @@ impl AppState {
         }
     }
 }
+/// Serves metrics, liveness, and readiness until cooperative shutdown.
 pub(super) async fn run_http_server(
     state: AppState,
     metrics_port: u16,
@@ -66,6 +74,7 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
+/// Returns `200` only after the watcher reaches its clean-poll admission threshold.
 pub(super) async fn readiness_handler(State(state): State<AppState>) -> (StatusCode, String) {
     let (ready, clean_poll_rounds) = state.watcher_state.readiness();
     if ready {

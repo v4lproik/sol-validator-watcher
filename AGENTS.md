@@ -48,6 +48,7 @@ or site scripts directly.
 | --- | --- |
 | `just rust doctor` | Verify the pinned Rust, `just`, formatting, lint, and coverage tools |
 | `just rust check` | Fast Rust compilation check |
+| `just rust doc` | Build warning-free Rust documentation for all production modules and private APIs |
 | `just rust fmt` | Format Rust sources |
 | `just rust clippy` | Lint all targets and features with warnings denied |
 | `just rust test` | Run the default Rust test suite |
