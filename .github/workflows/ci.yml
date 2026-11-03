@@ -34,6 +34,9 @@ jobs:
       - name: Run CI checks
         run: just ci verify
 
+      - name: Build Rust documentation
+        run: just rust doc
+
       - name: Enforce coverage gate
         run: just coverage check
 
