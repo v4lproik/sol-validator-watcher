@@ -103,6 +103,7 @@ ws_health = [{route}]
 [modes.consensus.commands]
 epoch_info = [{route}]
 vote_accounts = [{route}]
+recent_performance_samples = [{route}]
 
 [modes.leadership.commands]
 current_block_production = [{route}]

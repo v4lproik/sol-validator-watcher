@@ -28,9 +28,10 @@ liveness files, signals, and shutdown.
   current provider feature is `historical-data`; `rpc` and `websocket` are
   transports, not features.
 - Each `ModeId` owns its finite source requirements. Health permits RPC and
-  WebSocket; consensus and leadership require RPC; economics requires RPC plus
-  `historical-data`. A command selects one requirement from its mode, and its
-  configured route supplies the ordered providers.
+  WebSocket; consensus and leadership require RPC; economics permits standard
+  RPC for balances and RPC with `historical-data` for prior-epoch rewards. A
+  command selects one requirement from its mode, and its configured route
+  supplies the ordered providers.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
 - Treat each connector's `rpc_url` and `ws_url` as its transport configuration.

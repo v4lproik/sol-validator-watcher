@@ -8,3 +8,5 @@
 - Bound each command to an explicit transport and only feature-gated prior-epoch economics commands with `historical-data`, so configuration validation rejects ineligible connectors before polling while preserving declared fallback order.
 - Made each mode own its valid transport and provider-feature combinations, then resolve the configured provider through each command route.
 - Redacted credential-bearing RPC and WebSocket URLs from transport errors.
+- Collected recent performance samples, economics-target account balances and rent exemption, VAT runway, epoch timing, and per-validator next-leader estimates with explicit source routes and absent-data semantics; account balances remain available when a provider omits the account size needed for rent and VAT calculations.
+- Ignored vote-credit samples beyond the current epoch and preserved unmatched vote credits and efficiency as unavailable instead of zero.

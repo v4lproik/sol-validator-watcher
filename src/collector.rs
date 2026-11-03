@@ -12,11 +12,14 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tracing::warn;
 
 const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
 const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
+
+const VAT_LAMPORTS_PER_EPOCH: u64 = 800_000_000;
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -66,6 +69,21 @@ impl RpcClient {
             }],
         )
         .await
+    }
+
+    async fn get_average_slot_time_seconds(&self) -> Result<Option<f64>> {
+        let samples: Vec<RecentPerformanceSample> =
+            self.call("getRecentPerformanceSamples", [1]).await?;
+        let Some(sample) = samples.first() else {
+            return Ok(None);
+        };
+        if sample.num_slots == 0 || sample.sample_period_secs == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(
+            f64::from(sample.sample_period_secs) / sample.num_slots as f64,
+        ))
     }
 
     async fn get_current_epoch_block_production(&self) -> Result<BlockProduction> {
@@ -142,6 +160,70 @@ impl RpcClient {
 
     async fn get_minimum_ledger_slot(&self) -> Result<u64> {
         self.call("minimumLedgerSlot", [(); 0]).await
+    }
+
+    async fn get_account_balances(
+        &self,
+        identity: &str,
+        vote_account: &str,
+    ) -> Result<AccountBalances> {
+        let response: RpcValueResponse<Vec<Option<AccountValue>>> = self
+            .call(
+                "getMultipleAccounts",
+                (
+                    [identity, vote_account],
+                    GetMultipleAccountsConfig {
+                        commitment: &self.commitment,
+                        encoding: "base64",
+                        data_slice: DataSlice {
+                            offset: 0,
+                            length: 0,
+                        },
+                    },
+                ),
+            )
+            .await?;
+        if response.value.len() != 2 {
+            bail!(
+                "getMultipleAccounts returned {} accounts for 2 addresses",
+                response.value.len()
+            );
+        }
+        let mut accounts = response.value.into_iter();
+        let identity = accounts
+            .next()
+            .flatten()
+            .context("identity account was not found")?;
+        let vote_account = accounts
+            .next()
+            .flatten()
+            .context("vote account was not found")?;
+        let rent_exempt_minimum_lamports = match vote_account.space {
+            Some(space) => Some(
+                self.call(
+                    "getMinimumBalanceForRentExemption",
+                    (
+                        space,
+                        CommitmentOnly {
+                            commitment: &self.commitment,
+                        },
+                    ),
+                )
+                .await?,
+            ),
+            None => {
+                warn!(
+                    "vote account response omitted account data size; rent and VAT metrics will be unavailable"
+                );
+                None
+            }
+        };
+
+        Ok(AccountBalances {
+            identity_lamports: identity.lamports,
+            vote_account_lamports: vote_account.lamports,
+            vote_account_rent_exempt_minimum_lamports: rent_exempt_minimum_lamports,
+        })
     }
 
     async fn get_inflation_rewards(
@@ -295,6 +377,25 @@ pub struct RewardSample {
     pub amount_lamports: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AccountBalances {
+    pub identity_lamports: u64,
+    pub vote_account_lamports: u64,
+    pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EconomicsMetrics {
+    pub identity: String,
+    pub vote_account: String,
+    pub identity_balance_lamports: u64,
+    pub vote_account_balance_lamports: u64,
+    pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
+    pub vat_reserve_lamports: Option<u64>,
+    pub vat_epochs_available: Option<u64>,
+    pub vat_next_epoch_funded: Option<bool>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct WatchedValidatorMetrics {
     pub identity: String,
@@ -302,8 +403,8 @@ pub struct WatchedValidatorMetrics {
     pub status: ValidatorStatus,
     pub scopes: Vec<String>,
     pub activated_stake_lamports: u64,
-    pub latest_epoch_vote_credits: u64,
-    pub vote_efficiency_pct: f64,
+    pub latest_epoch_vote_credits: Option<u64>,
+    pub vote_efficiency_pct: Option<f64>,
     pub last_vote_slot_lag: u64,
     pub root_slot_lag: u64,
     pub commission_pct: u8,
@@ -313,9 +414,12 @@ pub struct WatchedValidatorMetrics {
     pub blocks_missed: u64,
     pub block_production_rate: f64,
     pub future_leader_slots: u64,
+    pub next_leader_slot: Option<u64>,
+    pub slots_until_next_leader: Option<u64>,
+    pub seconds_until_next_leader: Option<f64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ValidatorRecord {
     pub identity: String,
     pub vote_account: String,
@@ -330,6 +434,9 @@ pub struct ValidatorRecord {
     pub current_epoch_leader_slots: u64,
     pub current_epoch_blocks_produced: u64,
     pub future_leader_slots: u64,
+    pub next_leader_slot: Option<u64>,
+    pub slots_until_next_leader: Option<u64>,
+    pub seconds_until_next_leader: Option<f64>,
     pub scopes: Vec<String>,
 }
 
@@ -364,15 +471,11 @@ impl ValidatorRecord {
         &self,
         ideal_epoch_credits: Option<u64>,
         sample_epoch: Option<u64>,
-    ) -> f64 {
-        let Some(credits) = self.matching_epoch_credits(sample_epoch) else {
-            return 0.0;
-        };
-        let Some(ideal) = ideal_epoch_credits.filter(|ideal| *ideal > 0) else {
-            return 0.0;
-        };
+    ) -> Option<f64> {
+        let credits = self.matching_epoch_credits(sample_epoch)?;
+        let ideal = ideal_epoch_credits.filter(|ideal| *ideal > 0)?;
 
-        ratio(credits, ideal)
+        Some(ratio(credits, ideal))
     }
 
     fn blocks_missed(&self) -> u64 {
@@ -387,10 +490,10 @@ pub struct ScopeMetrics {
     pub delinquent_count: u64,
     pub current_stake_lamports: u64,
     pub delinquent_stake_lamports: u64,
-    pub latest_epoch_vote_credits: u64,
+    pub latest_epoch_vote_credits: Option<u64>,
     pub latest_epoch_reward_lamports: u64,
     pub latest_epoch_rewarded_blocks_produced: u64,
-    pub vote_efficiency_pct: f64,
+    pub vote_efficiency_pct: Option<f64>,
     pub last_vote_slot_lag: f64,
     pub root_slot_lag: f64,
     pub average_commission_pct: f64,
@@ -411,12 +514,17 @@ pub struct Snapshot {
     pub network: String,
     pub epoch: u64,
     pub slot: u64,
+    pub epoch_progress_pct: f64,
+    pub epoch_slots_remaining: u64,
+    pub average_slot_time_seconds: Option<f64>,
+    pub estimated_epoch_end_unixtime: Option<f64>,
     pub vote_credits_sample_epoch: Option<u64>,
     pub reward_sample_epoch: Option<u64>,
     pub scopes: BTreeMap<String, ScopeMetrics>,
     pub watched_validators: Vec<WatchedValidatorMetrics>,
     pub data_sources: Vec<SnapshotDataSource>,
     pub mode_statuses: Vec<ModeStatus>,
+    pub economics: Option<EconomicsMetrics>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -456,10 +564,11 @@ struct ScopeAccumulator {
     delinquent_count: u64,
     current_stake_lamports: u64,
     delinquent_stake_lamports: u64,
-    latest_epoch_vote_credits: u64,
+    latest_epoch_vote_credits: Option<u64>,
     latest_epoch_reward_lamports: u64,
     latest_epoch_rewarded_blocks_produced: u64,
     weighted_vote_efficiency_sum: f64,
+    vote_efficiency_weight_sum: f64,
     weighted_last_vote_slot_lag_sum: f64,
     weighted_root_slot_lag_sum: f64,
     weighted_commission_sum: f64,
@@ -497,9 +606,17 @@ impl ScopeAccumulator {
         self.weighted_commission_sum += weight * f64::from(record.commission);
 
         if let Some(credits) = record.matching_epoch_credits(sample_epoch) {
-            self.latest_epoch_vote_credits += credits;
-            self.weighted_vote_efficiency_sum +=
-                weight * record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch);
+            self.latest_epoch_vote_credits = Some(
+                self.latest_epoch_vote_credits
+                    .unwrap_or_default()
+                    .saturating_add(credits),
+            );
+        }
+        if let Some(vote_efficiency_pct) =
+            record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch)
+        {
+            self.weighted_vote_efficiency_sum += weight * vote_efficiency_pct;
+            self.vote_efficiency_weight_sum += weight;
         }
 
         if let Some(reward_lamports) = record.matching_epoch_reward_lamports(reward_sample_epoch) {
@@ -529,7 +646,8 @@ impl ScopeAccumulator {
             latest_epoch_vote_credits: self.latest_epoch_vote_credits,
             latest_epoch_reward_lamports: self.latest_epoch_reward_lamports,
             latest_epoch_rewarded_blocks_produced: self.latest_epoch_rewarded_blocks_produced,
-            vote_efficiency_pct: self.weighted_vote_efficiency_sum / weight_sum,
+            vote_efficiency_pct: (self.vote_efficiency_weight_sum > 0.0)
+                .then(|| self.weighted_vote_efficiency_sum / self.vote_efficiency_weight_sum),
             last_vote_slot_lag: self.weighted_last_vote_slot_lag_sum / weight_sum,
             root_slot_lag: self.weighted_root_slot_lag_sum / weight_sum,
             average_commission_pct: self.weighted_commission_sum / weight_sum,
@@ -556,16 +674,22 @@ pub async fn ensure_economics_supported(sources: &SourceChain, config: &Config) 
     );
     let epoch_info = epoch_info?;
     let vote_accounts = vote_accounts?;
-    let current_slot = epoch_info.value.absolute_slot;
-    let epoch_start_slot = current_slot.saturating_sub(epoch_info.value.slot_index);
+    let target = resolve_economics_target(config, &vote_accounts.value)?;
+    sources
+        .required(&command::GetAccountBalances {
+            identity: &target.identity,
+            vote_account: &target.vote_account,
+        })
+        .await?;
 
     let Some(reward_epoch) = epoch_info.value.epoch.checked_sub(1) else {
         return Ok(());
     };
-    let reward_addresses = economics_preflight_reward_addresses(config, &vote_accounts.value);
+    let current_slot = epoch_info.value.absolute_slot;
+    let epoch_start_slot = current_slot.saturating_sub(epoch_info.value.slot_index);
     sources
         .required(&command::GetInflationRewards {
-            addresses: &reward_addresses,
+            addresses: std::slice::from_ref(&target.vote_account),
             epoch: reward_epoch,
         })
         .await?;
@@ -584,9 +708,10 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     let vote_accounts_command = command::GetVoteAccounts {
         delinquent_slot_distance: config.delinquent_slot_distance,
     };
-    let (epoch_info, vote_accounts) = tokio::join!(
+    let (epoch_info, vote_accounts, recent_performance) = tokio::join!(
         sources.required(&epoch_command),
         sources.required(&vote_accounts_command),
+        sources.optional(&command::GetRecentPerformanceSamples),
     );
     let epoch_info = epoch_info?;
     let vote_accounts = vote_accounts?;
@@ -594,12 +719,19 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         epoch_info.source.clone().into(),
         vote_accounts.source.clone().into(),
     ];
+    let average_slot_time_seconds = recent_performance.and_then(|resolved| {
+        data_sources.push(resolved.source.into());
+        resolved.value
+    });
 
     let current_slot = epoch_info.value.absolute_slot;
     let epoch_start_slot = current_slot.saturating_sub(epoch_info.value.slot_index);
-    let next_epoch_start_slot = epoch_start_slot + epoch_info.value.slots_in_epoch;
+    let next_epoch_start_slot = epoch_start_slot.saturating_add(epoch_info.value.slots_in_epoch);
     let reward_epoch = epoch_info.value.epoch.checked_sub(1);
     let economics_enabled = config.modes.economics.enabled;
+    let economics_target = economics_enabled
+        .then(|| resolve_economics_target(config, &vote_accounts.value))
+        .transpose()?;
     let reward_vote_accounts = economics_enabled.then(|| {
         vote_accounts
             .value
@@ -619,11 +751,20 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         sources.optional(&current_schedule_command),
         sources.optional(&next_schedule_command),
         async {
+            let Some(target) = economics_target.as_ref() else {
+                return Ok::<_, anyhow::Error>((None, None, None));
+            };
+            let balances = sources
+                .required(&command::GetAccountBalances {
+                    identity: &target.identity,
+                    vote_account: &target.vote_account,
+                })
+                .await?;
+
             let (Some(epoch), Some(addresses)) = (reward_epoch, reward_vote_accounts.as_deref())
             else {
-                return Ok::<_, anyhow::Error>((None, None));
+                return Ok((Some(balances), None, None));
             };
-
             let inflation_rewards_command = command::GetInflationRewards { addresses, epoch };
             let block_production_command = command::GetRewardEpochBlockProduction {
                 epoch_start_slot,
@@ -633,11 +774,15 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
                 sources.required(&inflation_rewards_command),
                 sources.required(&block_production_command),
             );
-            Ok((Some(inflation_rewards?), Some(block_production?)))
+            Ok((
+                Some(balances),
+                Some(inflation_rewards?),
+                Some(block_production?),
+            ))
         },
     );
 
-    let (inflation_rewards, reward_epoch_block_production) = economics_outputs?;
+    let (account_balances, inflation_rewards, reward_epoch_block_production) = economics_outputs?;
     let leadership_up =
         current_block_production.is_some() && current_schedule.is_some() && next_schedule.is_some();
 
@@ -656,6 +801,13 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         data_sources.push(resolved.source.into());
         resolved.value
     });
+    let economics = match (economics_target.as_ref(), account_balances) {
+        (Some(target), Some(resolved)) => {
+            data_sources.push(resolved.source.into());
+            Some(build_economics_metrics(target, resolved.value))
+        }
+        _ => None,
+    };
     let inflation_rewards = inflation_rewards
         .map(|resolved| {
             data_sources.push(resolved.source.into());
@@ -673,7 +825,10 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     let build_context = RecordBuildContext {
         matcher: &matcher,
         current_slot,
+        current_epoch: epoch_info.value.epoch,
         epoch_start_slot,
+        next_epoch_start_slot,
+        average_slot_time_seconds,
         by_identity: &block_production.by_identity,
         reward_epoch_by_identity: &reward_epoch_block_production.by_identity,
         current_schedule: current_schedule.as_ref(),
@@ -687,7 +842,6 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     for info in vote_accounts.value.current {
         records.push(build_record(info, ValidatorStatus::Current, &build_context));
     }
-
     for info in vote_accounts.value.delinquent {
         records.push(build_record(
             info,
@@ -702,7 +856,17 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         current_slot,
         &records,
     );
+    snapshot.epoch_progress_pct =
+        ratio(epoch_info.value.slot_index, epoch_info.value.slots_in_epoch);
+    snapshot.epoch_slots_remaining = epoch_info
+        .value
+        .slots_in_epoch
+        .saturating_sub(epoch_info.value.slot_index);
+    snapshot.average_slot_time_seconds = average_slot_time_seconds;
+    snapshot.estimated_epoch_end_unixtime =
+        estimated_epoch_end_unixtime(snapshot.epoch_slots_remaining, average_slot_time_seconds);
     snapshot.data_sources = data_sources;
+    snapshot.economics = economics;
     snapshot.mode_statuses = vec![
         ModeStatus {
             mode: ModeId::Consensus,
@@ -724,8 +888,11 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
 
 struct RecordBuildContext<'a> {
     matcher: &'a LabelMatcher,
+    current_epoch: u64,
     current_slot: u64,
     epoch_start_slot: u64,
+    next_epoch_start_slot: u64,
+    average_slot_time_seconds: Option<f64>,
     by_identity: &'a HashMap<String, (u64, u64)>,
     reward_epoch_by_identity: &'a HashMap<String, (u64, u64)>,
     current_schedule: Option<&'a HashMap<String, Vec<u64>>>,
@@ -749,26 +916,37 @@ fn build_record(
         .copied()
         .map_or(0, |(_, produced)| produced);
 
-    let future_current_epoch = context
+    let current_epoch_future_slots = context
         .current_schedule
         .and_then(|schedule| schedule.get(&info.node_pubkey))
-        .map_or(0, |slots| {
-            slots
-                .iter()
-                .filter(|relative_slot| {
-                    context.epoch_start_slot + **relative_slot >= context.current_slot
-                })
-                .count() as u64
-        });
-
-    let future_next_epoch = context
+        .into_iter()
+        .flatten()
+        .filter_map(|relative_slot| context.epoch_start_slot.checked_add(*relative_slot))
+        .filter(|absolute_slot| *absolute_slot >= context.current_slot);
+    let next_epoch_future_slots = context
         .next_schedule
         .and_then(|schedule| schedule.get(&info.node_pubkey))
-        .map_or(0, |slots| slots.len() as u64);
+        .into_iter()
+        .flatten()
+        .filter_map(|relative_slot| context.next_epoch_start_slot.checked_add(*relative_slot));
+    let (future_leader_slots, next_leader_slot) = current_epoch_future_slots
+        .chain(next_epoch_future_slots)
+        .fold((0_u64, None), |(count, next), slot| {
+            (
+                count.saturating_add(1),
+                Some(next.map_or(slot, |current: u64| current.min(slot))),
+            )
+        });
+    let slots_until_next_leader =
+        next_leader_slot.map(|slot| slot.saturating_sub(context.current_slot));
+    let seconds_until_next_leader = slots_until_next_leader
+        .zip(context.average_slot_time_seconds)
+        .map(|(slots, slot_time)| slots as f64 * slot_time);
 
     let latest_epoch_credits = info
         .epoch_credits
         .iter()
+        .filter(|(epoch, _, _)| *epoch <= context.current_epoch)
         .max_by_key(|(epoch, _, _)| *epoch)
         .map(|(epoch, credits, previous)| EpochCreditsSample {
             epoch: *epoch,
@@ -793,7 +971,10 @@ fn build_record(
         latest_epoch_rewarded_blocks_produced: reward_epoch_blocks_produced,
         current_epoch_leader_slots: leader_slots,
         current_epoch_blocks_produced: blocks_produced,
-        future_leader_slots: future_current_epoch + future_next_epoch,
+        future_leader_slots,
+        next_leader_slot,
+        slots_until_next_leader,
+        seconds_until_next_leader,
         scopes,
     }
 }
@@ -812,6 +993,7 @@ pub fn aggregate_records(
                 .as_ref()
                 .map(|credits| credits.epoch)
         })
+        .filter(|sample_epoch| *sample_epoch <= epoch)
         .max();
     let reward_sample_epoch = records
         .iter()
@@ -874,6 +1056,10 @@ pub fn aggregate_records(
         network,
         epoch,
         slot,
+        epoch_progress_pct: 0.0,
+        epoch_slots_remaining: 0,
+        average_slot_time_seconds: None,
+        estimated_epoch_end_unixtime: None,
         vote_credits_sample_epoch: sample_epoch,
         reward_sample_epoch,
         scopes: scopes
@@ -883,6 +1069,7 @@ pub fn aggregate_records(
         watched_validators,
         data_sources: vec![],
         mode_statuses: vec![],
+        economics: None,
     }
 }
 
@@ -893,9 +1080,7 @@ fn build_watched_validator_metrics(
     sample_epoch: Option<u64>,
     reward_sample_epoch: Option<u64>,
 ) -> WatchedValidatorMetrics {
-    let latest_epoch_vote_credits = record
-        .matching_epoch_credits(sample_epoch)
-        .unwrap_or_default();
+    let latest_epoch_vote_credits = record.matching_epoch_credits(sample_epoch);
     let latest_epoch_reward_lamports = record
         .matching_epoch_reward_lamports(reward_sample_epoch)
         .unwrap_or_default();
@@ -925,6 +1110,9 @@ fn build_watched_validator_metrics(
             record.current_epoch_leader_slots,
         ),
         future_leader_slots: record.future_leader_slots,
+        next_leader_slot: record.next_leader_slot,
+        slots_until_next_leader: record.slots_until_next_leader,
+        seconds_until_next_leader: record.seconds_until_next_leader,
     }
 }
 
@@ -960,27 +1148,83 @@ fn reward_epoch_block_range(
     })
 }
 
-fn economics_preflight_reward_addresses(
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct EconomicsTarget {
+    identity: String,
+    vote_account: String,
+}
+
+fn resolve_economics_target(
     config: &Config,
     vote_accounts: &VoteAccounts,
-) -> Vec<String> {
-    if let Some(vote_account) = config
+) -> Result<EconomicsTarget> {
+    let configured = config
         .modes
         .economics
         .validator
         .as_ref()
-        .and_then(|validator| validator.vote_account.clone())
-    {
-        return vec![vote_account];
-    }
-
-    vote_accounts
+        .context("economics mode requires a configured validator")?;
+    let target = vote_accounts
         .current
         .iter()
         .chain(vote_accounts.delinquent.iter())
-        .take(1)
-        .map(|info| info.vote_pubkey.clone())
-        .collect()
+        .find(|info| {
+            configured
+                .identity
+                .as_ref()
+                .is_none_or(|identity| identity == &info.node_pubkey)
+                && configured
+                    .vote_account
+                    .as_ref()
+                    .is_none_or(|vote_account| vote_account == &info.vote_pubkey)
+        })
+        .context("configured economics validator is not present in getVoteAccounts")?;
+
+    Ok(EconomicsTarget {
+        identity: target.node_pubkey.clone(),
+        vote_account: target.vote_pubkey.clone(),
+    })
+}
+
+fn build_economics_metrics(
+    target: &EconomicsTarget,
+    balances: AccountBalances,
+) -> EconomicsMetrics {
+    let vat_reserve_lamports = balances
+        .vote_account_rent_exempt_minimum_lamports
+        .map(|minimum| balances.vote_account_lamports.saturating_sub(minimum));
+
+    EconomicsMetrics {
+        identity: target.identity.clone(),
+        vote_account: target.vote_account.clone(),
+        identity_balance_lamports: balances.identity_lamports,
+        vote_account_balance_lamports: balances.vote_account_lamports,
+        vote_account_rent_exempt_minimum_lamports: balances
+            .vote_account_rent_exempt_minimum_lamports,
+        vat_reserve_lamports,
+        vat_epochs_available: vat_reserve_lamports.map(|reserve| reserve / VAT_LAMPORTS_PER_EPOCH),
+        vat_next_epoch_funded: vat_reserve_lamports
+            .map(|reserve| reserve >= VAT_LAMPORTS_PER_EPOCH),
+    }
+}
+
+fn estimated_epoch_end_unixtime(
+    slots_remaining: u64,
+    average_slot_time_seconds: Option<f64>,
+) -> Option<f64> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_secs_f64();
+    estimated_epoch_end_unixtime_at(slots_remaining, average_slot_time_seconds, now)
+}
+
+fn estimated_epoch_end_unixtime_at(
+    slots_remaining: u64,
+    average_slot_time_seconds: Option<f64>,
+    now_unixtime: f64,
+) -> Option<f64> {
+    average_slot_time_seconds.map(|slot_time| now_unixtime + slots_remaining as f64 * slot_time)
 }
 
 fn ratio(numerator: u64, denominator: u64) -> f64 {
@@ -1026,6 +1270,21 @@ struct GetVoteAccountsConfig<'a> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct GetMultipleAccountsConfig<'a> {
+    commitment: &'a str,
+    encoding: &'static str,
+    data_slice: DataSlice,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DataSlice {
+    offset: usize,
+    length: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct GetBlockProductionConfig<'a> {
     commitment: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1062,6 +1321,19 @@ struct JsonRpcError {
 #[serde(rename_all = "camelCase")]
 struct RpcValueResponse<T> {
     value: T,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentPerformanceSample {
+    num_slots: u64,
+    sample_period_secs: u16,
+}
+
+#[derive(Deserialize)]
+struct AccountValue {
+    lamports: u64,
+    space: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -1107,11 +1379,12 @@ struct InflationRewardValue {
 #[cfg(test)]
 mod tests {
     use super::{
-        aggregate_records, build_record, build_watched_validator_metrics, collect_snapshot,
-        economics_preflight_reward_addresses, ensure_economics_supported, ratio,
-        reward_epoch_block_range, BlockProduction, EpochCreditsSample, GetBlockProductionConfig,
-        RecordBuildContext, RewardSample, RpcClient, RpcValueResponse, ScopeMetrics, SlotRange,
-        ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
+        aggregate_records, build_economics_metrics, build_record, build_watched_validator_metrics,
+        collect_snapshot, ensure_economics_supported, estimated_epoch_end_unixtime_at, ratio,
+        resolve_economics_target, reward_epoch_block_range, AccountBalances, BlockProduction,
+        EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig, RecordBuildContext,
+        RewardSample, RpcClient, RpcValueResponse, ScopeMetrics, SlotRange, ValidatorRecord,
+        ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
         MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
     };
     use crate::{
@@ -1139,10 +1412,12 @@ mod tests {
     #[derive(Clone, Copy)]
     enum MockRpcProfile {
         Default,
+        NoAccountSpace,
         NoCurrentBlockProduction,
         Unhealthy,
         NoEpochInfo,
         NoLeaderSchedule,
+        NoPerformanceSamples,
     }
 
     #[test]
@@ -1168,6 +1443,9 @@ mod tests {
                 current_epoch_leader_slots: 4,
                 current_epoch_blocks_produced: 3,
                 future_leader_slots: 2,
+                next_leader_slot: Some(105),
+                slots_until_next_leader: Some(5),
+                seconds_until_next_leader: Some(2.0),
                 scopes: vec!["scope:watched".to_string(), "scope:all-network".to_string()],
             },
             ValidatorRecord {
@@ -1190,6 +1468,9 @@ mod tests {
                 current_epoch_leader_slots: 2,
                 current_epoch_blocks_produced: 1,
                 future_leader_slots: 1,
+                next_leader_slot: None,
+                slots_until_next_leader: None,
+                seconds_until_next_leader: None,
                 scopes: vec!["scope:network".to_string(), "scope:all-network".to_string()],
             },
         ];
@@ -1213,10 +1494,10 @@ mod tests {
                 delinquent_count: 0,
                 current_stake_lamports: 10,
                 delinquent_stake_lamports: 0,
-                latest_epoch_vote_credits: 10,
+                latest_epoch_vote_credits: Some(10),
                 latest_epoch_reward_lamports: 9_000_000_000,
                 latest_epoch_rewarded_blocks_produced: 3,
-                vote_efficiency_pct: 100.0,
+                vote_efficiency_pct: Some(100.0),
                 last_vote_slot_lag: 5.0,
                 root_slot_lag: 6.0,
                 average_commission_pct: 5.0,
@@ -1229,8 +1510,10 @@ mod tests {
 
         assert_eq!(all_network.current_count, 1);
         assert_eq!(all_network.delinquent_count, 1);
-        assert_eq!(all_network.latest_epoch_vote_credits, 15);
-        assert!(all_network.vote_efficiency_pct > 80.0);
+        assert_eq!(all_network.latest_epoch_vote_credits, Some(15));
+        assert!(all_network
+            .vote_efficiency_pct
+            .is_some_and(|efficiency| efficiency > 80.0));
         assert_eq!(
             snapshot.watched_validators,
             vec![WatchedValidatorMetrics {
@@ -1239,10 +1522,10 @@ mod tests {
                 status: ValidatorStatus::Current,
                 scopes: vec!["scope:watched".to_string(), "scope:all-network".to_string()],
                 activated_stake_lamports: 10,
-                latest_epoch_vote_credits: 10,
+                latest_epoch_vote_credits: Some(10),
                 latest_epoch_reward_lamports: 9_000_000_000,
                 latest_epoch_rewarded_blocks_produced: 3,
-                vote_efficiency_pct: 100.0,
+                vote_efficiency_pct: Some(100.0),
                 last_vote_slot_lag: 5,
                 root_slot_lag: 6,
                 commission_pct: 5,
@@ -1250,6 +1533,9 @@ mod tests {
                 blocks_missed: 1,
                 block_production_rate: 75.0,
                 future_leader_slots: 2,
+                next_leader_slot: Some(105),
+                slots_until_next_leader: Some(5),
+                seconds_until_next_leader: Some(2.0),
             }]
         );
 
@@ -1257,7 +1543,7 @@ mod tests {
     }
 
     #[test]
-    fn watched_validator_metrics_use_zero_efficiency_without_matching_epoch() {
+    fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
         let record = ValidatorRecord {
             identity: "id-1".to_string(),
             vote_account: "vote-1".to_string(),
@@ -1275,6 +1561,9 @@ mod tests {
             current_epoch_leader_slots: 0,
             current_epoch_blocks_produced: 0,
             future_leader_slots: 3,
+            next_leader_slot: Some(103),
+            slots_until_next_leader: Some(3),
+            seconds_until_next_leader: Some(1.2),
             scopes: vec!["scope:watched".to_string()],
         };
 
@@ -1287,10 +1576,10 @@ mod tests {
                 status: ValidatorStatus::Current,
                 scopes: vec!["scope:watched".to_string()],
                 activated_stake_lamports: 10,
-                latest_epoch_vote_credits: 0,
+                latest_epoch_vote_credits: None,
                 latest_epoch_reward_lamports: 0,
                 latest_epoch_rewarded_blocks_produced: 0,
-                vote_efficiency_pct: 0.0,
+                vote_efficiency_pct: None,
                 last_vote_slot_lag: 2,
                 root_slot_lag: 3,
                 commission_pct: 7,
@@ -1298,6 +1587,9 @@ mod tests {
                 blocks_missed: 0,
                 block_production_rate: 0.0,
                 future_leader_slots: 3,
+                next_leader_slot: Some(103),
+                slots_until_next_leader: Some(3),
+                seconds_until_next_leader: Some(1.2),
             }
         );
     }
@@ -1410,6 +1702,73 @@ mod tests {
         assert_eq!(snapshot.watched_validators[0].blocks_produced, 4);
         assert_eq!(snapshot.watched_validators[0].future_leader_slots, 3);
 
+        assert_eq!(snapshot.epoch_progress_pct, 10.0);
+        assert_eq!(snapshot.epoch_slots_remaining, 90);
+        assert_eq!(snapshot.average_slot_time_seconds, Some(0.4));
+        assert!(snapshot.estimated_epoch_end_unixtime.is_some());
+        assert_eq!(snapshot.watched_validators[0].next_leader_slot, Some(810));
+        assert_eq!(
+            snapshot.watched_validators[0].slots_until_next_leader,
+            Some(0)
+        );
+        assert_eq!(
+            snapshot.watched_validators[0].seconds_until_next_leader,
+            Some(0.0)
+        );
+        let economics = snapshot
+            .economics
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing economics metrics"))?;
+        assert_eq!(economics.identity_balance_lamports, 3_000_000_000);
+        assert_eq!(economics.vote_account_balance_lamports, 2_500_000_000);
+        assert_eq!(
+            economics.vote_account_rent_exempt_minimum_lamports,
+            Some(900_000_000)
+        );
+        assert_eq!(economics.vat_reserve_lamports, Some(1_600_000_000));
+        assert_eq!(economics.vat_epochs_available, Some(2));
+        assert_eq!(economics.vat_next_epoch_funded, Some(true));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn missing_performance_samples_omit_time_estimates_without_failing_collection(
+    ) -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoPerformanceSamples).await?;
+        let config = Config {
+            network: "devnet".to_string(),
+            connectors: vec![ConnectorConfig {
+                name: "primary".to_string(),
+                provider: "mock-solana".to_string(),
+                features: Vec::new(),
+                rpc_url: Some(rpc_url),
+                rpc_timeout_sec: 5,
+                ..ConnectorConfig::default()
+            }],
+            modes: modes_for(&["primary"], false),
+            watched_validators: vec![WatchedValidatorConfig {
+                identity: Some("id-1".to_string()),
+                vote_account: Some("vote-1".to_string()),
+                labels: vec!["operator:test".to_string()],
+            }],
+            ..Config::default()
+        };
+        let sources = SourceChain::from_config(&config)?;
+        let snapshot = collect_snapshot(&sources, &config).await?;
+        server_task.abort();
+
+        assert_eq!(snapshot.average_slot_time_seconds, None);
+        assert_eq!(snapshot.estimated_epoch_end_unixtime, None);
+        assert_eq!(snapshot.watched_validators[0].next_leader_slot, Some(810));
+        assert_eq!(
+            snapshot.watched_validators[0].seconds_until_next_leader,
+            None
+        );
+        assert!(!snapshot
+            .data_sources
+            .iter()
+            .any(|source| source.command == CommandId::RecentPerformanceSamples));
         Ok(())
     }
 
@@ -1753,8 +2112,11 @@ mod tests {
 
         let context = RecordBuildContext {
             matcher: &matcher,
+            current_epoch: 9,
             current_slot: 110,
             epoch_start_slot: 100,
+            next_epoch_start_slot: 200,
+            average_slot_time_seconds: Some(0.5),
             by_identity: &by_identity,
             reward_epoch_by_identity: &reward_epoch_by_identity,
             current_schedule: Some(&current_schedule),
@@ -1768,7 +2130,7 @@ mod tests {
                 node_pubkey: "id-1".to_string(),
                 activated_stake: 42,
                 commission: 7,
-                epoch_credits: vec![(8, 20, 12), (9, 35, 20)],
+                epoch_credits: vec![(8, 20, 12), (9, 35, 20), (u64::MAX, u64::MAX, u64::MAX)],
                 last_vote: 109,
                 root_slot: 108,
             },
@@ -1780,6 +2142,9 @@ mod tests {
         assert_eq!(record.current_epoch_blocks_produced, 4);
         assert_eq!(record.latest_epoch_rewarded_blocks_produced, 3);
         assert_eq!(record.future_leader_slots, 4);
+        assert_eq!(record.next_leader_slot, Some(110));
+        assert_eq!(record.slots_until_next_leader, Some(0));
+        assert_eq!(record.seconds_until_next_leader, Some(0.0));
         assert_eq!(
             record.latest_epoch_credits,
             Some(EpochCreditsSample {
@@ -1818,8 +2183,11 @@ mod tests {
 
         let context = RecordBuildContext {
             matcher: &matcher,
+            current_epoch: 1,
             current_slot: 50,
             epoch_start_slot: 40,
+            next_epoch_start_slot: 140,
+            average_slot_time_seconds: None,
             by_identity: &by_identity,
             reward_epoch_by_identity: &reward_epoch_by_identity,
             current_schedule: None,
@@ -1844,6 +2212,9 @@ mod tests {
         assert_eq!(record.current_epoch_leader_slots, 0);
         assert_eq!(record.current_epoch_blocks_produced, 0);
         assert_eq!(record.future_leader_slots, 0);
+        assert_eq!(record.next_leader_slot, None);
+        assert_eq!(record.slots_until_next_leader, None);
+        assert_eq!(record.seconds_until_next_leader, None);
         assert_eq!(record.latest_epoch_credits, None);
         assert_eq!(record.latest_epoch_reward, None);
         assert!(record.scopes.contains(&"scope:network".to_string()));
@@ -1863,43 +2234,7 @@ mod tests {
     }
 
     #[test]
-    fn economics_preflight_prefers_configured_vote_account() {
-        let config = Config {
-            modes: ModesConfig {
-                economics: EconomicsModeConfig {
-                    enabled: true,
-                    validator: Some(crate::config::WatchedValidatorConfig {
-                        identity: Some("id-1".to_string()),
-                        vote_account: Some("vote-configured".to_string()),
-                        labels: vec![],
-                    }),
-                    ..EconomicsModeConfig::default()
-                },
-                ..ModesConfig::default()
-            },
-            ..Config::default()
-        };
-        let vote_accounts = VoteAccounts {
-            current: vec![VoteAccountInfo {
-                vote_pubkey: "vote-cluster".to_string(),
-                node_pubkey: "id-cluster".to_string(),
-                activated_stake: 0,
-                commission: 0,
-                epoch_credits: vec![],
-                last_vote: 0,
-                root_slot: 0,
-            }],
-            delinquent: vec![],
-        };
-
-        assert_eq!(
-            economics_preflight_reward_addresses(&config, &vote_accounts),
-            vec!["vote-configured".to_string()]
-        );
-    }
-
-    #[test]
-    fn economics_preflight_falls_back_to_cluster_vote_account() {
+    fn economics_target_resolves_vote_account_from_configured_identity() -> Result<()> {
         let config = Config {
             modes: ModesConfig {
                 economics: EconomicsModeConfig {
@@ -1918,8 +2253,8 @@ mod tests {
         let vote_accounts = VoteAccounts {
             current: vec![],
             delinquent: vec![VoteAccountInfo {
-                vote_pubkey: "vote-cluster".to_string(),
-                node_pubkey: "id-cluster".to_string(),
+                vote_pubkey: "vote-1".to_string(),
+                node_pubkey: "id-1".to_string(),
                 activated_stake: 0,
                 commission: 0,
                 epoch_credits: vec![],
@@ -1929,8 +2264,107 @@ mod tests {
         };
 
         assert_eq!(
-            economics_preflight_reward_addresses(&config, &vote_accounts),
-            vec!["vote-cluster".to_string()]
+            resolve_economics_target(&config, &vote_accounts)?,
+            EconomicsTarget {
+                identity: "id-1".to_string(),
+                vote_account: "vote-1".to_string(),
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn economics_target_rejects_mismatched_identity_and_vote_account() {
+        let config = Config {
+            modes: ModesConfig {
+                economics: EconomicsModeConfig {
+                    enabled: true,
+                    validator: Some(crate::config::WatchedValidatorConfig {
+                        identity: Some("id-1".to_string()),
+                        vote_account: Some("wrong-vote".to_string()),
+                        labels: vec![],
+                    }),
+                    ..EconomicsModeConfig::default()
+                },
+                ..ModesConfig::default()
+            },
+            ..Config::default()
+        };
+        let vote_accounts = VoteAccounts {
+            current: vec![VoteAccountInfo {
+                vote_pubkey: "vote-1".to_string(),
+                node_pubkey: "id-1".to_string(),
+                activated_stake: 0,
+                commission: 0,
+                epoch_credits: vec![],
+                last_vote: 0,
+                root_slot: 0,
+            }],
+            delinquent: vec![],
+        };
+
+        let error = resolve_economics_target(&config, &vote_accounts)
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            error.as_deref(),
+            Some("configured economics validator is not present in getVoteAccounts")
+        );
+    }
+
+    #[test]
+    fn economics_metrics_preserve_rent_and_vat_boundaries() {
+        let metrics = build_economics_metrics(
+            &EconomicsTarget {
+                identity: "id-1".to_string(),
+                vote_account: "vote-1".to_string(),
+            },
+            AccountBalances {
+                identity_lamports: 3_000_000_000,
+                vote_account_lamports: 2_500_000_000,
+                vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
+            },
+        );
+
+        assert_eq!(metrics.vat_reserve_lamports, Some(1_600_000_000));
+        assert_eq!(metrics.vat_epochs_available, Some(2));
+        assert_eq!(metrics.vat_next_epoch_funded, Some(true));
+    }
+
+    #[tokio::test]
+    async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoAccountSpace).await?;
+        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+
+        let balances = client.get_account_balances("id-1", "vote-1").await?;
+        server_task.abort();
+        assert_eq!(balances.identity_lamports, 3_000_000_000);
+        assert_eq!(balances.vote_account_lamports, 2_500_000_000);
+        assert_eq!(balances.vote_account_rent_exempt_minimum_lamports, None);
+
+        let metrics = build_economics_metrics(
+            &EconomicsTarget {
+                identity: "id-1".to_string(),
+                vote_account: "vote-1".to_string(),
+            },
+            balances,
+        );
+        assert_eq!(metrics.vat_reserve_lamports, None);
+        assert_eq!(metrics.vat_epochs_available, None);
+        assert_eq!(metrics.vat_next_epoch_funded, None);
+        Ok(())
+    }
+
+    #[test]
+    fn epoch_end_estimate_requires_average_slot_time() {
+        assert_eq!(
+            estimated_epoch_end_unixtime_at(100, Some(0.4), 1_700_000_000.0),
+            Some(1_700_000_040.0)
+        );
+        assert_eq!(
+            estimated_epoch_end_unixtime_at(100, None, 1_700_000_000.0),
+            None
         );
     }
 
@@ -2022,6 +2456,23 @@ mod tests {
                 )
                     .into_response()
             }
+            "getRecentPerformanceSamples" => {
+                if matches!(profile, MockRpcProfile::NoPerformanceSamples) {
+                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                        .into_response();
+                }
+                (
+                    StatusCode::OK,
+                    Json(rpc_success(json!([{
+                        "slot": 810,
+                        "numTransactions": 1000,
+                        "numSlots": 100,
+                        "samplePeriodSecs": 40,
+                        "numNonVoteTransactions": 100
+                    }]))),
+                )
+                    .into_response()
+            }
             "getVoteAccounts" => (
                 StatusCode::OK,
                 Json(rpc_success(json!({
@@ -2101,6 +2552,41 @@ mod tests {
                 };
                 (StatusCode::OK, Json(rpc_success(schedule))).into_response()
             }
+            "getMultipleAccounts" => {
+                let vote_account_space = if matches!(profile, MockRpcProfile::NoAccountSpace) {
+                    Value::Null
+                } else {
+                    json!(3762)
+                };
+                (
+                    StatusCode::OK,
+                    Json(rpc_success(json!({
+                        "context": { "slot": 810 },
+                        "value": [
+                            {
+                                "lamports": 3_000_000_000u64,
+                                "owner": "11111111111111111111111111111111",
+                                "data": ["", "base64"],
+                                "executable": false,
+                                "rentEpoch": 0,
+                                "space": 0
+                            },
+                            {
+                                "lamports": 2_500_000_000u64,
+                                "owner": "Vote111111111111111111111111111111111111111",
+                                "data": ["", "base64"],
+                                "executable": false,
+                                "rentEpoch": 0,
+                                "space": vote_account_space
+                            }
+                        ]
+                    }))),
+                )
+                    .into_response()
+            }
+            "getMinimumBalanceForRentExemption" => {
+                (StatusCode::OK, Json(rpc_success(json!(900_000_000u64)))).into_response()
+            }
             "minimumLedgerSlot" => (StatusCode::OK, Json(rpc_success(json!(600)))).into_response(),
             "getInflationReward" => {
                 let rewards = params
@@ -2149,6 +2635,7 @@ mod tests {
                 commands: ConsensusCommands {
                     epoch_info: route(),
                     vote_accounts: route(),
+                    recent_performance_samples: route(),
                 },
             },
             leadership: LeadershipModeConfig {
@@ -2160,8 +2647,13 @@ mod tests {
             },
             economics: EconomicsModeConfig {
                 enabled: economics_enabled,
-                validator: None,
+                validator: economics_enabled.then(|| WatchedValidatorConfig {
+                    identity: Some("id-1".to_string()),
+                    vote_account: Some("vote-1".to_string()),
+                    labels: vec![],
+                }),
                 commands: EconomicsCommands {
+                    account_balances: economics_enabled.then(route).unwrap_or_default(),
                     inflation_rewards: economics_enabled.then(route).unwrap_or_default(),
                     reward_epoch_block_production: economics_enabled
                         .then(route)

@@ -14,3 +14,4 @@
 - Replaced provider-specific connector kinds with explicit `provider` names and watcher-relevant `features` arrays.
 - Separated transport from provider capabilities: `rpc_url` and `ws_url` determine available transports, feature arrays may be empty, and prior-epoch economics routes require `historical-data`.
 - Added a Helius Devnet profile that consumes complete authenticated RPC and WebSocket URLs and enables the economics mode on a declared `historical-data` source.
+- Added required `recent_performance_samples` consensus routes and economics `account_balances` routes; balance collection uses standard RPC while prior-epoch reward routes retain the `historical-data` requirement.

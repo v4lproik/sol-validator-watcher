@@ -22,6 +22,7 @@ ws_health = ["surfpool"]
 [modes.consensus.commands]
 epoch_info = ["surfpool"]
 vote_accounts = ["surfpool"]
+recent_performance_samples = ["surfpool"]
 
 [modes.leadership.commands]
 current_block_production = ["surfpool"]
