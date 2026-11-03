@@ -60,8 +60,9 @@ then complete the repository's required local gates.
 
 A behavioral change is not complete until the changed surface runs:
 
-- CLI/runtime: start the watcher with representative config, observe one poll,
-  fetch `/healthz` and `/metrics`, trigger shutdown, and observe a clean exit.
+- CLI/runtime: start the watcher with representative config, observe five clean
+  polls, fetch `/healthz`, `/readyz`, and `/metrics`, trigger shutdown, and
+  observe a clean exit.
 - Credential-bearing provider URLs: inject complete URLs from the local
   environment, never command arguments or output; exercise each configured
   transport and assert returned errors do not expose secret query parameters.

@@ -12,3 +12,4 @@
 - Documented mode source requirements and secret-safe verification for complete credential-bearing provider URLs.
 - Documented command implementation ownership, core/extended standard Solana RPC compatibility, independent provider API surfaces, valid method-specific probes, and transactional reload verification in the repository engineering guidance.
 - Extended the opt-in Surfpool smoke to verify the connector's declared standard Solana RPC compatibility against the live local endpoint before collecting a snapshot.
+- Documented five-round readiness admission, process-liveness separation, bounded RPC failure and HTTP response status telemetry, and the required runtime smoke boundary.

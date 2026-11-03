@@ -106,6 +106,22 @@ The URL variables contain the complete provider endpoints, including any provide
 
 Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime.
 
+## Readiness and RPC response status
+
+`/healthz` reports only that the HTTP process is serving. `/readyz` returns
+`503 Service Unavailable` until five consecutive required polling rounds
+complete without a failed RPC attempt. Transport, response-read, payload,
+JSON-RPC, missing-result, and non-success HTTP failures reset the streak; an
+accepted configuration reload also restarts admission for the new runtime.
+
+Every 30 seconds, the watcher logs its readiness, completed and clean polling
+rounds, failed RPC attempts, cumulative response count, response-class counts,
+and exact counts for HTTP 200, 403, 429, and 500. Prometheus exposes the same
+state through `sol_watcher_ready`, `sol_watcher_poll_round_count`,
+`sol_watcher_clean_poll_streak`, `sol_rpc_request_failure_count`,
+`sol_rpc_http_response_class_count`, and
+`sol_rpc_http_response_status_count`.
+
 ## Contributing
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [module changelog index](CHANGELOG.md). Every change updates the changelog of each affected module and passes:

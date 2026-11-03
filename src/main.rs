@@ -20,7 +20,7 @@ mod websocket;
 use crate::{
     collector::{
         collect_snapshot, command::GetHealth, ensure_economics_supported, ModeStatus,
-        SnapshotDataSource,
+        RpcResponseSnapshot, RpcResponseStats, SnapshotDataSource,
     },
     config::Config,
     metrics::Metrics,
@@ -38,8 +38,17 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::{net::TcpListener, signal, time::sleep};
+use tokio::{
+    net::TcpListener,
+    signal,
+    sync::{mpsc, oneshot, watch},
+    time::{interval, sleep, MissedTickBehavior},
+};
 use tracing::{error, info, warn};
+
+const ADMISSION_CLEAN_POLL_ROUNDS: u8 = 5;
+const WATCHER_STATE_REPORT_INTERVAL: Duration = Duration::from_secs(30);
+const WATCHER_STATE_CHANNEL_CAPACITY: usize = 1;
 
 #[derive(Parser, Debug)]
 #[command(name = "sol-validator-watcher")]
@@ -52,12 +61,243 @@ struct Cli {
 #[derive(Clone)]
 struct AppState {
     metrics: Arc<Metrics>,
+    watcher_state: WatcherState,
+}
+
+#[derive(Clone)]
+struct WatcherState {
+    commands: mpsc::Sender<WatcherStateCommand>,
+    snapshots: watch::Receiver<WatcherStateSnapshot>,
+    rpc_responses: RpcResponseStats,
+}
+
+struct WatcherStateActor {
+    commands: mpsc::Receiver<WatcherStateCommand>,
+    snapshots: watch::Sender<WatcherStateSnapshot>,
+    state: WatcherStateSnapshot,
+    rpc_responses: RpcResponseStats,
+    previous_responses: RpcResponseSnapshot,
+    metrics: Arc<Metrics>,
+}
+
+enum WatcherStateCommand {
+    ResetAdmission {
+        network: Arc<str>,
+        reply: oneshot::Sender<()>,
+    },
+    CompletePoll {
+        responses: RpcResponseSnapshot,
+        reply: oneshot::Sender<PollCompletion>,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct WatcherStateSnapshot {
+    network: Arc<str>,
+    completed_poll_rounds: u64,
+    clean_poll_rounds: u8,
+    ready: bool,
+}
+
+struct PollCompletion {
+    admitted: bool,
+    state: WatcherStateSnapshot,
+}
+
+impl WatcherState {
+    fn new(
+        network: &str,
+        rpc_responses: RpcResponseStats,
+        metrics: Arc<Metrics>,
+    ) -> (Self, WatcherStateActor) {
+        let state = WatcherStateSnapshot {
+            network: Arc::from(network),
+            completed_poll_rounds: 0,
+            clean_poll_rounds: 0,
+            ready: false,
+        };
+        metrics.update_watcher_state(
+            state.network.as_ref(),
+            state.ready,
+            state.completed_poll_rounds,
+            state.clean_poll_rounds,
+            rpc_responses.snapshot(),
+        );
+        let (commands, command_receiver) = mpsc::channel(WATCHER_STATE_CHANNEL_CAPACITY);
+        let (snapshot_sender, snapshots) = watch::channel(state.clone());
+        let actor = WatcherStateActor {
+            commands: command_receiver,
+            snapshots: snapshot_sender,
+            state,
+            previous_responses: rpc_responses.snapshot(),
+            rpc_responses: rpc_responses.clone(),
+            metrics,
+        };
+
+        (
+            Self {
+                commands,
+                snapshots,
+                rpc_responses,
+            },
+            actor,
+        )
+    }
+
+    async fn reset_admission(&self, network: &str) -> Result<()> {
+        let (reply, acknowledgment) = oneshot::channel();
+        self.commands
+            .send(WatcherStateCommand::ResetAdmission {
+                network: Arc::from(network),
+                reply,
+            })
+            .await
+            .map_err(|_| anyhow!("watcher state actor stopped before admission reset"))?;
+        acknowledgment
+            .await
+            .context("watcher state actor stopped while resetting admission")
+    }
+
+    fn begin_poll(&self) -> RpcResponseSnapshot {
+        self.rpc_responses.snapshot()
+    }
+
+    async fn complete_poll(&self, started_at: RpcResponseSnapshot) -> Result<PollCompletion> {
+        let responses = self.rpc_responses.snapshot().delta_since(started_at);
+        self.record_completed_poll(responses).await
+    }
+
+    async fn record_completed_poll(
+        &self,
+        responses: RpcResponseSnapshot,
+    ) -> Result<PollCompletion> {
+        let (reply, completion) = oneshot::channel();
+        self.commands
+            .send(WatcherStateCommand::CompletePoll { responses, reply })
+            .await
+            .map_err(|_| anyhow!("watcher state actor stopped before poll completion"))?;
+        completion
+            .await
+            .context("watcher state actor stopped while completing a poll")
+    }
+
+    fn readiness(&self) -> (bool, u8) {
+        let snapshot = self.snapshots.borrow();
+        (snapshot.ready, snapshot.clean_poll_rounds)
+    }
+
+    #[cfg(test)]
+    fn snapshot(&self) -> WatcherStateSnapshot {
+        self.snapshots.borrow().clone()
+    }
+}
+
+impl WatcherStateActor {
+    async fn run(mut self) -> Result<TaskExit> {
+        let mut ticker = interval(WATCHER_STATE_REPORT_INTERVAL);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        ticker.tick().await;
+
+        loop {
+            tokio::select! {
+                command = self.commands.recv() => {
+                    let Some(command) = command else {
+                        info!("watcher state actor shutting down");
+                        return Ok(TaskExit::Finished);
+                    };
+                    self.handle(command);
+                }
+                _ = ticker.tick() => self.report(),
+            }
+        }
+    }
+
+    fn handle(&mut self, command: WatcherStateCommand) {
+        match command {
+            WatcherStateCommand::ResetAdmission { network, reply } => {
+                self.state.network = network;
+                self.state.completed_poll_rounds = 0;
+                self.state.clean_poll_rounds = 0;
+                self.state.ready = false;
+                self.previous_responses = self.rpc_responses.snapshot();
+                self.publish();
+                // The requester may be cancelled after the state transition commits.
+                let _ = reply.send(());
+            }
+            WatcherStateCommand::CompletePoll { responses, reply } => {
+                self.state.completed_poll_rounds =
+                    self.state.completed_poll_rounds.saturating_add(1);
+                let clean = responses.failed_attempts == 0 && responses.non_success_count() == 0;
+                self.state.clean_poll_rounds = if clean {
+                    self.state
+                        .clean_poll_rounds
+                        .saturating_add(1)
+                        .min(ADMISSION_CLEAN_POLL_ROUNDS)
+                } else {
+                    0
+                };
+                let ready = self.state.clean_poll_rounds == ADMISSION_CLEAN_POLL_ROUNDS;
+                let admitted = ready && !self.state.ready;
+                self.state.ready = ready;
+                self.publish();
+                // The requester may be cancelled after the state transition commits.
+                let _ = reply.send(PollCompletion {
+                    admitted,
+                    state: self.state.clone(),
+                });
+            }
+        }
+    }
+
+    fn publish(&self) {
+        self.publish_with_responses(self.rpc_responses.snapshot());
+    }
+
+    fn publish_with_responses(&self, responses: RpcResponseSnapshot) {
+        self.metrics.update_watcher_state(
+            self.state.network.as_ref(),
+            self.state.ready,
+            self.state.completed_poll_rounds,
+            self.state.clean_poll_rounds,
+            responses,
+        );
+        self.snapshots.send_replace(self.state.clone());
+    }
+
+    fn report(&mut self) {
+        let current_responses = self.rpc_responses.snapshot();
+        let responses = current_responses.delta_since(self.previous_responses);
+        self.previous_responses = current_responses;
+        self.publish_with_responses(current_responses);
+
+        info!(
+            network = self.state.network.as_ref(),
+            ready = self.state.ready,
+            completed_poll_rounds = self.state.completed_poll_rounds,
+            clean_poll_rounds = self.state.clean_poll_rounds,
+            rpc_responses_30s = responses.total,
+            rpc_responses_2xx_30s = responses.successful_2xx,
+            rpc_responses_3xx_30s = responses.redirection_3xx,
+            rpc_responses_4xx_30s = responses.client_error_4xx,
+            rpc_responses_5xx_30s = responses.server_error_5xx,
+            rpc_responses_other_30s = responses.other,
+            rpc_status_200_30s = responses.status_200,
+            rpc_status_403_30s = responses.status_403,
+            rpc_status_429_30s = responses.status_429,
+            rpc_status_500_30s = responses.status_500,
+            rpc_failures_30s = responses.failed_attempts,
+            rpc_failures_total = current_responses.failed_attempts,
+            rpc_responses_total = current_responses.total,
+            "watcher state"
+        );
+    }
 }
 
 struct RuntimeState {
     config_path: PathBuf,
     config: Config,
     sources: SourceChain,
+    rpc_responses: RpcResponseStats,
     config_modified: SystemTime,
     metrics_port: u16,
     connector_capabilities_verified: bool,
@@ -65,16 +305,17 @@ struct RuntimeState {
 }
 
 impl RuntimeState {
-    fn load(config_path: PathBuf) -> Result<Self> {
+    fn load(config_path: PathBuf, rpc_responses: RpcResponseStats) -> Result<Self> {
         let config = Config::load(&config_path)?;
         let config_modified = config_mtime(&config_path)?;
         let metrics_port = config.metrics_port;
-        let sources = SourceChain::from_config(&config)?;
+        let sources = SourceChain::from_config(&config, rpc_responses.clone())?;
 
         Ok(Self {
             config_path,
             config,
             sources,
+            rpc_responses,
             config_modified,
             metrics_port,
             connector_capabilities_verified: false,
@@ -100,7 +341,7 @@ impl RuntimeState {
         let sources_changed =
             self.config.connectors != next.connectors || self.config.modes != next.modes;
         let next_sources = if sources_changed {
-            let sources = SourceChain::from_config(&next)?;
+            let sources = SourceChain::from_config(&next, self.rpc_responses.clone())?;
             sources
                 .verify_capabilities()
                 .await
@@ -137,12 +378,15 @@ impl RuntimeState {
 async fn main() -> Result<()> {
     init_tracing()?;
     let cli = Cli::parse();
-    let runtime = RuntimeState::load(cli.config)?;
+    let rpc_responses = RpcResponseStats::default();
+    let runtime = RuntimeState::load(cli.config, rpc_responses.clone())?;
     let metrics = Arc::new(Metrics::new()?);
     metrics.set_watcher_up(&runtime.config.network, true);
     metrics.set_rpc_up(&runtime.config.network, false);
+    let (watcher_state, watcher_state_actor) =
+        WatcherState::new(&runtime.config.network, rpc_responses, Arc::clone(&metrics));
 
-    if let Err(err) = run(runtime, metrics).await {
+    if let Err(err) = run(runtime, metrics, watcher_state, watcher_state_actor).await {
         error!(error = ?err, "watcher exiting due to fatal error");
         return Err(err);
     }
@@ -150,19 +394,26 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
+async fn run(
+    runtime: RuntimeState,
+    metrics: Arc<Metrics>,
+    watcher_state: WatcherState,
+    watcher_state_actor: WatcherStateActor,
+) -> Result<()> {
     let server_state = AppState {
         metrics: Arc::clone(&metrics),
+        watcher_state: watcher_state.clone(),
     };
     let mut tasks = TaskManager::new();
 
+    tasks.spawn("watcher-state-actor", watcher_state_actor.run());
     tasks.spawn(
         "metrics-http-server",
         run_http_server(server_state, runtime.metrics_port, tasks.shutdown_handle()),
     );
     tasks.spawn(
         "watcher-loop",
-        run_watcher_loop(runtime, metrics, tasks.shutdown_handle()),
+        run_watcher_loop(runtime, metrics, watcher_state, tasks.shutdown_handle()),
     );
     tasks.spawn(
         "shutdown-signal",
@@ -175,6 +426,7 @@ async fn run(runtime: RuntimeState, metrics: Arc<Metrics>) -> Result<()> {
 async fn run_watcher_loop(
     mut runtime: RuntimeState,
     metrics: Arc<Metrics>,
+    watcher_state: WatcherState,
     mut shutdown: Shutdown,
 ) -> Result<TaskExit> {
     info!(
@@ -182,17 +434,29 @@ async fn run_watcher_loop(
         watched_validators = runtime.config.watched_validators.len(),
         connectors = runtime.config.connectors.len(),
         economics_mode = runtime.config.modes.economics.as_str(),
+        admission_clean_poll_rounds = ADMISSION_CLEAN_POLL_ROUNDS,
         "starting Solana validator watcher"
     );
 
     loop {
-        if let Err(err) = runtime.reload_if_needed().await {
-            warn!(error = ?err, "failed to reload config, keeping previous configuration");
+        let previous_config_modified = runtime.config_modified;
+        match runtime.reload_if_needed().await {
+            Ok(()) if runtime.config_modified != previous_config_modified => {
+                watcher_state
+                    .reset_admission(&runtime.config.network)
+                    .await
+                    .context("failed to reset readiness after configuration reload")?;
+            }
+            Ok(()) => {}
+            Err(err) => {
+                warn!(error = ?err, "failed to reload config, keeping previous configuration");
+            }
         }
         ensure_connector_capabilities_ready(&mut runtime).await?;
 
         metrics.set_watcher_up(&runtime.config.network, true);
         metrics.begin_poll(&runtime.config, &runtime.sources);
+        let poll_started_at = watcher_state.begin_poll();
         let (health_sources, health_status) =
             guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
         if let Err(error) = ensure_economics_capabilities_ready(&mut runtime).await {
@@ -218,10 +482,24 @@ async fn run_watcher_loop(
         }
         metrics.update_snapshot(&snapshot);
         update_liveness_file(runtime.config.liveness_file.as_deref())?;
+        let completion = watcher_state
+            .complete_poll(poll_started_at)
+            .await
+            .context("failed to publish completed polling round")?;
+        let state = completion.state;
+        if completion.admitted {
+            info!(
+                completed_poll_rounds = state.completed_poll_rounds,
+                clean_poll_rounds = state.clean_poll_rounds,
+                "watcher admitted as ready after consecutive clean polling rounds"
+            );
+        }
         info!(
             epoch = snapshot.epoch,
             slot = snapshot.slot,
             scopes = snapshot.scopes.len(),
+            ready = state.ready,
+            clean_poll_rounds = state.clean_poll_rounds,
             "updated Prometheus metrics"
         );
 
@@ -335,6 +613,7 @@ async fn run_http_server(
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
         .route("/healthz", get(health_handler))
+        .route("/readyz", get(readiness_handler))
         .with_state(state);
 
     let listener = TcpListener::bind(address)
@@ -378,6 +657,25 @@ async fn metrics_handler(
 
 async fn health_handler() -> &'static str {
     "ok"
+}
+
+async fn readiness_handler(State(state): State<AppState>) -> (StatusCode, String) {
+    let (ready, clean_poll_rounds) = state.watcher_state.readiness();
+    if ready {
+        (
+            StatusCode::OK,
+            format!(
+                "ready: {clean_poll_rounds}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+            ),
+        )
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!(
+                "warming up: {clean_poll_rounds}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+            ),
+        )
+    }
 }
 
 fn config_mtime(path: &Path) -> Result<SystemTime> {
@@ -435,9 +733,11 @@ fn init_tracing() -> Result<()> {
 mod tests {
     use super::{
         config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
-        mark_collection_modes_down, run_watcher_loop, update_liveness_file, RuntimeState,
+        mark_collection_modes_down, readiness_handler, run_watcher_loop, update_liveness_file,
+        AppState, RuntimeState, WatcherState, ADMISSION_CLEAN_POLL_ROUNDS,
     };
     use crate::{
+        collector::{RpcResponseSnapshot, RpcResponseStats},
         config::{
             Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsModeConfig,
             HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig,
@@ -451,6 +751,7 @@ mod tests {
     use anyhow::{Context, Result};
     use axum::{
         extract::{Json, State},
+        http::StatusCode,
         routing::post,
         Router,
     };
@@ -477,7 +778,118 @@ mod tests {
 
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        Ok(())
+    }
 
+    #[tokio::test]
+    async fn readiness_requires_five_clean_rounds_and_resets_on_failures() -> Result<()> {
+        let metrics = Arc::new(Metrics::new()?);
+        let (watcher_state, watcher_state_actor) = WatcherState::new(
+            "readiness-test",
+            RpcResponseStats::default(),
+            Arc::clone(&metrics),
+        );
+        let actor_task = tokio::spawn(watcher_state_actor.run());
+        let app_state = AppState {
+            metrics,
+            watcher_state: watcher_state.clone(),
+        };
+        let successful_response = RpcResponseSnapshot {
+            total: 1,
+            successful_2xx: 1,
+            status_200: 1,
+            ..RpcResponseSnapshot::default()
+        };
+
+        for completed_rounds in 1..ADMISSION_CLEAN_POLL_ROUNDS {
+            let completion = watcher_state
+                .record_completed_poll(successful_response)
+                .await?;
+            assert!(!completion.admitted);
+            let (status, body) = readiness_handler(State(app_state.clone())).await;
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(
+                body,
+                format!(
+                    "warming up: {completed_rounds}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+                )
+            );
+        }
+
+        let completion = watcher_state
+            .record_completed_poll(successful_response)
+            .await?;
+        assert!(completion.admitted);
+        let (status, body) = readiness_handler(State(app_state.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            format!(
+                "ready: {ADMISSION_CLEAN_POLL_ROUNDS}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+            )
+        );
+
+        let rate_limited_response = RpcResponseSnapshot {
+            total: 1,
+            client_error_4xx: 1,
+            status_429: 1,
+            failed_attempts: 1,
+            ..RpcResponseSnapshot::default()
+        };
+        let completion = watcher_state
+            .record_completed_poll(rate_limited_response)
+            .await?;
+        assert!(!completion.admitted);
+        let (status, body) = readiness_handler(State(app_state.clone())).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            body,
+            format!("warming up: 0/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds")
+        );
+
+        let completion = watcher_state
+            .record_completed_poll(successful_response)
+            .await?;
+        assert!(!completion.admitted);
+        assert_eq!(watcher_state.snapshot().clean_poll_rounds, 1);
+        let completion = watcher_state
+            .record_completed_poll(RpcResponseSnapshot {
+                failed_attempts: 1,
+                ..RpcResponseSnapshot::default()
+            })
+            .await?;
+        assert!(!completion.admitted);
+        assert_eq!(watcher_state.snapshot().clean_poll_rounds, 0);
+
+        for _ in 0..ADMISSION_CLEAN_POLL_ROUNDS {
+            watcher_state
+                .record_completed_poll(successful_response)
+                .await?;
+        }
+        assert_eq!(
+            readiness_handler(State(app_state.clone())).await.0,
+            StatusCode::OK
+        );
+
+        watcher_state.reset_admission("reloaded-network").await?;
+        let state = watcher_state.snapshot();
+        assert_eq!(state.network.as_ref(), "reloaded-network");
+        assert_eq!(state.completed_poll_rounds, 0);
+        assert_eq!(state.clean_poll_rounds, 0);
+        assert!(!state.ready);
+        assert_eq!(
+            readiness_handler(State(app_state.clone())).await.0,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+
+        drop(app_state);
+        drop(watcher_state);
+        assert_eq!(
+            actor_task
+                .await
+                .context("watcher state actor task failed to join")??,
+            crate::tasks::TaskExit::Finished
+        );
         Ok(())
     }
 
@@ -611,14 +1023,29 @@ enabled = false
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let runtime = RuntimeState::load(config_path)?;
+        let rpc_responses = RpcResponseStats::default();
+        let runtime = RuntimeState::load(config_path, rpc_responses.clone())?;
         let metrics = Arc::new(Metrics::new()?);
+        let (watcher_state, watcher_state_actor) =
+            WatcherState::new("startup-test", rpc_responses, Arc::clone(&metrics));
+        let actor_task = tokio::spawn(watcher_state_actor.run());
         let tasks = TaskManager::new();
-        let Err(error) =
-            run_watcher_loop(runtime, Arc::clone(&metrics), tasks.shutdown_handle()).await
+        let Err(error) = run_watcher_loop(
+            runtime,
+            Arc::clone(&metrics),
+            watcher_state,
+            tasks.shutdown_handle(),
+        )
+        .await
         else {
             anyhow::bail!("unsupported startup connector must fail before collection");
         };
+        assert_eq!(
+            actor_task
+                .await
+                .context("watcher state actor task failed to join")??,
+            crate::tasks::TaskExit::Finished
+        );
         let message = format!("{error:#}");
         assert!(message.contains("connector \"limited-rpc\""), "{message}");
         assert!(message.contains("getRecentPerformanceSamples"), "{message}");
@@ -685,7 +1112,10 @@ enabled = false
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let mut runtime = RuntimeState::load(config_path.clone())?;
+        let mut runtime = RuntimeState::load(
+            config_path.clone(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
         runtime.economics_capabilities_verified = true;
         runtime.config_modified = UNIX_EPOCH;
 
@@ -796,7 +1226,10 @@ enabled = false
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let mut runtime = RuntimeState::load(config_path.clone())?;
+        let mut runtime = RuntimeState::load(
+            config_path.clone(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
         runtime.economics_capabilities_verified = true;
         runtime.config_modified = UNIX_EPOCH;
 
@@ -874,7 +1307,10 @@ enabled = false
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let mut runtime = RuntimeState::load(config_path.clone())?;
+        let mut runtime = RuntimeState::load(
+            config_path.clone(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
         runtime.connector_capabilities_verified = true;
         runtime.economics_capabilities_verified = true;
         runtime.config_modified = UNIX_EPOCH;
@@ -966,7 +1402,10 @@ enabled = false
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let mut runtime = RuntimeState::load(config_path.clone())?;
+        let mut runtime = RuntimeState::load(
+            config_path.clone(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
         runtime.connector_capabilities_verified = true;
         runtime.economics_capabilities_verified = true;
         runtime.config_modified = UNIX_EPOCH;
@@ -1084,7 +1523,10 @@ reward_epoch_block_production = ["primary"]
         fs::write(&config_path, config_toml(128))
             .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let mut runtime = RuntimeState::load(config_path.clone())?;
+        let mut runtime = RuntimeState::load(
+            config_path.clone(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
         runtime.connector_capabilities_verified = true;
         runtime.economics_capabilities_verified = true;
         runtime.config_modified = UNIX_EPOCH;
@@ -1131,12 +1573,14 @@ reward_epoch_block_production = ["primary"]
             modes: modes_for("primary"),
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let rpc_responses = RpcResponseStats::default();
+        let sources = SourceChain::from_config(&config, rpc_responses.clone())?;
 
         Ok(RuntimeState {
             config_path: PathBuf::from("config.toml"),
             config,
             sources,
+            rpc_responses,
             config_modified: UNIX_EPOCH,
             metrics_port: 8000,
             connector_capabilities_verified: false,

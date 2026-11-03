@@ -9,5 +9,6 @@
 - Made each mode own its valid transport and provider-feature combinations, then resolve the configured provider through each command route.
 - Redacted credential-bearing RPC and WebSocket URLs from transport errors.
 - Added bounded, valid startup probes for every standard Solana method promised by each connector's compatibility profile plus retained prior-epoch reads promised by `historical-data`; diagnostics name the connector, provider, endpoint kind, capability, and method without exposing endpoint URLs, and changed reload candidates are fully verified before replacing the live runtime.
+- Counted every failed RPC attempt and each received HTTP status before payload decoding, with bounded failure totals, response classes, and exact readiness-critical status codes.
 - Collected recent performance samples, economics-target account balances and rent exemption, VAT runway, epoch timing, and per-validator next-leader estimates with explicit source routes and absent-data semantics; account balances remain available when a provider omits the account size needed for rent and VAT calculations.
 - Ignored vote-credit samples beyond the current epoch and preserved unmatched vote credits and efficiency as unavailable instead of zero.

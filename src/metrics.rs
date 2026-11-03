@@ -1,5 +1,5 @@
 use crate::{
-    collector::{Snapshot, WatchedValidatorMetrics},
+    collector::{RpcResponseSnapshot, Snapshot, WatchedValidatorMetrics},
     config::{Config, ConnectorConfig},
     mode::{ModeId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
@@ -21,6 +21,12 @@ pub struct Metrics {
     sol_average_slot_time_seconds: GaugeVec,
     sol_estimated_epoch_end_unixtime: GaugeVec,
     sol_watcher_up: IntGaugeVec,
+    sol_watcher_ready: IntGaugeVec,
+    sol_watcher_poll_round_count: IntGaugeVec,
+    sol_watcher_clean_poll_streak: IntGaugeVec,
+    sol_rpc_http_response_class_count: IntGaugeVec,
+    sol_rpc_http_response_status_count: IntGaugeVec,
+    sol_rpc_request_failure_count: IntGaugeVec,
     sol_rpc_up: IntGaugeVec,
     sol_ws_up: IntGaugeVec,
     sol_watcher_config_info: IntGaugeVec,
@@ -125,6 +131,48 @@ impl Metrics {
         )?;
         let sol_watcher_up = IntGaugeVec::new(
             Opts::new("sol_watcher_up", "Whether the watcher process is running"),
+            &["network"],
+        )?;
+        let sol_watcher_ready = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_ready",
+                "Whether five consecutive polling rounds completed without failed RPC attempts",
+            ),
+            &["network"],
+        )?;
+        let sol_watcher_poll_round_count = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_poll_round_count",
+                "Completed polling rounds for the current accepted configuration",
+            ),
+            &["network"],
+        )?;
+        let sol_watcher_clean_poll_streak = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_clean_poll_streak",
+                "Consecutive clean polling rounds toward watcher readiness",
+            ),
+            &["network"],
+        )?;
+        let sol_rpc_http_response_class_count = IntGaugeVec::new(
+            Opts::new(
+                "sol_rpc_http_response_class_count",
+                "Cumulative RPC HTTP responses observed by status class since process start",
+            ),
+            &["network", "status_class"],
+        )?;
+        let sol_rpc_http_response_status_count = IntGaugeVec::new(
+            Opts::new(
+                "sol_rpc_http_response_status_count",
+                "Cumulative RPC HTTP responses for readiness-critical status codes since process start",
+            ),
+            &["network", "status_code"],
+        )?;
+        let sol_rpc_request_failure_count = IntGaugeVec::new(
+            Opts::new(
+                "sol_rpc_request_failure_count",
+                "Cumulative failed RPC attempts since process start",
+            ),
             &["network"],
         )?;
         let sol_rpc_up = IntGaugeVec::new(
@@ -519,6 +567,12 @@ impl Metrics {
         register(&registry, &sol_watcher_config_info)?;
         register(&registry, &sol_connector_info)?;
         register(&registry, &sol_connector_feature_info)?;
+        register(&registry, &sol_watcher_ready)?;
+        register(&registry, &sol_watcher_poll_round_count)?;
+        register(&registry, &sol_watcher_clean_poll_streak)?;
+        register(&registry, &sol_rpc_http_response_class_count)?;
+        register(&registry, &sol_rpc_http_response_status_count)?;
+        register(&registry, &sol_rpc_request_failure_count)?;
         register(&registry, &sol_mode_enabled)?;
         register(&registry, &sol_mode_up)?;
         register(&registry, &sol_mode_command_route_info)?;
@@ -589,6 +643,12 @@ impl Metrics {
             sol_connector_feature_info,
             sol_mode_enabled,
             sol_mode_up,
+            sol_watcher_ready,
+            sol_watcher_poll_round_count,
+            sol_watcher_clean_poll_streak,
+            sol_rpc_http_response_class_count,
+            sol_rpc_http_response_status_count,
+            sol_rpc_request_failure_count,
             sol_mode_command_route_info,
             sol_mode_command_source_info,
             sol_validator_status_count,
@@ -650,6 +710,57 @@ impl Metrics {
         self.sol_watcher_up
             .with_label_values(&[network])
             .set(i64::from(is_up));
+    }
+
+    pub fn update_watcher_state(
+        &self,
+        network: &str,
+        ready: bool,
+        completed_poll_rounds: u64,
+        clean_poll_rounds: u8,
+        responses: RpcResponseSnapshot,
+    ) {
+        self.sol_watcher_ready.reset();
+        self.sol_watcher_poll_round_count.reset();
+        self.sol_watcher_clean_poll_streak.reset();
+        self.sol_rpc_http_response_class_count.reset();
+        self.sol_rpc_http_response_status_count.reset();
+        self.sol_rpc_request_failure_count.reset();
+
+        self.sol_watcher_ready
+            .with_label_values(&[network])
+            .set(i64::from(ready));
+        self.sol_watcher_poll_round_count
+            .with_label_values(&[network])
+            .set(metric_count(completed_poll_rounds));
+        self.sol_watcher_clean_poll_streak
+            .with_label_values(&[network])
+            .set(i64::from(clean_poll_rounds));
+
+        for (status_class, count) in [
+            ("2xx", responses.successful_2xx),
+            ("3xx", responses.redirection_3xx),
+            ("4xx", responses.client_error_4xx),
+            ("5xx", responses.server_error_5xx),
+            ("other", responses.other),
+        ] {
+            self.sol_rpc_http_response_class_count
+                .with_label_values(&[network, status_class])
+                .set(metric_count(count));
+        }
+        for (status_code, count) in [
+            ("200", responses.status_200),
+            ("403", responses.status_403),
+            ("429", responses.status_429),
+            ("500", responses.status_500),
+        ] {
+            self.sol_rpc_http_response_status_count
+                .with_label_values(&[network, status_code])
+                .set(metric_count(count));
+        }
+        self.sol_rpc_request_failure_count
+            .with_label_values(&[network])
+            .set(metric_count(responses.failed_attempts));
     }
 
     pub fn set_rpc_up(&self, network: &str, is_up: bool) {
@@ -1060,6 +1171,10 @@ where
         .context("failed to register Prometheus collector")
 }
 
+fn metric_count(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
 fn lamports_to_sol(lamports: u64) -> f64 {
     lamports as f64 / LAMPORTS_PER_SOL
 }
@@ -1105,8 +1220,8 @@ mod tests {
     use super::{bool_label, Metrics};
     use crate::{
         collector::{
-            EconomicsMetrics, ModeStatus, ScopeMetrics, Snapshot, SnapshotDataSource,
-            ValidatorStatus, WatchedValidatorMetrics,
+            EconomicsMetrics, ModeStatus, RpcResponseSnapshot, ScopeMetrics, Snapshot,
+            SnapshotDataSource, ValidatorStatus, WatchedValidatorMetrics,
         },
         config::{
             Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -1271,7 +1386,8 @@ mod tests {
         };
         config.modes.health.commands.ws_health =
             vec!["local-validator".to_string(), "helius-ws".to_string()];
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         metrics.begin_poll(&config, &sources);
         metrics.update_snapshot(&snapshot);
         let rendered = metrics.render()?;
@@ -1377,7 +1493,8 @@ mod tests {
             modes: modes_for(&["primary"], Some("primary"), false),
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         metrics.begin_poll(&config, &sources);
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
@@ -1489,6 +1606,56 @@ mod tests {
     }
 
     #[test]
+    fn watcher_state_metrics_render_bounded_response_counts() -> Result<()> {
+        let metrics = Metrics::new()?;
+        metrics.update_watcher_state(
+            "devnet",
+            true,
+            12,
+            5,
+            RpcResponseSnapshot {
+                total: 18,
+                successful_2xx: 12,
+                redirection_3xx: 1,
+                client_error_4xx: 2,
+                server_error_5xx: 3,
+                status_200: 11,
+                status_403: 1,
+                status_429: 1,
+                status_500: 2,
+                failed_attempts: 4,
+                ..RpcResponseSnapshot::default()
+            },
+        );
+
+        let rendered = metrics.render()?;
+        for sample in [
+            "sol_watcher_ready{network=\"devnet\"} 1",
+            "sol_watcher_poll_round_count{network=\"devnet\"} 12",
+            "sol_watcher_clean_poll_streak{network=\"devnet\"} 5",
+            "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"2xx\"} 12",
+            "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"3xx\"} 1",
+            "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"4xx\"} 2",
+            "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"5xx\"} 3",
+            "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"other\"} 0",
+            "sol_rpc_http_response_status_count{network=\"devnet\",status_code=\"200\"} 11",
+            "sol_rpc_http_response_status_count{network=\"devnet\",status_code=\"403\"} 1",
+            "sol_rpc_http_response_status_count{network=\"devnet\",status_code=\"429\"} 1",
+            "sol_rpc_http_response_status_count{network=\"devnet\",status_code=\"500\"} 2",
+            "sol_rpc_request_failure_count{network=\"devnet\"} 4",
+        ] {
+            assert!(rendered.contains(sample), "missing metric sample: {sample}");
+        }
+
+        metrics.update_watcher_state("mainnet-beta", false, 0, 0, RpcResponseSnapshot::default());
+        let rendered = metrics.render()?;
+        assert!(!rendered.contains("network=\"devnet\""));
+        assert!(rendered.contains("sol_watcher_ready{network=\"mainnet-beta\"} 0"));
+
+        Ok(())
+    }
+
+    #[test]
     fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() -> Result<()> {
         let metrics = Metrics::new()?;
         let network = "mainnet-beta";
@@ -1515,7 +1682,8 @@ mod tests {
             modes: modes_for(&["primary", "fallback"], None, false),
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         let source = |connector, provider, precedence| SnapshotDataSource {
             mode: ModeId::Consensus,
             command: CommandId::EpochInfo,
