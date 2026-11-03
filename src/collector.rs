@@ -3,12 +3,12 @@ pub mod command;
 use crate::{
     config::Config,
     labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
-    mode::{CommandId, ModeId, ProviderFeature, Transport},
+    mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport},
     source::{SourceChain, SourceSelection},
 };
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -40,6 +40,137 @@ impl RpcClient {
             url,
             commitment,
         })
+    }
+
+    pub async fn verify_capabilities(
+        &self,
+        solana_rpc_compatibility: SolanaRpcCompatibility,
+        features: &[ProviderFeature],
+    ) -> Result<()> {
+        const PROBE_PUBKEY: &str = "11111111111111111111111111111111";
+        let commitment = self.commitment.as_str();
+
+        let epoch_info = async {
+            let ((), epoch_info, ()) = tokio::try_join!(
+                self.ensure_healthy(),
+                async {
+                    self.get_epoch_info()
+                        .await
+                        .context("required RPC method getEpochInfo probe failed")
+                },
+                self.probe_required_method::<VoteAccounts, _>(
+                    "getVoteAccounts",
+                    serde_json::json!([{
+                        "commitment": commitment,
+                        "votePubkey": PROBE_PUBKEY
+                    }]),
+                ),
+            )?;
+            self.get_leader_schedule(epoch_info.absolute_slot)
+                .await
+                .context("required RPC method getLeaderSchedule probe failed")?;
+            Ok::<_, anyhow::Error>(epoch_info)
+        }
+        .await
+        .with_context(|| {
+            format!(
+                "RPC endpoint does not satisfy solana_rpc_compatibility = {:?}",
+                SolanaRpcCompatibility::Core.as_str()
+            )
+        })?;
+
+        if solana_rpc_compatibility == SolanaRpcCompatibility::Extended {
+            let probe_slot = epoch_info.absolute_slot.saturating_sub(1);
+            tokio::try_join!(
+                self.probe_required_method::<Vec<RecentPerformanceSample>, _>(
+                    "getRecentPerformanceSamples",
+                    serde_json::json!([1]),
+                ),
+                self.probe_required_method::<RpcValueResponse<BlockProduction>, _>(
+                    "getBlockProduction",
+                    serde_json::json!([{
+                        "commitment": commitment,
+                        "range": {
+                            "firstSlot": probe_slot,
+                            "lastSlot": probe_slot
+                        }
+                    }]),
+                ),
+                self.probe_required_method::<RpcValueResponse<Vec<Option<AccountValue>>>, _>(
+                    "getMultipleAccounts",
+                    serde_json::json!([
+                        [PROBE_PUBKEY],
+                        {
+                            "commitment": commitment,
+                            "dataSlice": {
+                                "offset": 0,
+                                "length": 0
+                            },
+                            "encoding": "base64"
+                        }
+                    ]),
+                ),
+                self.probe_required_method::<u64, _>(
+                    "getMinimumBalanceForRentExemption",
+                    serde_json::json!([0, { "commitment": commitment }]),
+                ),
+                self.probe_required_method::<Vec<Option<InflationRewardValue>>, _>(
+                    "getInflationReward",
+                    serde_json::json!([
+                        [PROBE_PUBKEY],
+                        {
+                            "commitment": commitment
+                        }
+                    ]),
+                ),
+                self.probe_required_method::<u64, _>("minimumLedgerSlot", serde_json::json!([]),),
+            )
+            .with_context(|| {
+                let feature_context = features
+                    .contains(&ProviderFeature::HistoricalData)
+                    .then_some(" required by provider feature \"historical-data\"");
+                format!(
+                    "RPC endpoint does not satisfy solana_rpc_compatibility = {:?}{}",
+                    SolanaRpcCompatibility::Extended.as_str(),
+                    feature_context.unwrap_or_default()
+                )
+            })?;
+            if let (true, Some(reward_epoch)) = (
+                features.contains(&ProviderFeature::HistoricalData),
+                epoch_info.epoch.checked_sub(1),
+            ) {
+                self.probe_required_method::<Vec<Option<InflationRewardValue>>, _>(
+                    "getInflationReward",
+                    serde_json::json!([
+                        [PROBE_PUBKEY],
+                        {
+                            "commitment": commitment,
+                            "epoch": reward_epoch
+                        }
+                    ]),
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "RPC endpoint does not satisfy provider feature {:?}",
+                        ProviderFeature::HistoricalData.as_str()
+                    )
+                })?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn probe_required_method<T, P>(&self, method: &'static str, params: P) -> Result<()>
+    where
+        T: DeserializeOwned,
+        P: Serialize,
+    {
+        self.call::<T, _>(method, params)
+            .await
+            .with_context(|| format!("required RPC method {method} probe failed"))?;
+        Ok(())
     }
 
     async fn get_epoch_info(&self) -> Result<EpochInfo> {
@@ -334,19 +465,18 @@ impl RpcClient {
         })?;
 
         if let Some(error) = envelope.error {
-            bail!(
-                "{} failed with code {}: {}",
-                method,
-                error.code,
-                error.message
-            );
+            bail!("{method} failed with JSON-RPC code {}", error.code);
         }
 
         if !status.is_success() {
             bail!("{} returned non-success HTTP status {}", method, status);
         }
 
-        Ok(envelope.result)
+        match envelope.result {
+            JsonRpcResult::Missing => bail!("{method} returned no result or error"),
+            JsonRpcResult::Null => Ok(None),
+            JsonRpcResult::Value(result) => Ok(Some(result)),
+        }
     }
 }
 
@@ -540,6 +670,7 @@ pub struct SnapshotDataSource {
     pub connector: Arc<str>,
     pub provider: Arc<str>,
     pub transport: Transport,
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     pub feature: Option<ProviderFeature>,
     pub precedence: usize,
 }
@@ -552,6 +683,7 @@ impl From<SourceSelection> for SnapshotDataSource {
             connector: source.connector,
             provider: source.provider,
             transport: source.transport,
+            solana_rpc_compatibility: source.solana_rpc_compatibility,
             feature: source.feature,
             precedence: source.precedence,
         }
@@ -1306,15 +1438,37 @@ struct SlotRange {
 }
 
 #[derive(Deserialize)]
+#[serde(bound(deserialize = "T: Deserialize<'de>"))]
 struct JsonRpcEnvelope<T> {
-    result: Option<T>,
+    #[serde(default, deserialize_with = "deserialize_json_rpc_result")]
+    result: JsonRpcResult<T>,
     error: Option<JsonRpcError>,
+}
+
+#[derive(Default)]
+enum JsonRpcResult<T> {
+    #[default]
+    Missing,
+    Null,
+    Value(T),
+}
+
+fn deserialize_json_rpc_result<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<JsonRpcResult<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(match Option::<T>::deserialize(deserializer)? {
+        Some(result) => JsonRpcResult::Value(result),
+        None => JsonRpcResult::Null,
+    })
 }
 
 #[derive(Deserialize)]
 struct JsonRpcError {
     code: i64,
-    message: String,
 }
 
 #[derive(Deserialize)]
@@ -1394,7 +1548,7 @@ mod tests {
             LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
         },
         labels::LabelMatcher,
-        mode::{CommandId, ModeId, ProviderFeature},
+        mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility},
         source::SourceChain,
     };
     use anyhow::{anyhow, Context, Result};
@@ -1406,18 +1560,30 @@ mod tests {
         Router,
     };
     use serde_json::{json, Value};
-    use std::{collections::HashMap, time::Duration};
-    use tokio::{net::TcpListener, task::JoinHandle};
+    use std::{collections::HashMap, sync::Arc, time::Duration};
+    use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 
     #[derive(Clone, Copy)]
     enum MockRpcProfile {
         Default,
+        StrictCapabilityParams,
         NoAccountSpace,
         NoCurrentBlockProduction,
         Unhealthy,
         NoEpochInfo,
+        NoInflationRewards,
         NoLeaderSchedule,
+        NoMinimumLedgerSlot,
         NoPerformanceSamples,
+        NoSlotLeader,
+        NullPerformanceSamples,
+        MissingPerformanceSamplesResult,
+    }
+
+    #[derive(Clone)]
+    struct MockRpcState {
+        profile: MockRpcProfile,
+        methods: Arc<Mutex<Vec<String>>>,
     }
 
     #[test]
@@ -1641,7 +1807,7 @@ mod tests {
 
         assert!(err
             .to_string()
-            .contains("getBlockProduction failed with code -32600"));
+            .contains("getBlockProduction failed with JSON-RPC code -32600"));
 
         Ok(())
     }
@@ -2393,6 +2559,269 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn connector_capability_probe_rejects_extended_profile_without_exposing_endpoint_secrets(
+    ) -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoPerformanceSamples).await?;
+        let secret = "do-not-expose-capability-probe-key";
+        let mut config = Config {
+            connectors: vec![ConnectorConfig {
+                name: "limited-rpc".to_string(),
+                provider: "mock-provider".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                rpc_url: Some(format!("{rpc_url}/?api-key={secret}")),
+                ..ConnectorConfig::default()
+            }],
+            ..Config::default()
+        };
+        let sources = SourceChain::from_config(&config)?;
+        let Err(error) = sources.verify_capabilities().await else {
+            anyhow::bail!("extended compatibility without extended methods should fail");
+        };
+        let message = format!("{error:#}");
+        assert!(message.contains("connector \"limited-rpc\""), "{message}");
+        assert!(message.contains("provider \"mock-provider\""), "{message}");
+        assert!(message.contains("RPC endpoint"), "{message}");
+        assert!(
+            message.contains("solana_rpc_compatibility = \"extended\""),
+            "{message}"
+        );
+        assert!(message.contains("getRecentPerformanceSamples"), "{message}");
+        assert!(!message.contains(secret), "{message}");
+
+        config.connectors[0].solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+        SourceChain::from_config(&config)?
+            .verify_capabilities()
+            .await?;
+        server_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connector_capability_probe_uses_only_declared_core_methods() -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoSlotLeader).await?;
+        let config = Config {
+            connectors: vec![ConnectorConfig {
+                name: "core-rpc".to_string(),
+                provider: "mock-provider".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some(rpc_url),
+                ..ConnectorConfig::default()
+            }],
+            ..Config::default()
+        };
+
+        SourceChain::from_config(&config)?
+            .verify_capabilities()
+            .await?;
+        server_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() -> Result<()> {
+        let (core_url, core_task, core_methods) =
+            start_recording_mock_rpc_server(MockRpcProfile::StrictCapabilityParams).await?;
+        let core_config = Config {
+            connectors: vec![ConnectorConfig {
+                name: "core-rpc".to_string(),
+                provider: "mock-provider".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some(core_url),
+                ..ConnectorConfig::default()
+            }],
+            ..Config::default()
+        };
+        SourceChain::from_config(&core_config)?
+            .verify_capabilities()
+            .await?;
+        let mut core_methods = core_methods.lock().await.clone();
+        core_methods.sort();
+        assert_eq!(
+            core_methods.iter().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "getEpochInfo",
+                "getHealth",
+                "getLeaderSchedule",
+                "getVoteAccounts"
+            ]
+        );
+        core_task.abort();
+
+        let (extended_url, extended_task, extended_methods) =
+            start_recording_mock_rpc_server(MockRpcProfile::StrictCapabilityParams).await?;
+        let extended_config = Config {
+            connectors: vec![ConnectorConfig {
+                name: "extended-rpc".to_string(),
+                provider: "mock-provider".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                rpc_url: Some(extended_url),
+                ..ConnectorConfig::default()
+            }],
+            ..Config::default()
+        };
+        SourceChain::from_config(&extended_config)?
+            .verify_capabilities()
+            .await?;
+        let mut extended_methods = extended_methods.lock().await.clone();
+        extended_methods.sort();
+        assert_eq!(
+            extended_methods
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [
+                "getBlockProduction",
+                "getEpochInfo",
+                "getHealth",
+                "getInflationReward",
+                "getLeaderSchedule",
+                "getMinimumBalanceForRentExemption",
+                "getMultipleAccounts",
+                "getRecentPerformanceSamples",
+                "getVoteAccounts",
+                "minimumLedgerSlot"
+            ]
+        );
+        extended_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connector_capability_probe_validates_method_specific_payloads() -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::StrictCapabilityParams).await?;
+        let config = Config {
+            connectors: vec![ConnectorConfig {
+                name: "strict-extended-rpc".to_string(),
+                provider: "mock-provider".to_string(),
+                features: vec![ProviderFeature::HistoricalData],
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                rpc_url: Some(rpc_url),
+                ..ConnectorConfig::default()
+            }],
+            ..Config::default()
+        };
+
+        SourceChain::from_config(&config)?
+            .verify_capabilities()
+            .await?;
+        server_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connector_capability_probe_checks_every_extended_rpc_method() -> Result<()> {
+        for (profile, expected_method) in [
+            (MockRpcProfile::NoInflationRewards, "getInflationReward"),
+            (MockRpcProfile::NoMinimumLedgerSlot, "minimumLedgerSlot"),
+        ] {
+            let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
+            let config = Config {
+                connectors: vec![ConnectorConfig {
+                    name: "extended-rpc".to_string(),
+                    provider: "mock-provider".to_string(),
+                    features: Vec::new(),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                    rpc_url: Some(rpc_url),
+                    ..ConnectorConfig::default()
+                }],
+                ..Config::default()
+            };
+
+            let Err(error) = SourceChain::from_config(&config)?
+                .verify_capabilities()
+                .await
+            else {
+                anyhow::bail!(
+                    "{expected_method} must be required by extended Solana RPC compatibility"
+                );
+            };
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("solana_rpc_compatibility = \"extended\""),
+                "{message}"
+            );
+            assert!(message.contains(expected_method), "{message}");
+            assert!(
+                !message.contains("provider feature \"historical-data\""),
+                "{message}"
+            );
+            server_task.abort();
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connector_capability_probe_rejects_empty_required_results() -> Result<()> {
+        for profile in [
+            MockRpcProfile::NullPerformanceSamples,
+            MockRpcProfile::MissingPerformanceSamplesResult,
+        ] {
+            let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
+            let config = Config {
+                connectors: vec![ConnectorConfig {
+                    name: "extended-rpc".to_string(),
+                    provider: "mock-provider".to_string(),
+                    features: Vec::new(),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                    rpc_url: Some(rpc_url),
+                    ..ConnectorConfig::default()
+                }],
+                ..Config::default()
+            };
+
+            let Err(error) = SourceChain::from_config(&config)?
+                .verify_capabilities()
+                .await
+            else {
+                anyhow::bail!("empty required RPC results must fail capability validation");
+            };
+            let message = format!("{error:#}");
+            assert!(message.contains("getRecentPerformanceSamples"), "{message}");
+            assert!(message.contains("returned no result"), "{message}");
+            server_task.abort();
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn connector_capability_probe_reports_declared_historical_data_feature() -> Result<()> {
+        let (rpc_url, server_task) =
+            start_mock_rpc_server_with_profile(MockRpcProfile::NoInflationRewards).await?;
+        let config = Config {
+            connectors: vec![ConnectorConfig {
+                name: "archive-rpc".to_string(),
+                provider: "mock-provider".to_string(),
+                features: vec![ProviderFeature::HistoricalData],
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                rpc_url: Some(rpc_url),
+                ..ConnectorConfig::default()
+            }],
+            ..Config::default()
+        };
+        let Err(error) = SourceChain::from_config(&config)?
+            .verify_capabilities()
+            .await
+        else {
+            anyhow::bail!("missing historical-data RPC method should fail");
+        };
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("provider feature \"historical-data\""),
+            "{message}"
+        );
+        assert!(message.contains("getInflationReward"), "{message}");
+        server_task.abort();
+        Ok(())
+    }
+
     async fn start_mock_rpc_server() -> Result<(String, JoinHandle<()>)> {
         start_mock_rpc_server_with_profile(MockRpcProfile::Default).await
     }
@@ -2400,35 +2829,116 @@ mod tests {
     async fn start_mock_rpc_server_with_profile(
         profile: MockRpcProfile,
     ) -> Result<(String, JoinHandle<()>)> {
+        let (rpc_url, task, _) = start_recording_mock_rpc_server(profile).await?;
+        Ok((rpc_url, task))
+    }
+
+    async fn start_recording_mock_rpc_server(
+        profile: MockRpcProfile,
+    ) -> Result<(String, JoinHandle<()>, Arc<Mutex<Vec<String>>>)> {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .context("failed to bind mock RPC listener")?;
         let address = listener
             .local_addr()
             .context("failed to read mock RPC listener address")?;
+        let methods = Arc::new(Mutex::new(Vec::new()));
         let app = Router::new()
             .route("/", post(mock_rpc_handler))
-            .with_state(profile);
+            .with_state(MockRpcState {
+                profile,
+                methods: Arc::clone(&methods),
+            });
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
 
-        Ok((format!("http://{address}"), task))
+        Ok((format!("http://{address}"), task, methods))
+    }
+    fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
+        let actual = Value::Array(params.to_vec());
+        match method {
+            "getHealth" | "minimumLedgerSlot" => actual == json!([]),
+            "getEpochInfo" => actual == json!([{ "commitment": "confirmed" }]),
+            "getVoteAccounts" => {
+                actual
+                    == json!([{
+                        "commitment": "confirmed",
+                        "votePubkey": "11111111111111111111111111111111"
+                    }])
+            }
+            "getLeaderSchedule" => actual == json!([810, { "commitment": "confirmed" }]),
+            "getRecentPerformanceSamples" => actual == json!([1]),
+            "getBlockProduction" => {
+                actual
+                    == json!([{
+                        "commitment": "confirmed",
+                        "range": { "firstSlot": 809, "lastSlot": 809 }
+                    }])
+            }
+            "getMultipleAccounts" => {
+                actual
+                    == json!([
+                        ["11111111111111111111111111111111"],
+                        {
+                            "commitment": "confirmed",
+                            "dataSlice": { "offset": 0, "length": 0 },
+                            "encoding": "base64"
+                        }
+                    ])
+            }
+            "getMinimumBalanceForRentExemption" => {
+                actual == json!([0, { "commitment": "confirmed" }])
+            }
+            "getInflationReward" => {
+                actual
+                    == json!([
+                        ["11111111111111111111111111111111"],
+                        { "commitment": "confirmed" }
+                    ])
+                    || actual
+                        == json!([
+                            ["11111111111111111111111111111111"],
+                            { "commitment": "confirmed", "epoch": 8 }
+                        ])
+            }
+            _ => false,
+        }
     }
 
     async fn mock_rpc_handler(
-        State(profile): State<MockRpcProfile>,
+        State(state): State<MockRpcState>,
         Json(request): Json<Value>,
     ) -> impl IntoResponse {
         let method = request
             .get("method")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        state.methods.lock().await.push(method.to_string());
+        let profile = state.profile;
         let params = request
             .get("params")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        if matches!(profile, MockRpcProfile::StrictCapabilityParams)
+            && !capability_probe_params_are_valid(method, &params)
+        {
+            return (
+                StatusCode::OK,
+                Json(rpc_error(-32602, "invalid capability probe params")),
+            )
+                .into_response();
+        }
+        if method == "getRecentPerformanceSamples" {
+            if matches!(profile, MockRpcProfile::NullPerformanceSamples) {
+                return (StatusCode::OK, Json(rpc_success(Value::Null))).into_response();
+            }
+            if matches!(profile, MockRpcProfile::MissingPerformanceSamplesResult) {
+                return (StatusCode::OK, Json(json!({ "jsonrpc": "2.0", "id": 1 })))
+                    .into_response();
+            }
+        }
 
         match method {
             "getHealth" => {
@@ -2458,7 +2968,13 @@ mod tests {
             }
             "getRecentPerformanceSamples" => {
                 if matches!(profile, MockRpcProfile::NoPerformanceSamples) {
-                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                    return (
+                        StatusCode::OK,
+                        Json(rpc_error(
+                            -32601,
+                            "method not found at /?api-key=do-not-expose-capability-probe-key",
+                        )),
+                    )
                         .into_response();
                 }
                 (
@@ -2538,6 +3054,13 @@ mod tests {
                 )
                     .into_response()
             }
+            "getSlotLeader" => {
+                if matches!(profile, MockRpcProfile::NoSlotLeader) {
+                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                        .into_response();
+                }
+                (StatusCode::OK, Json(rpc_success(json!("id-1")))).into_response()
+            }
             "getLeaderSchedule" => {
                 if matches!(profile, MockRpcProfile::NoLeaderSchedule) {
                     return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
@@ -2587,8 +3110,18 @@ mod tests {
             "getMinimumBalanceForRentExemption" => {
                 (StatusCode::OK, Json(rpc_success(json!(900_000_000u64)))).into_response()
             }
-            "minimumLedgerSlot" => (StatusCode::OK, Json(rpc_success(json!(600)))).into_response(),
+            "minimumLedgerSlot" => {
+                if matches!(profile, MockRpcProfile::NoMinimumLedgerSlot) {
+                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                        .into_response();
+                }
+                (StatusCode::OK, Json(rpc_success(json!(600)))).into_response()
+            }
             "getInflationReward" => {
+                if matches!(profile, MockRpcProfile::NoInflationRewards) {
+                    return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                        .into_response();
+                }
                 let rewards = params
                     .first()
                     .and_then(Value::as_array)

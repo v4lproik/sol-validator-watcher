@@ -1,7 +1,7 @@
 use crate::{
     collector::{command::SourceCommand, RpcClient},
     config::{Config, ConnectorConfig},
-    mode::{CommandId, ModeId, ProviderFeature, Transport, COMMAND_COUNT},
+    mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
@@ -15,6 +15,7 @@ pub struct SourceSelection {
     pub connector: Arc<str>,
     pub provider: Arc<str>,
     pub transport: Transport,
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     pub feature: Option<ProviderFeature>,
     pub precedence: usize,
 }
@@ -32,6 +33,7 @@ pub struct SourceRoute<'a> {
     pub connector: &'a str,
     pub provider: &'a str,
     pub transport: Transport,
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     pub feature: Option<ProviderFeature>,
     pub precedence: usize,
     pub available: bool,
@@ -40,6 +42,8 @@ pub struct SourceRoute<'a> {
 struct Connector {
     name: Arc<str>,
     provider: Arc<str>,
+    solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    features: Vec<ProviderFeature>,
     rpc_client: Option<RpcClient>,
     ws_client: Option<WebsocketProbeClient>,
 }
@@ -67,6 +71,8 @@ impl Connector {
         Ok(Self {
             name: Arc::from(config.name.as_str()),
             provider: Arc::from(config.provider.as_str()),
+            solana_rpc_compatibility: config.solana_rpc_compatibility,
+            features: config.features.clone(),
             rpc_client,
             ws_client,
         })
@@ -80,9 +86,27 @@ impl Connector {
             connector: Arc::clone(&self.name),
             provider: Arc::clone(&self.provider),
             transport: requirement.transport,
+            solana_rpc_compatibility: self.solana_rpc_compatibility,
             feature: requirement.feature,
             precedence,
         }
+    }
+
+    fn supports_requirement(&self, command: CommandId) -> bool {
+        let requirement = command.source_requirement();
+        let transport_available = match requirement.transport {
+            Transport::Rpc => self.rpc_client.is_some(),
+            Transport::Websocket => self.ws_client.is_some(),
+        };
+        let solana_rpc_compatible = requirement.solana_rpc_compatibility.is_none_or(|required| {
+            self.solana_rpc_compatibility
+                .is_some_and(|declared| declared.supports(required))
+        });
+        let feature_available = requirement
+            .feature
+            .is_none_or(|feature| self.features.contains(&feature));
+
+        transport_available && solana_rpc_compatible && feature_available
     }
 }
 
@@ -134,22 +158,41 @@ impl SourceChain {
                 .map(move |(index, connector_index)| {
                     let connector = &self.connectors[*connector_index];
                     let requirement = command.source_requirement();
-                    let available = match requirement.transport {
-                        Transport::Rpc => connector.rpc_client.is_some(),
-                        Transport::Websocket => connector.ws_client.is_some(),
-                    };
                     SourceRoute {
                         mode: command.mode(),
                         command,
                         connector: connector.name.as_ref(),
                         provider: connector.provider.as_ref(),
                         transport: requirement.transport,
+                        solana_rpc_compatibility: connector.solana_rpc_compatibility,
                         feature: requirement.feature,
                         precedence: index + 1,
-                        available,
+                        available: connector.supports_requirement(command),
                     }
                 })
         })
+    }
+
+    pub async fn verify_capabilities(&self) -> Result<()> {
+        for connector in &self.connectors {
+            let (Some(client), Some(solana_rpc_compatibility)) = (
+                connector.rpc_client.as_ref(),
+                connector.solana_rpc_compatibility,
+            ) else {
+                continue;
+            };
+            client
+                .verify_capabilities(solana_rpc_compatibility, &connector.features)
+                .await
+                .with_context(|| {
+                    format!(
+                        "connector {:?} provider {:?} RPC endpoint capability verification failed",
+                        connector.name, connector.provider
+                    )
+                })?;
+        }
+
+        Ok(())
     }
 
     pub async fn required<C>(&self, command: &C) -> Result<Sourced<C::Output>>

@@ -31,8 +31,9 @@ These changes do not require new exporter metrics.
   surface the worst validator or scope first.
 - Economics: keep rewards, rewarded blocks, and reward per produced block
   together; distinguish a disabled mode from a failed or stale command.
-- Every mode dashboard must expose its enabled state, configured command routes,
-  latest successful command sources, and source health.
+- Every mode dashboard must expose its enabled state, configured command routes
+  with declared and required standard Solana RPC compatibility, latest
+  successful command sources, and source health.
 - Mode status cards use four states: `DISABLED` for a disabled mode, `PENDING`
   until an enabled mode completes once, `DOWN` when its latest execution
   failed, and `UP` when its latest execution succeeded.

@@ -11,10 +11,10 @@ liveness files, signals, and shutdown.
 - `config.rs` parses each self-contained TOML profile, expands environment
   placeholders, normalizes values, and validates connectors plus every built-in
   mode's command routes. No other module reads raw environment-backed policy.
-- `source.rs` constructs RPC and WebSocket clients once and compiles command
-  routes into immutable connector index chains.
-- `main.rs` owns transactional reload, the polling loop, dependency guards, and
-  the `/metrics` and `/healthz` surfaces.
+- `source.rs` constructs RPC and WebSocket clients once, compiles command routes
+  into immutable connector index chains, and verifies declared RPC capabilities.
+- `main.rs` owns transactional reload, startup capability verification, the
+  polling loop, dependency guards, and the `/metrics` and `/healthz` surfaces.
 - `tasks.rs` owns task registration, first-failure handling, shutdown broadcast,
   and join errors.
 - `websocket.rs` owns websocket connect/probe behavior.
@@ -24,33 +24,45 @@ liveness files, signals, and shutdown.
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
   variables fail with the config field/path context; never log resolved secrets.
 - Keep connectors inline in the profile. Each connector has one stable
-  `provider` name plus an explicit `features` array, which may be empty. The
-  current provider feature is `historical-data`; `rpc` and `websocket` are
-  transports, not features.
-- Each `ModeId` owns its finite source requirements. Health permits RPC and
-  WebSocket; consensus and leadership require RPC; economics permits standard
-  RPC for balances and RPC with `historical-data` for prior-epoch rewards. A
-  command selects one requirement from its mode, and its configured route
-  supplies the ordered providers.
+  `provider` name plus an explicit `features` array, which may be empty.
+  Provider names are provenance, not capabilities.
+- A connector with `rpc_url` must declare
+  `solana_rpc_compatibility = "core"` or
+  `solana_rpc_compatibility = "extended"`. A connector without `rpc_url` must
+  not declare standard Solana RPC compatibility. `extended` satisfies `core`;
+  provider features currently require `extended`.
+- The compatibility profile describes only standard Solana JSON-RPC methods
+  consumed by this watcher. It is not the provider's complete API catalog.
+  Provider-specific APIs and transports require their own typed command,
+  capability, endpoint, and verification when the watcher starts consuming
+  them.
+- The current provider feature is `historical-data`; `rpc` and `websocket` are
+  transports, not features. Historical data is independent of compatibility.
+- Core commands are RPC health, epoch info, vote accounts, and current/next
+  leader schedules. Recent performance samples, current block production,
+  account balances, and rent exemption require extended compatibility.
+  Prior-epoch rewards additionally require `historical-data`.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
+  Optional extended routes may be empty in a core-only profile.
 - Treat each connector's `rpc_url` and `ws_url` as its transport configuration.
   Do not duplicate those transports in `features` or add transport toggles.
 - Normalize names, URLs, commitments, labels, and public keys once, then validate
   the normalized value.
-- Reject unknown fields, missing providers or feature arrays, duplicate
-  features, zero ports/timeouts/intervals, duplicate connector names,
-  unsupported commitments, invalid websocket schemes, missing required routes,
-  unknown or duplicate route entries, RPC routes without RPC transport, routes
-  missing an optional provider feature required by the mode, and impossible
-  economics mode/target combinations before client construction.
+- Reject unknown fields, missing providers or feature arrays, missing or
+  misplaced Solana RPC compatibility declarations, duplicate features, zero
+  ports/timeouts/intervals, duplicate connector names, unsupported commitments,
+  invalid websocket schemes, missing required routes, unknown or duplicate route
+  entries, and routes whose connector lacks the required transport, Solana RPC
+  compatibility, or provider feature before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
   `ws_url` is empty; expose them as unavailable and skip them at execution.
 - Removed split-config and single-connection fields stay unsupported. Do not
   add aliases or a second migration path.
 - Config reload is transactional: load and validate the candidate, build every
-  changed runtime dependency, then replace the last known-good state. A failed
-  reload keeps the prior state and remains observable.
+  changed runtime dependency, verify declared RPC capabilities, then replace the
+  last known-good state. A failed reload keeps the prior state and remains
+  observable.
 - A changed metrics port requires restart because the listener is already
   bound. Do not pretend a reload moved it.
 
@@ -67,6 +79,9 @@ liveness files, signals, and shutdown.
 - Dependency guards run before collection. The `health.rpc_health` route is
   fail-closed; `health.ws_health` is probed only through its explicitly named
   connectors and remains optional when no named connector has `ws_url`.
+- Verify every declared standard Solana RPC compatibility profile and provider
+  feature before dependency health or collection. Startup verification failure
+  is fatal; reload verification failure preserves the last-known-good runtime.
 - Update the liveness file only after a complete snapshot has updated metrics.
   A process that is looping but failing collection is not live by this contract.
 - `/healthz` currently proves the HTTP process is serving. Do not silently turn
@@ -76,11 +91,12 @@ liveness files, signals, and shutdown.
 ## Reload Review Gates
 
 1. Which config fields changed, and must the compiled `SourceChain` rebuild?
-2. Can any fallible step mutate live state before the candidate and its complete
-   source chain are valid?
+2. Can any fallible step mutate live state before the candidate, its complete
+   source chain, and its RPC capability probes succeed?
 3. Which fields cannot reload and require a restart warning?
 4. Does a failed candidate preserve every prior runtime dependency and flag?
-5. Are economics capability checks invalidated when their inputs change?
+5. Are connector and economics capability checks invalidated when their inputs
+   change?
 
 ## Task Review Gates
 
@@ -107,8 +123,10 @@ liveness files, signals, and shutdown.
 ## Boundary Proof
 
 Use config unit tests for strict parsing/validation, every committed profile,
-canonical provider features, transport/feature separation, and exact
-command-route order. Use task tests for completion/error/panic/shutdown
-outcomes. Smoke the binary with controlled RPC endpoints, fetch `/healthz` and
-`/metrics`, trigger shutdown, and observe a clean exit when runtime wiring
-changes.
+canonical Solana RPC compatibility/provider-feature declarations, transport
+separation, and exact command-route order. Exercise capability probes and reload
+rejection at a controlled HTTP/JSON-RPC boundary with valid method-specific
+success responses.
+Use task tests for completion/error/panic/shutdown outcomes. Smoke the binary
+with controlled RPC endpoints, fetch `/healthz` and `/metrics`, trigger
+shutdown, and observe a clean exit when runtime wiring changes.

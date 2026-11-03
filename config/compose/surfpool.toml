@@ -9,6 +9,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 name = "surfpool"
 provider = "surfpool"
 features = []
+solana_rpc_compatibility = "extended"
 rpc_url = "http://surfpool:8899"
 rpc_timeout_sec = 5
 ws_url = "ws://surfpool:8900"

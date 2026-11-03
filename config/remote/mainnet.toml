@@ -10,6 +10,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 name = "mainnet-rpc"
 provider = "helius"
 features = ["historical-data"]
+solana_rpc_compatibility = "extended"
 rpc_url = "${SOL_MAINNET_RPC_URL}"
 rpc_timeout_sec = 30
 ws_url = "${SOL_MAINNET_WS_URL}"

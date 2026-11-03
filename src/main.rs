@@ -60,6 +60,7 @@ struct RuntimeState {
     sources: SourceChain,
     config_modified: SystemTime,
     metrics_port: u16,
+    connector_capabilities_verified: bool,
     economics_capabilities_verified: bool,
 }
 
@@ -76,11 +77,12 @@ impl RuntimeState {
             sources,
             config_modified,
             metrics_port,
+            connector_capabilities_verified: false,
             economics_capabilities_verified: false,
         })
     }
 
-    fn reload_if_needed(&mut self) -> Result<()> {
+    async fn reload_if_needed(&mut self) -> Result<()> {
         let modified = config_mtime(&self.config_path)?;
         if modified == self.config_modified {
             return Ok(());
@@ -97,10 +99,21 @@ impl RuntimeState {
 
         let sources_changed =
             self.config.connectors != next.connectors || self.config.modes != next.modes;
-
-        if sources_changed {
-            self.sources = SourceChain::from_config(&next)?;
-        }
+        let next_sources = if sources_changed {
+            let sources = SourceChain::from_config(&next)?;
+            sources
+                .verify_capabilities()
+                .await
+                .context("reload candidate connector capability verification failed")?;
+            Some(sources)
+        } else {
+            None
+        };
+        let candidate_sources = next_sources.as_ref().unwrap_or(&self.sources);
+        ensure_economics_supported(candidate_sources, &next)
+            .await
+            .context("reload candidate economics capability verification failed")?;
+        let next_economics_capabilities_verified = next.modes.economics.enabled;
 
         info!(
             watched_validators = next.watched_validators.len(),
@@ -109,9 +122,13 @@ impl RuntimeState {
             "reloaded configuration"
         );
 
+        if let Some(sources) = next_sources {
+            self.sources = sources;
+            self.connector_capabilities_verified = true;
+        }
         self.config = next;
         self.config_modified = modified;
-        self.economics_capabilities_verified = false;
+        self.economics_capabilities_verified = next_economics_capabilities_verified;
         Ok(())
     }
 }
@@ -169,9 +186,10 @@ async fn run_watcher_loop(
     );
 
     loop {
-        if let Err(err) = runtime.reload_if_needed() {
+        if let Err(err) = runtime.reload_if_needed().await {
             warn!(error = ?err, "failed to reload config, keeping previous configuration");
         }
+        ensure_connector_capabilities_ready(&mut runtime).await?;
 
         metrics.set_watcher_up(&runtime.config.network, true);
         metrics.begin_poll(&runtime.config, &runtime.sources);
@@ -267,6 +285,22 @@ fn mark_collection_modes_down(config: &Config, metrics: &Metrics) {
             metrics.set_mode_up(&config.network, mode, false);
         }
     }
+}
+
+async fn ensure_connector_capabilities_ready(runtime: &mut RuntimeState) -> Result<()> {
+    if runtime.connector_capabilities_verified {
+        return Ok(());
+    }
+
+    info!("validating declared connector RPC capabilities");
+    runtime
+        .sources
+        .verify_capabilities()
+        .await
+        .context("failed to validate declared connector RPC capabilities")?;
+    runtime.connector_capabilities_verified = true;
+    info!("validated declared connector RPC capabilities");
+    Ok(())
 }
 
 async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Result<()> {
@@ -401,7 +435,7 @@ fn init_tracing() -> Result<()> {
 mod tests {
     use super::{
         config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
-        mark_collection_modes_down, update_liveness_file, RuntimeState,
+        mark_collection_modes_down, run_watcher_loop, update_liveness_file, RuntimeState,
     };
     use crate::{
         config::{
@@ -410,15 +444,24 @@ mod tests {
             ModesConfig, WatchedValidatorConfig,
         },
         metrics::Metrics,
-        mode::{CommandId, ModeId},
+        mode::{CommandId, ModeId, SolanaRpcCompatibility},
         source::SourceChain,
+        tasks::TaskManager,
     };
     use anyhow::{Context, Result};
+    use axum::{
+        extract::{Json, State},
+        routing::post,
+        Router,
+    };
+    use serde_json::{json, Value};
     use std::{
         env, fs,
         path::PathBuf,
+        sync::Arc,
         time::{SystemTime, UNIX_EPOCH},
     };
+    use tokio::{net::TcpListener, task::JoinHandle};
 
     #[test]
     fn update_liveness_file_writes_timestamp() -> Result<()> {
@@ -528,8 +571,78 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn reload_if_needed_rebuilds_command_routes_and_resets_economics_flag() -> Result<()> {
+    #[tokio::test]
+    async fn watcher_loop_fails_closed_before_publishing_capability_metrics() -> Result<()> {
+        let (rpc_url, server_task) =
+            start_capability_probe_server(Some("getRecentPerformanceSamples")).await?;
+        let test_dir = unique_test_dir("startup-capability");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.toml");
+        let liveness_path = test_dir.join("watcher.liveness");
+        let secret = "do-not-expose-startup-key";
+        fs::write(
+            &config_path,
+            format!(
+                r#"
+network = "startup-test"
+liveness_file = "{}"
+
+[[connectors]]
+name = "limited-rpc"
+provider = "mock-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}/?api-key={secret}"
+
+[modes.health.commands]
+rpc_health = ["limited-rpc"]
+
+[modes.consensus.commands]
+epoch_info = ["limited-rpc"]
+vote_accounts = ["limited-rpc"]
+recent_performance_samples = ["limited-rpc"]
+
+[modes.economics]
+enabled = false
+"#,
+                liveness_path.display()
+            ),
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let runtime = RuntimeState::load(config_path)?;
+        let metrics = Arc::new(Metrics::new()?);
+        let tasks = TaskManager::new();
+        let Err(error) =
+            run_watcher_loop(runtime, Arc::clone(&metrics), tasks.shutdown_handle()).await
+        else {
+            anyhow::bail!("unsupported startup connector must fail before collection");
+        };
+        let message = format!("{error:#}");
+        assert!(message.contains("connector \"limited-rpc\""), "{message}");
+        assert!(message.contains("getRecentPerformanceSamples"), "{message}");
+        assert!(!message.contains(secret), "{message}");
+        let rendered = metrics.render()?;
+        assert!(
+            !rendered.contains("sol_watcher_up{network=\"startup-test\""),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("sol_mode_command_route_info{"),
+            "{rendered}"
+        );
+        assert!(!liveness_path.exists());
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        server_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reload_if_needed_rebuilds_command_routes_and_resets_economics_flag() -> Result<()> {
+        let (rpc_url, server_task) = start_capability_probe_server(None).await?;
         let test_dir = unique_test_dir("reload-order");
         fs::create_dir_all(&test_dir)
             .with_context(|| format!("failed to create {}", test_dir.display()))?;
@@ -543,6 +656,7 @@ network = "mainnet-beta"
 name = "primary"
 provider = "solana"
 features = []
+solana_rpc_compatibility = "extended"
 rpc_url = "https://primary.example"
 
 [[connectors]]
@@ -577,21 +691,24 @@ enabled = false
 
         fs::write(
             &config_path,
-            r#"
+            format!(
+                r#"
 network = "mainnet-beta"
 
 [[connectors]]
 name = "fallback"
 provider = "helius"
 features = []
-rpc_url = "https://fallback.example"
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}"
 ws_url = "wss://fallback.example"
 
 [[connectors]]
 name = "replacement"
 provider = "solana"
 features = []
-rpc_url = "https://replacement.example"
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}"
 
 [modes.health.commands]
 rpc_health = ["replacement", "fallback"]
@@ -609,11 +726,12 @@ next_leader_schedule = ["replacement", "fallback"]
 
 [modes.economics]
 enabled = false
-"#,
+"#
+            ),
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        runtime.reload_if_needed()?;
+        runtime.reload_if_needed().await?;
 
         assert_eq!(runtime.config.connectors[0].name, "fallback");
         assert_eq!(runtime.config.connectors[1].name, "replacement");
@@ -636,11 +754,13 @@ enabled = false
 
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        server_task.abort();
         Ok(())
     }
 
-    #[test]
-    fn reload_if_needed_keeps_last_known_good_runtime_after_invalid_candidate() -> Result<()> {
+    #[tokio::test]
+    async fn reload_if_needed_keeps_last_known_good_runtime_after_invalid_candidate() -> Result<()>
+    {
         let test_dir = unique_test_dir("reload-invalid");
         fs::create_dir_all(&test_dir)
             .with_context(|| format!("failed to create {}", test_dir.display()))?;
@@ -654,6 +774,7 @@ network = "mainnet-beta"
 name = "primary"
 provider = "solana"
 features = []
+solana_rpc_compatibility = "extended"
 rpc_url = "https://primary.example"
 
 [modes.health.commands]
@@ -693,7 +814,7 @@ ws_url = "wss://ws-only.example"
         )
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
-        let error = match runtime.reload_if_needed() {
+        let error = match runtime.reload_if_needed().await {
             Ok(()) => anyhow::bail!("invalid reload candidate should fail"),
             Err(error) => error,
         };
@@ -719,12 +840,291 @@ ws_url = "wss://ws-only.example"
         Ok(())
     }
 
+    #[tokio::test]
+    async fn reload_if_needed_preserves_runtime_when_candidate_capability_probe_fails() -> Result<()>
+    {
+        let (rpc_url, server_task) =
+            start_capability_probe_server(Some("getRecentPerformanceSamples")).await?;
+        let test_dir = unique_test_dir("reload-capability");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.toml");
+        fs::write(
+            &config_path,
+            r#"
+network = "mainnet-beta"
+
+[[connectors]]
+name = "current"
+provider = "solana"
+features = []
+solana_rpc_compatibility = "extended"
+rpc_url = "https://current.example"
+
+[modes.health.commands]
+rpc_health = ["current"]
+
+[modes.consensus.commands]
+epoch_info = ["current"]
+vote_accounts = ["current"]
+
+[modes.economics]
+enabled = false
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let mut runtime = RuntimeState::load(config_path.clone())?;
+        runtime.connector_capabilities_verified = true;
+        runtime.economics_capabilities_verified = true;
+        runtime.config_modified = UNIX_EPOCH;
+        let secret = "do-not-expose-reload-key";
+        fs::write(
+            &config_path,
+            format!(
+                r#"
+network = "testnet"
+
+[[connectors]]
+name = "candidate"
+provider = "mock-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}/?api-key={secret}"
+
+[modes.health.commands]
+rpc_health = ["candidate"]
+
+[modes.consensus.commands]
+epoch_info = ["candidate"]
+vote_accounts = ["candidate"]
+
+[modes.economics]
+enabled = false
+"#
+            ),
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let Err(error) = runtime.reload_if_needed().await else {
+            anyhow::bail!("unsupported reload candidate should fail");
+        };
+        let message = format!("{error:#}");
+        assert!(message.contains("reload candidate"), "{message}");
+        assert!(message.contains("connector \"candidate\""), "{message}");
+        assert!(message.contains("getRecentPerformanceSamples"), "{message}");
+        assert!(!message.contains(secret), "{message}");
+        assert_eq!(runtime.config.network, "mainnet-beta");
+        assert_eq!(runtime.config.connectors[0].name, "current");
+        assert!(runtime.connector_capabilities_verified);
+        assert_eq!(runtime.config_modified, UNIX_EPOCH);
+        assert!(runtime.economics_capabilities_verified);
+        let rpc_health_route = runtime
+            .sources
+            .routes()
+            .filter(|route| route.command == CommandId::RpcHealth)
+            .map(|route| route.connector.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(rpc_health_route, ["current"]);
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        server_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reload_if_needed_preserves_runtime_when_candidate_economics_check_fails() -> Result<()>
+    {
+        let (rpc_url, server_task) = start_capability_probe_server(None).await?;
+        let test_dir = unique_test_dir("reload-economics");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.toml");
+        fs::write(
+            &config_path,
+            r#"
+network = "mainnet-beta"
+
+[[connectors]]
+name = "current"
+provider = "solana"
+features = []
+solana_rpc_compatibility = "extended"
+rpc_url = "https://current.example"
+
+[modes.health.commands]
+rpc_health = ["current"]
+
+[modes.consensus.commands]
+epoch_info = ["current"]
+vote_accounts = ["current"]
+
+[modes.economics]
+enabled = false
+"#,
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let mut runtime = RuntimeState::load(config_path.clone())?;
+        runtime.connector_capabilities_verified = true;
+        runtime.economics_capabilities_verified = true;
+        runtime.config_modified = UNIX_EPOCH;
+
+        fs::write(
+            &config_path,
+            format!(
+                r#"
+network = "testnet"
+
+[[connectors]]
+name = "candidate"
+provider = "mock-provider"
+features = ["historical-data"]
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}"
+
+[modes.health.commands]
+rpc_health = ["candidate"]
+
+[modes.consensus.commands]
+epoch_info = ["candidate"]
+vote_accounts = ["candidate"]
+
+[modes.economics]
+enabled = true
+
+[modes.economics.validator]
+identity = "missing-id"
+vote_account = "missing-vote"
+labels = []
+
+[modes.economics.commands]
+account_balances = ["candidate"]
+inflation_rewards = ["candidate"]
+reward_epoch_block_production = ["candidate"]
+"#
+            ),
+        )
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let Err(error) = runtime.reload_if_needed().await else {
+            anyhow::bail!("unsupported economics reload candidate should fail");
+        };
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("reload candidate economics capability verification failed"),
+            "{message}"
+        );
+        assert!(
+            message.contains("configured economics validator is not present"),
+            "{message}"
+        );
+        assert_eq!(runtime.config.network, "mainnet-beta");
+        assert_eq!(runtime.config.connectors[0].name, "current");
+        assert_eq!(runtime.config_modified, UNIX_EPOCH);
+        assert!(runtime.connector_capabilities_verified);
+        assert!(runtime.economics_capabilities_verified);
+        let rpc_health_route = runtime
+            .sources
+            .routes()
+            .filter(|route| route.command == CommandId::RpcHealth)
+            .map(|route| route.connector.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(rpc_health_route, ["current"]);
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        server_task.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reload_if_needed_rechecks_economics_when_root_inputs_change() -> Result<()> {
+        let (rpc_url, server_task) = start_capability_probe_server(None).await?;
+        let test_dir = unique_test_dir("reload-economics-input");
+        fs::create_dir_all(&test_dir)
+            .with_context(|| format!("failed to create {}", test_dir.display()))?;
+        let config_path = test_dir.join("watcher.toml");
+        let config_toml = |delinquent_slot_distance| {
+            format!(
+                r#"
+network = "mainnet-beta"
+delinquent_slot_distance = {delinquent_slot_distance}
+
+[[connectors]]
+name = "primary"
+provider = "mock-provider"
+features = ["historical-data"]
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}"
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+
+[modes.economics]
+enabled = true
+
+[modes.economics.validator]
+identity = "id-1"
+vote_account = "vote-1"
+labels = []
+
+[modes.economics.commands]
+account_balances = ["primary"]
+inflation_rewards = ["primary"]
+reward_epoch_block_production = ["primary"]
+"#
+            )
+        };
+        fs::write(&config_path, config_toml(128))
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let mut runtime = RuntimeState::load(config_path.clone())?;
+        runtime.connector_capabilities_verified = true;
+        runtime.economics_capabilities_verified = true;
+        runtime.config_modified = UNIX_EPOCH;
+        fs::write(&config_path, config_toml(256))
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+        let Err(error) = runtime.reload_if_needed().await else {
+            anyhow::bail!("unsupported economics input reload candidate should fail");
+        };
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("reload candidate economics capability verification failed"),
+            "{message}"
+        );
+        assert!(message.contains("getVoteAccounts"), "{message}");
+        assert_eq!(runtime.config.delinquent_slot_distance, Some(128));
+        assert_eq!(runtime.config_modified, UNIX_EPOCH);
+        assert!(runtime.connector_capabilities_verified);
+        assert!(runtime.economics_capabilities_verified);
+        let rpc_health_route = runtime
+            .sources
+            .routes()
+            .filter(|route| route.command == CommandId::RpcHealth)
+            .map(|route| route.connector.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(rpc_health_route, ["primary"]);
+
+        fs::remove_dir_all(&test_dir)
+            .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+        server_task.abort();
+        Ok(())
+    }
+
     fn disabled_economics_runtime() -> Result<RuntimeState> {
         let config = Config {
             connectors: vec![ConnectorConfig {
                 name: "primary".to_string(),
                 provider: "solana".to_string(),
                 features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
             }],
@@ -739,6 +1139,7 @@ ws_url = "wss://ws-only.example"
             sources,
             config_modified: UNIX_EPOCH,
             metrics_port: 8000,
+            connector_capabilities_verified: false,
             economics_capabilities_verified: false,
         })
     }
@@ -768,6 +1169,122 @@ ws_url = "wss://ws-only.example"
             },
             economics: EconomicsModeConfig::default(),
         }
+    }
+
+    async fn start_capability_probe_server(
+        missing_method: Option<&'static str>,
+    ) -> Result<(String, JoinHandle<()>)> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .context("failed to bind capability probe listener")?;
+        let address = listener
+            .local_addr()
+            .context("failed to read capability probe listener address")?;
+        let app = Router::new()
+            .route("/", post(capability_probe_handler))
+            .with_state(missing_method);
+        let task = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        Ok((format!("http://{address}"), task))
+    }
+
+    async fn capability_probe_handler(
+        State(missing_method): State<Option<&'static str>>,
+        Json(request): Json<Value>,
+    ) -> Json<Value> {
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let params = request
+            .get("params")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if method == "getVoteAccounts"
+            && params
+                .first()
+                .and_then(|config| config.get("delinquentSlotDistance"))
+                .and_then(Value::as_u64)
+                == Some(256)
+        {
+            return Json(json!({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32602,
+                    "message": "unsupported delinquent slot distance"
+                },
+                "id": 1
+            }));
+        }
+        if missing_method == Some(method) {
+            return Json(json!({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32601,
+                    "message": "method not found"
+                },
+                "id": 1
+            }));
+        }
+
+        let result = match method {
+            "getHealth" => json!("ok"),
+            "getEpochInfo" => json!({
+                "epoch": 1,
+                "slotIndex": 1,
+                "slotsInEpoch": 32,
+                "absoluteSlot": 33
+            }),
+            "getVoteAccounts" => json!({
+                "current": [{
+                    "votePubkey": "vote-1",
+                    "nodePubkey": "id-1",
+                    "activatedStake": 1_500_000_000u64,
+                    "commission": 5,
+                    "epochCredits": [[0, 20, 10]],
+                    "lastVote": 32,
+                    "rootSlot": 31
+                }],
+                "delinquent": []
+            }),
+            "getSlotLeader" => json!("probe-validator-identity"),
+            "getLeaderSchedule" => Value::Null,
+            "getRecentPerformanceSamples" => json!([]),
+            "getBlockProduction" => json!({
+                "context": { "slot": 33 },
+                "value": {
+                    "byIdentity": {},
+                    "range": { "firstSlot": 32, "lastSlot": 33 }
+                }
+            }),
+            "getMultipleAccounts" => json!({
+                "context": { "slot": 33 },
+                "value": [
+                    { "lamports": 3_000_000_000u64, "space": 0 },
+                    { "lamports": 2_500_000_000u64, "space": 3762 }
+                ]
+            }),
+            "getMinimumBalanceForRentExemption" | "minimumLedgerSlot" => json!(0),
+            "getInflationReward" => json!([null]),
+            _ => {
+                return Json(json!({
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32601,
+                        "message": "method not found"
+                    },
+                    "id": 1
+                }));
+            }
+        };
+        Json(json!({
+            "jsonrpc": "2.0",
+            "result": result,
+            "id": 1
+        }))
     }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {

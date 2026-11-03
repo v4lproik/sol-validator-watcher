@@ -1,4 +1,4 @@
-use crate::mode::{CommandId, ModeId, ProviderFeature, Transport};
+use crate::mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -130,6 +130,8 @@ pub struct ConnectorConfig {
     pub provider: String,
     pub features: Vec<ProviderFeature>,
     #[serde(default)]
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    #[serde(default)]
     pub rpc_url: Option<String>,
     #[serde(default = "default_rpc_timeout_sec")]
     pub rpc_timeout_sec: u64,
@@ -147,6 +149,7 @@ impl Default for ConnectorConfig {
             name: String::new(),
             provider: String::new(),
             features: Vec::new(),
+            solana_rpc_compatibility: None,
             rpc_url: None,
             rpc_timeout_sec: default_rpc_timeout_sec(),
             ws_url: None,
@@ -212,6 +215,25 @@ impl ConnectorConfig {
                     feature.as_str()
                 );
             }
+        }
+        match (self.rpc_url.is_some(), self.solana_rpc_compatibility) {
+            (true, None) => bail!(
+                "connectors[{index}].solana_rpc_compatibility is required when rpc_url is configured"
+            ),
+            (false, Some(_)) => bail!(
+                "connectors[{index}].solana_rpc_compatibility requires a configured rpc_url"
+            ),
+            _ => {}
+        }
+        if self.supports(ProviderFeature::HistoricalData)
+            && self.solana_rpc_compatibility != Some(SolanaRpcCompatibility::Extended)
+        {
+            bail!(
+                "connectors[{index}].features entry {:?} requires solana_rpc_compatibility = \"extended\", got {:?}",
+                ProviderFeature::HistoricalData.as_str(),
+                self.solana_rpc_compatibility
+                    .map(SolanaRpcCompatibility::as_str)
+            );
         }
         if self.rpc_url.is_none() && self.ws_url.is_none() {
             bail!("connectors[{index}] must define rpc_url and/or ws_url");
@@ -380,11 +402,15 @@ impl Config {
                 command.as_str().replace('-', "_")
             );
             let required = match command {
-                CommandId::WsHealth => false,
+                CommandId::RpcHealth | CommandId::EpochInfo | CommandId::VoteAccounts => true,
+                CommandId::WsHealth
+                | CommandId::RecentPerformanceSamples
+                | CommandId::CurrentBlockProduction
+                | CommandId::CurrentLeaderSchedule
+                | CommandId::NextLeaderSchedule => false,
                 CommandId::AccountBalances
                 | CommandId::InflationRewards
                 | CommandId::RewardEpochBlockProduction => self.modes.economics.enabled,
-                _ => true,
             };
 
             if route.is_empty() {
@@ -412,15 +438,34 @@ impl Config {
                     })?;
                 if requirement.transport == Transport::Rpc && !connector.has_rpc() {
                     bail!(
-                        "{path} references connector {:?}, which has no configured RPC transport",
+                        "{path} references connector {:?}, which has no configured RPC endpoint",
                         connector.name
                     );
+                }
+                if let Some(required_compatibility) = requirement.solana_rpc_compatibility {
+                    let declared_compatibility =
+                        connector.solana_rpc_compatibility.with_context(|| {
+                            format!(
+                                "{path} references connector {:?}, whose RPC endpoint has no declared solana_rpc_compatibility",
+                                connector.name
+                            )
+                        })?;
+                    if !declared_compatibility.supports(required_compatibility) {
+                        bail!(
+                            "{path} references connector {:?}, but command {:?} requires solana_rpc_compatibility = {:?} and the connector RPC endpoint declares {:?}",
+                            connector.name,
+                            command.as_str(),
+                            required_compatibility.as_str(),
+                            declared_compatibility.as_str()
+                        );
+                    }
                 }
                 if let Some(feature) = requirement.feature {
                     if !connector.supports(feature) {
                         bail!(
-                            "{path} references connector {:?}, which lacks provider feature {:?}",
+                            "{path} references connector {:?}, but command {:?} requires provider feature {:?}",
                             connector.name,
+                            command.as_str(),
                             feature.as_str()
                         );
                     }
@@ -591,7 +636,9 @@ mod tests {
         LeadershipCommands, LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
         ECONOMICS_TARGET_LABEL,
     };
-    use crate::mode::{CommandId, ModeSourceRequirement, ProviderFeature, Transport};
+    use crate::mode::{
+        CommandId, ModeSourceRequirement, ProviderFeature, SolanaRpcCompatibility, Transport,
+    };
     use anyhow::{Context, Result};
     use std::{
         fs,
@@ -614,12 +661,14 @@ network = "testnet"
 name = "local-validator"
 provider = "solana-validator"
 features = []
+solana_rpc_compatibility = "core"
 rpc_url = "http://127.0.0.1:8899"
 
 [[connectors]]
 name = "helius-rpc"
 provider = "helius"
 features = []
+solana_rpc_compatibility = "extended"
 rpc_url = "https://rpc.helius.example"
 
 [[connectors]]
@@ -639,10 +688,10 @@ ws_health = ["helius-ws"]
 [modes.consensus.commands]
 epoch_info = ["local-validator", "helius-rpc"]
 vote_accounts = ["local-validator", "helius-rpc"]
-recent_performance_samples = ["local-validator", "helius-rpc"]
+recent_performance_samples = ["helius-rpc"]
 
 [modes.leadership.commands]
-current_block_production = ["helius-rpc", "local-validator"]
+current_block_production = ["helius-rpc"]
 current_leader_schedule = ["local-validator", "helius-rpc"]
 next_leader_schedule = ["local-validator", "helius-rpc"]
 "#,
@@ -656,19 +705,27 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
         assert_eq!(config.connectors[0].name, "local-validator");
         assert_eq!(config.connectors[0].provider, "solana-validator");
         assert!(config.connectors[0].features.is_empty());
+        assert_eq!(
+            config.connectors[0].solana_rpc_compatibility,
+            Some(SolanaRpcCompatibility::Core)
+        );
         assert_eq!(config.connectors[1].name, "helius-rpc");
         assert_eq!(config.connectors[1].provider, "helius");
+        assert_eq!(
+            config.connectors[1].solana_rpc_compatibility,
+            Some(SolanaRpcCompatibility::Extended)
+        );
         assert_eq!(config.connectors[2].name, "helius-ws");
         assert!(config.connectors[2].features.is_empty());
         assert_eq!(config.watched_validators.len(), 1);
         assert_eq!(
             config.modes.leadership.commands.current_block_production,
-            ["helius-rpc", "local-validator"]
+            ["helius-rpc"]
         );
         assert_eq!(config.modes.health.commands.ws_health, ["helius-ws"]);
         assert_eq!(
             config.modes.consensus.commands.recent_performance_samples,
-            ["local-validator", "helius-rpc"]
+            ["helius-rpc"]
         );
 
         fs::remove_dir_all(&test_dir)
@@ -685,6 +742,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "mainnet-beta",
                 "local-validator",
                 "solana-validator",
+                SolanaRpcCompatibility::Core,
                 false,
                 false,
             ),
@@ -693,6 +751,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "external-validator",
                 "external-validator",
                 "solana-validator",
+                SolanaRpcCompatibility::Core,
                 false,
                 false,
             ),
@@ -701,6 +760,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "surfpool-localnet",
                 "surfpool",
                 "surfpool",
+                SolanaRpcCompatibility::Extended,
                 true,
                 false,
             ),
@@ -709,6 +769,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "devnet",
                 "helius-devnet",
                 "helius",
+                SolanaRpcCompatibility::Extended,
                 true,
                 true,
             ),
@@ -717,12 +778,22 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                 "mainnet-beta",
                 "mainnet-rpc",
                 "helius",
+                SolanaRpcCompatibility::Extended,
                 true,
                 true,
             ),
         ];
 
-        for (relative_path, network, connector_name, provider, has_ws, has_history) in cases {
+        for (
+            relative_path,
+            network,
+            connector_name,
+            provider,
+            solana_rpc_compatibility,
+            has_ws,
+            has_history,
+        ) in cases
+        {
             let path = root.join(relative_path);
             let config = Config::load_with(&path, |raw| {
                 expand_env_vars_with(raw, |key| {
@@ -755,6 +826,11 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
             );
             assert!(config.connectors[0].has_rpc(), "profile {relative_path}");
             assert_eq!(
+                config.connectors[0].solana_rpc_compatibility,
+                Some(solana_rpc_compatibility),
+                "profile {relative_path}"
+            );
+            assert_eq!(
                 config.connectors[0].has_ws(),
                 has_ws,
                 "profile {relative_path}"
@@ -783,6 +859,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
                     CommandId::InflationRewards.source_requirement(),
                     ModeSourceRequirement {
                         transport: Transport::Rpc,
+                        solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                         feature: Some(ProviderFeature::HistoricalData),
                     }
                 );
@@ -884,12 +961,61 @@ rpc_url = "https://rpc.helius.example"
     }
 
     #[test]
+    fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<()> {
+        let mut missing_compatibility = ConnectorConfig {
+            name: "rpc".to_string(),
+            provider: "solana-validator".to_string(),
+            features: Vec::new(),
+            rpc_url: Some("https://rpc.example".to_string()),
+            ..ConnectorConfig::default()
+        };
+        let Err(error) = missing_compatibility.validate(0) else {
+            anyhow::bail!("RPC endpoint without Solana RPC compatibility should fail");
+        };
+        assert!(error
+            .to_string()
+            .contains("solana_rpc_compatibility is required when rpc_url is configured"));
+
+        let mut compatibility_without_endpoint = ConnectorConfig {
+            name: "websocket".to_string(),
+            provider: "solana-validator".to_string(),
+            features: Vec::new(),
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+            ws_url: Some("wss://ws.example".to_string()),
+            ..ConnectorConfig::default()
+        };
+        let Err(error) = compatibility_without_endpoint.validate(0) else {
+            anyhow::bail!("Solana RPC compatibility without RPC endpoint should fail");
+        };
+        assert!(error
+            .to_string()
+            .contains("solana_rpc_compatibility requires a configured rpc_url"));
+
+        let mut history_on_core = ConnectorConfig {
+            name: "core".to_string(),
+            provider: "solana-validator".to_string(),
+            features: vec![ProviderFeature::HistoricalData],
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+            rpc_url: Some("https://rpc.example".to_string()),
+            ..ConnectorConfig::default()
+        };
+        let Err(error) = history_on_core.validate(0) else {
+            anyhow::bail!("historical data on core Solana RPC should fail");
+        };
+        assert!(error.to_string().contains(
+            "features entry \"historical-data\" requires solana_rpc_compatibility = \"extended\""
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn provider_features_deserialize_and_export_stable_labels() -> Result<()> {
         let connector: ConnectorConfig = toml::from_str(
             r#"
 name = "test"
 provider = "helius"
 features = ["historical-data"]
+solana_rpc_compatibility = "extended"
 rpc_url = "https://rpc.example"
 ws_url = "wss://rpc.example"
 "#,
@@ -897,6 +1023,10 @@ ws_url = "wss://rpc.example"
 
         assert_eq!(connector.provider, "helius");
         assert_eq!(connector.features, [ProviderFeature::HistoricalData]);
+        assert_eq!(
+            connector.solana_rpc_compatibility,
+            Some(SolanaRpcCompatibility::Extended)
+        );
         assert_eq!(
             connector
                 .features
@@ -1098,9 +1228,53 @@ transport_mode = "poll-http"
         let Err(error) = config.validate() else {
             anyhow::bail!("RPC command without RPC transport should be rejected");
         };
-        assert!(error
-            .to_string()
-            .contains("has no configured RPC transport"));
+        assert!(error.to_string().contains("has no configured RPC endpoint"));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_extended_rpc_command_routed_to_core_endpoint() -> Result<()> {
+        let mut connector = rpc_connector("core");
+        connector.features.clear();
+        connector.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+        let mut config = Config {
+            connectors: vec![connector],
+            modes: modes_for("core", None, false),
+            ..Config::default()
+        };
+
+        let Err(error) = config.validate() else {
+            anyhow::bail!("extended RPC command on core endpoint should fail");
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("modes.consensus.commands.recent_performance_samples"),
+            "{message}"
+        );
+        assert!(message.contains("connector \"core\""), "{message}");
+        assert!(
+            message.contains("requires solana_rpc_compatibility = \"extended\""),
+            "{message}"
+        );
+        assert!(message.contains("declares \"core\""), "{message}");
+        Ok(())
+    }
+
+    #[test]
+    fn permits_core_rpc_endpoint_when_extended_rpc_commands_are_omitted() -> Result<()> {
+        let mut connector = rpc_connector("core");
+        connector.features.clear();
+        connector.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+        let mut modes = modes_for("core", None, false);
+        modes.consensus.commands.recent_performance_samples.clear();
+        modes.leadership.commands.current_block_production.clear();
+        let mut config = Config {
+            connectors: vec![connector],
+            modes,
+            ..Config::default()
+        };
+
+        config.validate()?;
         Ok(())
     }
 
@@ -1124,7 +1298,7 @@ transport_mode = "poll-http"
         };
         assert!(error
             .to_string()
-            .contains("lacks provider feature \"historical-data\""));
+            .contains("requires provider feature \"historical-data\""));
         Ok(())
     }
 
@@ -1338,6 +1512,7 @@ rpc_url = "${WATCHER_RPC_URL}"
             name: name.to_string(),
             provider: "solana".to_string(),
             features: vec![ProviderFeature::HistoricalData],
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
             rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
             ..ConnectorConfig::default()
         }
