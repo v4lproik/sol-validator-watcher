@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Split Prometheus registration, state updates, rendering, and tests into an observability module tree without changing the exported metric contract.
 - Added Prometheus network, validator, economics, and connector metrics.
 - Added the coverage-backed Pages site.
 - Moved Prometheus and Grafana configuration beside their Compose owners under `docker/`.

@@ -1,7 +1,8 @@
 use crate::{
-    collector::{command::SourceCommand, RpcClient, RpcResponseStats},
+    collector::{command::SourceCommand, RpcClient},
     config::{Config, ConnectorConfig},
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
+    watcher_state::RpcTelemetry,
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
@@ -49,7 +50,7 @@ struct Connector {
 }
 
 impl Connector {
-    fn from_config(config: &ConnectorConfig, responses: RpcResponseStats) -> Result<Self> {
+    fn from_config(config: &ConnectorConfig, telemetry: RpcTelemetry) -> Result<Self> {
         let rpc_client = config
             .rpc_url
             .as_ref()
@@ -58,7 +59,7 @@ impl Connector {
                     url.clone(),
                     Duration::from_secs(config.rpc_timeout_sec),
                     config.commitment_config()?,
-                    responses,
+                    telemetry,
                 )
             })
             .transpose()
@@ -117,11 +118,11 @@ pub struct SourceChain {
 }
 
 impl SourceChain {
-    pub fn from_config(config: &Config, responses: RpcResponseStats) -> Result<Self> {
+    pub fn from_config(config: &Config, telemetry: RpcTelemetry) -> Result<Self> {
         let connectors = config
             .connectors
             .iter()
-            .map(|connector| Connector::from_config(connector, responses.clone()))
+            .map(|connector| Connector::from_config(connector, telemetry.clone()))
             .collect::<Result<Vec<_>>>()?;
         let connector_indices = connectors
             .iter()

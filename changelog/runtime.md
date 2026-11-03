@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Split the binary entrypoint into runtime application, HTTP, polling, reload state, and single-owner watcher-state modules while preserving process behavior.
 - Changed the default CLI profile path to `config/local/validator.toml` while preserving local-validator behavior.
 - Added supervised polling, metrics HTTP serving, configuration reload, liveness updates, signal handling, and cooperative task shutdown.
 - Built connector clients and compiled command routes once in a reusable source chain.

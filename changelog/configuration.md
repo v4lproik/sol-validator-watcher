@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Moved configuration ownership into a dedicated module tree with separate load, validation, and environment-expansion tests.
 - Replaced paired YAML watcher and TOML connection files with one ordered TOML file per runnable profile.
 - Removed split-config compatibility fields, relative companion-file loading, YAML parsing, and the obsolete transport-mode environment setting.
 - Replaced the multi-provider parser dependency with direct TOML deserialization and current Serde support.
