@@ -172,10 +172,10 @@ fn loads_every_committed_profile() -> Result<()> {
         .with_context(|| format!("failed to load committed profile {}", path.display()))?;
 
         assert_eq!(config.network, network, "profile {relative_path}");
-        let expected_metrics_host = if relative_path.starts_with("config/compose/") {
-            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
-        } else {
+        let expected_metrics_host = if relative_path.starts_with("config/local/") {
             IpAddr::V4(Ipv4Addr::LOCALHOST)
+        } else {
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
         };
         assert_eq!(
             config.metrics_host, expected_metrics_host,

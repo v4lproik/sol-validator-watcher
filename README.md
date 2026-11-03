@@ -43,11 +43,12 @@ Run `just` to discover all module commands. Configuration templates live in [`co
 
 ## HTTP and container security
 
-`metrics_host` defaults to `127.0.0.1`, so direct watcher runs expose
-`/metrics`, `/healthz`, and `/readyz` only on the local machine. Compose watcher
-profiles explicitly listen on `0.0.0.0` inside their private network so
-Prometheus can scrape them, while every published host port remains bound to
-`127.0.0.1`.
+`metrics_host` defaults to `127.0.0.1`, so profiles that omit it expose
+`/metrics`, `/healthz`, and `/readyz` only on the local machine. Profiles loaded
+by containers explicitly listen on `0.0.0.0` so Prometheus can scrape them,
+while every documented host publication remains bound to `127.0.0.1`. The
+committed Devnet and Mainnet profiles are container-oriented; do not use them
+for a direct host run without changing `metrics_host`.
 
 The runtime image runs as the unprivileged `watcher` user. Compose drops all
 Linux capabilities, prevents privilege escalation, makes the root filesystem

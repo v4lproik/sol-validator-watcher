@@ -11,7 +11,6 @@ services:
       - /app/config/remote/devnet.toml
     environment:
       RUST_LOG: info
-      SOL_WATCHER_METRICS_HOST: "0.0.0.0"
       SOL_DEVNET_RPC_URL: ${SOL_DEVNET_RPC_URL}
       SOL_DEVNET_WS_URL: ${SOL_DEVNET_WS_URL}
     volumes:

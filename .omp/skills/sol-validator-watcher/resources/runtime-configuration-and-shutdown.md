@@ -27,8 +27,9 @@ liveness files, signals, and shutdown.
 
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
   variables fail with the config field/path context; never log resolved secrets.
-- Default `metrics_host` to `127.0.0.1`; non-loopback HTTP binding must be
-  explicit in a validated profile.
+- Default an omitted `metrics_host` to `127.0.0.1`; non-loopback HTTP binding
+  must be explicit in a validated profile. Container-loaded profiles use a
+  literal `0.0.0.0`; do not route listener policy through an environment value.
 - Keep connectors inline in the profile. Each connector has one stable
   `provider` name plus an explicit `features` array, which may be empty.
   Provider names are provenance, not capabilities.

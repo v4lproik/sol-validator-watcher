@@ -1,6 +1,7 @@
-# Template only. Keep real RPC credentials in .env or exported environment variables.
+# Container-oriented profile: publish port 8000 on a loopback host address.
+# Keep real RPC credentials in .env or exported environment variables.
 network = "mainnet-beta"
-metrics_host = "${SOL_WATCHER_METRICS_HOST:-127.0.0.1}"
+metrics_host = "0.0.0.0"
 metrics_port = 8000
 poll_interval_sec = 15
 delinquent_slot_distance = 128
