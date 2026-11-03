@@ -32,10 +32,10 @@ operator-facing semantics.
   sources can coexist for that cycle.
 - Connector inventory, declared provider features, command routes, and
   selected-command-source metrics answer different questions. Route and source
-  metrics expose the connector declaration as `rpc_api`, the command minimum as
-  `required_rpc_api`, plus independent provider, transport, and optional
-  required-feature labels. Do not infer successful execution from a configured
-  route or connector.
+  metrics expose the connector declaration as `solana_rpc_compatibility`, the
+  command requirement as `required_solana_rpc_compatibility`, plus independent
+  provider, transport, and optional required-feature labels. Do not infer
+  successful execution from a configured route or connector.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.

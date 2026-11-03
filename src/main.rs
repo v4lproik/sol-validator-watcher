@@ -444,7 +444,7 @@ mod tests {
             ModesConfig, WatchedValidatorConfig,
         },
         metrics::Metrics,
-        mode::{CommandId, ModeId, RpcApiLevel},
+        mode::{CommandId, ModeId, SolanaRpcCompatibility},
         source::SourceChain,
         tasks::TaskManager,
     };
@@ -592,7 +592,7 @@ liveness_file = "{}"
 name = "limited-rpc"
 provider = "mock-provider"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "{rpc_url}/?api-key={secret}"
 
 [modes.health.commands]
@@ -656,7 +656,7 @@ network = "mainnet-beta"
 name = "primary"
 provider = "solana"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "https://primary.example"
 
 [[connectors]]
@@ -699,7 +699,7 @@ network = "mainnet-beta"
 name = "fallback"
 provider = "helius"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "{rpc_url}"
 ws_url = "wss://fallback.example"
 
@@ -707,7 +707,7 @@ ws_url = "wss://fallback.example"
 name = "replacement"
 provider = "solana"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "{rpc_url}"
 
 [modes.health.commands]
@@ -774,7 +774,7 @@ network = "mainnet-beta"
 name = "primary"
 provider = "solana"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "https://primary.example"
 
 [modes.health.commands]
@@ -858,7 +858,7 @@ network = "mainnet-beta"
 name = "current"
 provider = "solana"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "https://current.example"
 
 [modes.health.commands]
@@ -889,7 +889,7 @@ network = "testnet"
 name = "candidate"
 provider = "mock-provider"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "{rpc_url}/?api-key={secret}"
 
 [modes.health.commands]
@@ -950,7 +950,7 @@ network = "mainnet-beta"
 name = "current"
 provider = "solana"
 features = []
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "https://current.example"
 
 [modes.health.commands]
@@ -981,7 +981,7 @@ network = "testnet"
 name = "candidate"
 provider = "mock-provider"
 features = ["historical-data"]
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "{rpc_url}"
 
 [modes.health.commands]
@@ -1056,7 +1056,7 @@ delinquent_slot_distance = {delinquent_slot_distance}
 name = "primary"
 provider = "mock-provider"
 features = ["historical-data"]
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "{rpc_url}"
 
 [modes.health.commands]
@@ -1124,7 +1124,7 @@ reward_epoch_block_production = ["primary"]
                 name: "primary".to_string(),
                 provider: "solana".to_string(),
                 features: Vec::new(),
-                rpc_api: Some(RpcApiLevel::Full),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
             }],

@@ -5,7 +5,7 @@ use crate::{
         HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig, ModesConfig,
     },
     metrics::Metrics,
-    mode::RpcApiLevel,
+    mode::SolanaRpcCompatibility,
     source::SourceChain,
 };
 use anyhow::{bail, Context, Result};
@@ -33,7 +33,7 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
             name: "surfpool".to_string(),
             provider: "surfpool".to_string(),
             features: Vec::new(),
-            rpc_api: Some(RpcApiLevel::Full),
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
             rpc_url: Some(harness.rpc_url()),
             rpc_timeout_sec: 5,
             ws_url: Some(harness.ws_url()),

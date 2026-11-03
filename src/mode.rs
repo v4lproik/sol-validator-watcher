@@ -20,23 +20,23 @@ impl Transport {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum RpcApiLevel {
-    Minimal,
-    Full,
+pub enum SolanaRpcCompatibility {
+    Core,
+    Extended,
 }
 
-impl RpcApiLevel {
+impl SolanaRpcCompatibility {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Minimal => "minimal",
-            Self::Full => "full",
+            Self::Core => "core",
+            Self::Extended => "extended",
         }
     }
 
     pub const fn supports(self, required: Self) -> bool {
         matches!(
             (self, required),
-            (Self::Minimal, Self::Minimal) | (Self::Full, _)
+            (Self::Core, Self::Core) | (Self::Extended, _)
         )
     }
 }
@@ -58,28 +58,28 @@ impl ProviderFeature {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ModeSourceRequirement {
     pub transport: Transport,
-    pub rpc_api: Option<RpcApiLevel>,
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     pub feature: Option<ProviderFeature>,
 }
 
-const RPC_MINIMAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+const RPC_CORE_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
     transport: Transport::Rpc,
-    rpc_api: Some(RpcApiLevel::Minimal),
+    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
     feature: None,
 };
-const RPC_FULL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+const RPC_EXTENDED_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
     transport: Transport::Rpc,
-    rpc_api: Some(RpcApiLevel::Full),
+    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
     feature: None,
 };
-const RPC_FULL_HISTORICAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+const RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
     transport: Transport::Rpc,
-    rpc_api: Some(RpcApiLevel::Full),
+    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
     feature: Some(ProviderFeature::HistoricalData),
 };
 const WEBSOCKET_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
     transport: Transport::Websocket,
-    rpc_api: None,
+    solana_rpc_compatibility: None,
     feature: None,
 };
 
@@ -178,13 +178,13 @@ impl CommandId {
             | Self::EpochInfo
             | Self::VoteAccounts
             | Self::CurrentLeaderSchedule
-            | Self::NextLeaderSchedule => RPC_MINIMAL_SOURCE_REQUIREMENT,
+            | Self::NextLeaderSchedule => RPC_CORE_SOURCE_REQUIREMENT,
             Self::WsHealth => WEBSOCKET_SOURCE_REQUIREMENT,
             Self::RecentPerformanceSamples
             | Self::CurrentBlockProduction
-            | Self::AccountBalances => RPC_FULL_SOURCE_REQUIREMENT,
+            | Self::AccountBalances => RPC_EXTENDED_SOURCE_REQUIREMENT,
             Self::InflationRewards | Self::RewardEpochBlockProduction => {
-                RPC_FULL_HISTORICAL_SOURCE_REQUIREMENT
+                RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT
             }
         }
     }
@@ -209,7 +209,8 @@ impl CommandId {
 #[cfg(test)]
 mod tests {
     use super::{
-        CommandId, ModeId, ModeSourceRequirement, ProviderFeature, RpcApiLevel, Transport,
+        CommandId, ModeId, ModeSourceRequirement, ProviderFeature, SolanaRpcCompatibility,
+        Transport,
     };
 
     #[test]
@@ -226,19 +227,19 @@ mod tests {
         assert_eq!(CommandId::CurrentLeaderSchedule.mode(), ModeId::Leadership);
         assert_eq!(CommandId::AccountBalances.mode(), ModeId::Economics);
 
-        let minimal_rpc = ModeSourceRequirement {
+        let core_rpc = ModeSourceRequirement {
             transport: Transport::Rpc,
-            rpc_api: Some(RpcApiLevel::Minimal),
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
             feature: None,
         };
-        let full_rpc = ModeSourceRequirement {
+        let extended_rpc = ModeSourceRequirement {
             transport: Transport::Rpc,
-            rpc_api: Some(RpcApiLevel::Full),
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
             feature: None,
         };
         let historical_rpc = ModeSourceRequirement {
             feature: Some(ProviderFeature::HistoricalData),
-            ..full_rpc
+            ..extended_rpc
         };
 
         for command in [
@@ -248,14 +249,14 @@ mod tests {
             CommandId::CurrentLeaderSchedule,
             CommandId::NextLeaderSchedule,
         ] {
-            assert_eq!(command.source_requirement(), minimal_rpc);
+            assert_eq!(command.source_requirement(), core_rpc);
         }
         for command in [
             CommandId::RecentPerformanceSamples,
             CommandId::CurrentBlockProduction,
             CommandId::AccountBalances,
         ] {
-            assert_eq!(command.source_requirement(), full_rpc);
+            assert_eq!(command.source_requirement(), extended_rpc);
         }
         for command in [
             CommandId::InflationRewards,
@@ -267,14 +268,14 @@ mod tests {
             CommandId::WsHealth.source_requirement(),
             ModeSourceRequirement {
                 transport: Transport::Websocket,
-                rpc_api: None,
+                solana_rpc_compatibility: None,
                 feature: None,
             }
         );
 
-        assert!(RpcApiLevel::Full.supports(RpcApiLevel::Minimal));
-        assert!(RpcApiLevel::Full.supports(RpcApiLevel::Full));
-        assert!(RpcApiLevel::Minimal.supports(RpcApiLevel::Minimal));
-        assert!(!RpcApiLevel::Minimal.supports(RpcApiLevel::Full));
+        assert!(SolanaRpcCompatibility::Extended.supports(SolanaRpcCompatibility::Core));
+        assert!(SolanaRpcCompatibility::Extended.supports(SolanaRpcCompatibility::Extended));
+        assert!(SolanaRpcCompatibility::Core.supports(SolanaRpcCompatibility::Core));
+        assert!(!SolanaRpcCompatibility::Core.supports(SolanaRpcCompatibility::Extended));
     }
 }

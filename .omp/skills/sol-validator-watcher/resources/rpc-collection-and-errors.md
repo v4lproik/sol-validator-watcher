@@ -9,18 +9,18 @@ probes, and economics collection.
 ## Ownership and Boundaries
 
 - `collector.rs` owns JSON-RPC request/response types, HTTP status handling,
-  method implementations, snapshot source records, batching, and aggregation
-  inputs.
-- `collector/command.rs` maps typed commands to RPC operations and outputs.
+  method implementations and probes, snapshot source records, batching, and
+  aggregation inputs.
 - `mode.rs` owns stable mode and command identifiers plus each command's
-  transport, RPC API, and provider-feature requirements.
+  transport, standard Solana RPC compatibility, and provider-feature
+  requirements.
 - `source.rs` owns connector client construction, compiled command routes,
   declared-capability verification, required/optional fallback execution, and
   source selection.
 - `main.rs` owns dependency guard policy, startup verification, and
   transactional source-chain reload.
-- `config.rs` owns connector transport/API declarations and exact per-command
-  route validation.
+- `config.rs` owns connector transport, compatibility, and provider-feature
+  declarations plus exact per-command route validation.
 - `websocket.rs` owns websocket reachability only. Do not infer RPC method
   support from websocket success.
 - `metrics.rs` publishes configured routes and the connector that supplied each
@@ -47,28 +47,32 @@ probes, and economics collection.
 - Connector declaration order is inventory, not fallback policy. Do not add
   numeric priorities, capability overrides, hidden sorting, or global
   connector-order fallback.
-- Command source requirements keep three independent axes: transport, RPC API,
-  and provider feature. Never infer one from `provider`.
-- `minimal` RPC supplies health, epoch info, vote accounts, and current/next
-  leader schedules. `full` also exposes recent performance samples, current
-  block production, account reads, rent exemption, inflation rewards, and the
-  minimum ledger slot. A full endpoint satisfies a minimal requirement.
-- `historical-data` is a separate provider feature on a full RPC endpoint. API
-  probes prove method availability; the feature additionally promises the
-  retained prior-epoch rewards and block production used by economics.
-- Validate every configured route against its declared transport, RPC API, and
-  feature before client construction. Then verify each RPC connector's
-  declaration with bounded valid method requests before the first poll and
-  before committing a changed reload candidate. A provider name or constructed
-  client is not proof of method availability.
+- Command source requirements keep three independent axes: transport, standard
+  Solana RPC compatibility, and provider feature. Never infer one from
+  `provider`.
+- `core` compatibility supplies health, epoch info, vote accounts, and
+  current/next leader schedules. `extended` also supplies recent performance
+  samples, current block production, account reads, rent exemption, inflation
+  rewards, and minimum ledger slot. `extended` satisfies a `core` requirement.
+- These are watcher-defined standard Solana JSON-RPC compatibility profiles,
+  not provider product tiers. Agave `--full-rpc-api` maps to `extended`; hosted
+  providers may expose the same methods alongside independent proprietary APIs.
+- `historical-data` is a separate provider feature on an `extended` endpoint.
+  Compatibility probes prove method availability; the feature additionally
+  promises retained prior-epoch rewards and block production used by economics.
+- Validate every configured route against its declared transport, Solana RPC
+  compatibility, and feature before client construction. Then verify each RPC
+  connector's declaration with bounded valid method requests before the first
+  poll and before committing a changed reload candidate. A provider name or
+  constructed client is not proof of method availability.
 - Required and optional execution are separate policies. Required commands
   exhaust their route and return the last causal error. Optional commands may
   exhaust their route and return absence, but every failed attempt is logged.
 - Do not depend on hash-map iteration order.
 - Health, collection, provenance, logs, tests, and dashboards must distinguish
-  the connector's declared RPC API from each command's required RPC API while
-  preserving the same mode, command, connector, provider, transport, optional
-  feature, and precedence semantics.
+  the connector's declared `solana_rpc_compatibility` from each command's
+  `required_solana_rpc_compatibility` while preserving the same mode, command,
+  connector, provider, transport, optional feature, and precedence semantics.
 - Record source provenance only after a command succeeds. Do not attribute an
   empty/default value to a connector that failed.
 

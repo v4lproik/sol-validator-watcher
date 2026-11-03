@@ -43,21 +43,21 @@ Run `just` to discover all module commands. Configuration templates live in [`co
 
 ## Command routes
 
-`[[connectors]]` declares a stable provider name, the RPC API exposed by its endpoint, optional provider features, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
+`[[connectors]]` declares a stable provider name, its compatibility with the standard Solana JSON-RPC methods used by this watcher, optional provider features, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
 
 ```toml
 [[connectors]]
 name = "validator"
 provider = "solana-validator"
 features = []
-rpc_api = "minimal"
+solana_rpc_compatibility = "core"
 rpc_url = "http://validator:8899"
 
 [[connectors]]
 name = "helius-devnet"
 provider = "helius"
 features = ["historical-data"]
-rpc_api = "full"
+solana_rpc_compatibility = "extended"
 rpc_url = "${SOL_DEVNET_RPC_URL}"
 ws_url = "${SOL_DEVNET_WS_URL}"
 
@@ -87,22 +87,24 @@ reward_epoch_block_production = ["helius-devnet"]
 vote_account = "<VOTE_ACCOUNT_PUBKEY>"
 ```
 
-RPC command requirements are independent of the provider name:
+Command requirements are independent of the provider name:
 
-| Commands | Transport | Required `rpc_api` | Required provider feature |
+| Commands | Transport | Required Solana RPC compatibility | Required provider feature |
 | --- | --- | --- | --- |
-| `rpc-health`, `epoch-info`, `vote-accounts`, `current-leader-schedule`, `next-leader-schedule` | RPC | `minimal` | None |
+| `rpc-health`, `epoch-info`, `vote-accounts`, `current-leader-schedule`, `next-leader-schedule` | RPC | `core` | None |
 | `ws-health` | WebSocket | None | None |
-| `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `full` | None |
-| `inflation-rewards`, `reward-epoch-block-production` | RPC | `full` | `historical-data` |
+| `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `extended` | None |
+| `inflation-rewards`, `reward-epoch-block-production` | RPC | `extended` | `historical-data` |
 
-`minimal` matches the default Agave RPC surface. `full` means the node was started with `--full-rpc-api`, or the hosted provider exposes the equivalent methods; a full endpoint can serve minimal commands. `historical-data` is a separate promise that those methods can read the retained prior-epoch data needed by economics collection. Full-only routes may be empty when a profile intentionally uses only a minimal node.
+`core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available.
 
-Route and source metrics expose the connector declaration as `rpc_api` and the command's minimum as `required_rpc_api`; Grafana shows both as `Connector RPC API` and `Required RPC API`.
+A Helius connector may be `extended` for the standard Solana methods while also offering DAS, Enhanced Transactions, Sender, WebSocket extensions, or LaserStream. Those are independent provider APIs and transports; `solana_rpc_compatibility = "extended"` does not claim or verify them. A provider-specific API belongs in the capability and endpoint model only when a typed watcher command consumes it.
 
-The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token. `rpc_url` requires an explicit `rpc_api`; `ws_url` does not. Provider names are provenance labels, not capability inference.
+Route and source metrics expose the connector declaration as `solana_rpc_compatibility` and the command requirement as `required_solana_rpc_compatibility`; Grafana labels both as standard Solana RPC compatibility.
 
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, RPC API, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime.
+The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token. `rpc_url` requires an explicit `solana_rpc_compatibility`; `ws_url` does not. Provider names are provenance labels, not capability inference.
+
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime.
 
 ## Contributing
 

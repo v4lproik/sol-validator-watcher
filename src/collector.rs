@@ -3,7 +3,7 @@ pub mod command;
 use crate::{
     config::Config,
     labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
-    mode::{CommandId, ModeId, ProviderFeature, RpcApiLevel, Transport},
+    mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport},
     source::{SourceChain, SourceSelection},
 };
 use anyhow::{bail, Context, Result};
@@ -44,7 +44,7 @@ impl RpcClient {
 
     pub async fn verify_capabilities(
         &self,
-        rpc_api: RpcApiLevel,
+        solana_rpc_compatibility: SolanaRpcCompatibility,
         features: &[ProviderFeature],
     ) -> Result<()> {
         const PROBE_PUBKEY: &str = "11111111111111111111111111111111";
@@ -74,12 +74,12 @@ impl RpcClient {
         .await
         .with_context(|| {
             format!(
-                "RPC endpoint does not satisfy rpc_api = {:?}",
-                RpcApiLevel::Minimal.as_str()
+                "RPC endpoint does not satisfy solana_rpc_compatibility = {:?}",
+                SolanaRpcCompatibility::Core.as_str()
             )
         })?;
 
-        if rpc_api == RpcApiLevel::Full {
+        if solana_rpc_compatibility == SolanaRpcCompatibility::Extended {
             let probe_slot = epoch_info.absolute_slot.saturating_sub(1);
             tokio::try_join!(
                 self.probe_required_method::<Vec<RecentPerformanceSample>, _>(
@@ -130,8 +130,8 @@ impl RpcClient {
                     .contains(&ProviderFeature::HistoricalData)
                     .then_some(" required by provider feature \"historical-data\"");
                 format!(
-                    "RPC endpoint does not satisfy rpc_api = {:?}{}",
-                    RpcApiLevel::Full.as_str(),
+                    "RPC endpoint does not satisfy solana_rpc_compatibility = {:?}{}",
+                    SolanaRpcCompatibility::Extended.as_str(),
                     feature_context.unwrap_or_default()
                 )
             })?;
@@ -670,7 +670,7 @@ pub struct SnapshotDataSource {
     pub connector: Arc<str>,
     pub provider: Arc<str>,
     pub transport: Transport,
-    pub rpc_api: Option<RpcApiLevel>,
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     pub feature: Option<ProviderFeature>,
     pub precedence: usize,
 }
@@ -683,7 +683,7 @@ impl From<SourceSelection> for SnapshotDataSource {
             connector: source.connector,
             provider: source.provider,
             transport: source.transport,
-            rpc_api: source.rpc_api,
+            solana_rpc_compatibility: source.solana_rpc_compatibility,
             feature: source.feature,
             precedence: source.precedence,
         }
@@ -1548,7 +1548,7 @@ mod tests {
             LeadershipModeConfig, ModesConfig, WatchedValidatorConfig,
         },
         labels::LabelMatcher,
-        mode::{CommandId, ModeId, ProviderFeature, RpcApiLevel},
+        mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility},
         source::SourceChain,
     };
     use anyhow::{anyhow, Context, Result};
@@ -2560,7 +2560,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connector_capability_probe_rejects_full_api_without_exposing_endpoint_secrets(
+    async fn connector_capability_probe_rejects_extended_profile_without_exposing_endpoint_secrets(
     ) -> Result<()> {
         let (rpc_url, server_task) =
             start_mock_rpc_server_with_profile(MockRpcProfile::NoPerformanceSamples).await?;
@@ -2570,7 +2570,7 @@ mod tests {
                 name: "limited-rpc".to_string(),
                 provider: "mock-provider".to_string(),
                 features: Vec::new(),
-                rpc_api: Some(RpcApiLevel::Full),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc_url: Some(format!("{rpc_url}/?api-key={secret}")),
                 ..ConnectorConfig::default()
             }],
@@ -2578,17 +2578,20 @@ mod tests {
         };
         let sources = SourceChain::from_config(&config)?;
         let Err(error) = sources.verify_capabilities().await else {
-            anyhow::bail!("full RPC declaration without full RPC methods should fail");
+            anyhow::bail!("extended compatibility without extended methods should fail");
         };
         let message = format!("{error:#}");
         assert!(message.contains("connector \"limited-rpc\""), "{message}");
         assert!(message.contains("provider \"mock-provider\""), "{message}");
         assert!(message.contains("RPC endpoint"), "{message}");
-        assert!(message.contains("rpc_api = \"full\""), "{message}");
+        assert!(
+            message.contains("solana_rpc_compatibility = \"extended\""),
+            "{message}"
+        );
         assert!(message.contains("getRecentPerformanceSamples"), "{message}");
         assert!(!message.contains(secret), "{message}");
 
-        config.connectors[0].rpc_api = Some(RpcApiLevel::Minimal);
+        config.connectors[0].solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
         SourceChain::from_config(&config)?
             .verify_capabilities()
             .await?;
@@ -2597,15 +2600,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connector_capability_probe_uses_only_declared_minimal_methods() -> Result<()> {
+    async fn connector_capability_probe_uses_only_declared_core_methods() -> Result<()> {
         let (rpc_url, server_task) =
             start_mock_rpc_server_with_profile(MockRpcProfile::NoSlotLeader).await?;
         let config = Config {
             connectors: vec![ConnectorConfig {
-                name: "minimal-rpc".to_string(),
+                name: "core-rpc".to_string(),
                 provider: "mock-provider".to_string(),
                 features: Vec::new(),
-                rpc_api: Some(RpcApiLevel::Minimal),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
                 rpc_url: Some(rpc_url),
                 ..ConnectorConfig::default()
             }],
@@ -2620,30 +2623,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connector_capability_probe_calls_exact_minimal_and_full_method_sets() -> Result<()> {
-        let (minimal_url, minimal_task, minimal_methods) =
+    async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() -> Result<()> {
+        let (core_url, core_task, core_methods) =
             start_recording_mock_rpc_server(MockRpcProfile::StrictCapabilityParams).await?;
-        let minimal_config = Config {
+        let core_config = Config {
             connectors: vec![ConnectorConfig {
-                name: "minimal-rpc".to_string(),
+                name: "core-rpc".to_string(),
                 provider: "mock-provider".to_string(),
                 features: Vec::new(),
-                rpc_api: Some(RpcApiLevel::Minimal),
-                rpc_url: Some(minimal_url),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some(core_url),
                 ..ConnectorConfig::default()
             }],
             ..Config::default()
         };
-        SourceChain::from_config(&minimal_config)?
+        SourceChain::from_config(&core_config)?
             .verify_capabilities()
             .await?;
-        let mut minimal_methods = minimal_methods.lock().await.clone();
-        minimal_methods.sort();
+        let mut core_methods = core_methods.lock().await.clone();
+        core_methods.sort();
         assert_eq!(
-            minimal_methods
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>(),
+            core_methods.iter().map(String::as_str).collect::<Vec<_>>(),
             [
                 "getEpochInfo",
                 "getHealth",
@@ -2651,28 +2651,31 @@ mod tests {
                 "getVoteAccounts"
             ]
         );
-        minimal_task.abort();
+        core_task.abort();
 
-        let (full_url, full_task, full_methods) =
+        let (extended_url, extended_task, extended_methods) =
             start_recording_mock_rpc_server(MockRpcProfile::StrictCapabilityParams).await?;
-        let full_config = Config {
+        let extended_config = Config {
             connectors: vec![ConnectorConfig {
-                name: "full-rpc".to_string(),
+                name: "extended-rpc".to_string(),
                 provider: "mock-provider".to_string(),
                 features: Vec::new(),
-                rpc_api: Some(RpcApiLevel::Full),
-                rpc_url: Some(full_url),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                rpc_url: Some(extended_url),
                 ..ConnectorConfig::default()
             }],
             ..Config::default()
         };
-        SourceChain::from_config(&full_config)?
+        SourceChain::from_config(&extended_config)?
             .verify_capabilities()
             .await?;
-        let mut full_methods = full_methods.lock().await.clone();
-        full_methods.sort();
+        let mut extended_methods = extended_methods.lock().await.clone();
+        extended_methods.sort();
         assert_eq!(
-            full_methods.iter().map(String::as_str).collect::<Vec<_>>(),
+            extended_methods
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             [
                 "getBlockProduction",
                 "getEpochInfo",
@@ -2686,7 +2689,7 @@ mod tests {
                 "minimumLedgerSlot"
             ]
         );
-        full_task.abort();
+        extended_task.abort();
         Ok(())
     }
 
@@ -2696,10 +2699,10 @@ mod tests {
             start_mock_rpc_server_with_profile(MockRpcProfile::StrictCapabilityParams).await?;
         let config = Config {
             connectors: vec![ConnectorConfig {
-                name: "strict-full-rpc".to_string(),
+                name: "strict-extended-rpc".to_string(),
                 provider: "mock-provider".to_string(),
                 features: vec![ProviderFeature::HistoricalData],
-                rpc_api: Some(RpcApiLevel::Full),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc_url: Some(rpc_url),
                 ..ConnectorConfig::default()
             }],
@@ -2714,7 +2717,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connector_capability_probe_checks_every_full_rpc_method() -> Result<()> {
+    async fn connector_capability_probe_checks_every_extended_rpc_method() -> Result<()> {
         for (profile, expected_method) in [
             (MockRpcProfile::NoInflationRewards, "getInflationReward"),
             (MockRpcProfile::NoMinimumLedgerSlot, "minimumLedgerSlot"),
@@ -2722,10 +2725,10 @@ mod tests {
             let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
             let config = Config {
                 connectors: vec![ConnectorConfig {
-                    name: "full-rpc".to_string(),
+                    name: "extended-rpc".to_string(),
                     provider: "mock-provider".to_string(),
                     features: Vec::new(),
-                    rpc_api: Some(RpcApiLevel::Full),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     rpc_url: Some(rpc_url),
                     ..ConnectorConfig::default()
                 }],
@@ -2736,10 +2739,15 @@ mod tests {
                 .verify_capabilities()
                 .await
             else {
-                anyhow::bail!("{expected_method} must be required by the full RPC API");
+                anyhow::bail!(
+                    "{expected_method} must be required by extended Solana RPC compatibility"
+                );
             };
             let message = format!("{error:#}");
-            assert!(message.contains("rpc_api = \"full\""), "{message}");
+            assert!(
+                message.contains("solana_rpc_compatibility = \"extended\""),
+                "{message}"
+            );
             assert!(message.contains(expected_method), "{message}");
             assert!(
                 !message.contains("provider feature \"historical-data\""),
@@ -2759,10 +2767,10 @@ mod tests {
             let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
             let config = Config {
                 connectors: vec![ConnectorConfig {
-                    name: "full-rpc".to_string(),
+                    name: "extended-rpc".to_string(),
                     provider: "mock-provider".to_string(),
                     features: Vec::new(),
-                    rpc_api: Some(RpcApiLevel::Full),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     rpc_url: Some(rpc_url),
                     ..ConnectorConfig::default()
                 }],
@@ -2792,7 +2800,7 @@ mod tests {
                 name: "archive-rpc".to_string(),
                 provider: "mock-provider".to_string(),
                 features: vec![ProviderFeature::HistoricalData],
-                rpc_api: Some(RpcApiLevel::Full),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc_url: Some(rpc_url),
                 ..ConnectorConfig::default()
             }],

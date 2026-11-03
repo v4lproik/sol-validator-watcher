@@ -1,7 +1,7 @@
 use crate::{
     collector::{Snapshot, WatchedValidatorMetrics},
     config::{Config, ConnectorConfig},
-    mode::{ModeId, ProviderFeature, RpcApiLevel},
+    mode::{ModeId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
 };
 use anyhow::{Context, Result};
@@ -148,14 +148,14 @@ impl Metrics {
         let sol_connector_info = IntGaugeVec::new(
             Opts::new(
                 "sol_connector_info",
-                "Configured connector inventory, provider, RPC API level, and available transports",
+                "Configured connector inventory, provider, standard Solana RPC compatibility, and available transports",
             ),
             &[
                 "network",
                 "connector",
                 "provider",
                 "declaration_order",
-                "rpc_api",
+                "solana_rpc_compatibility",
                 "has_rpc",
                 "has_ws",
             ],
@@ -181,7 +181,7 @@ impl Metrics {
         let sol_mode_command_route_info = IntGaugeVec::new(
             Opts::new(
                 "sol_mode_command_route_info",
-                "Configured connector fallback order, transport, declared and required RPC API levels, and optional provider feature for each mode command",
+                "Configured connector fallback order, transport, declared and required standard Solana RPC compatibility, and optional provider feature for each mode command",
             ),
             &[
                 "network",
@@ -190,8 +190,8 @@ impl Metrics {
                 "connector",
                 "provider",
                 "transport",
-                "rpc_api",
-                "required_rpc_api",
+                "solana_rpc_compatibility",
+                "required_solana_rpc_compatibility",
                 "feature",
                 "precedence",
                 "available",
@@ -200,7 +200,7 @@ impl Metrics {
         let sol_mode_command_source_info = IntGaugeVec::new(
             Opts::new(
                 "sol_mode_command_source_info",
-                "Connector, provider, transport, declared and required RPC API levels, and optional feature that supplied each mode command's latest result",
+                "Connector, provider, transport, declared and required standard Solana RPC compatibility, and optional feature that supplied each mode command's latest result",
             ),
             &[
                 "network",
@@ -209,8 +209,8 @@ impl Metrics {
                 "connector",
                 "provider",
                 "transport",
-                "rpc_api",
-                "required_rpc_api",
+                "solana_rpc_compatibility",
+                "required_solana_rpc_compatibility",
                 "feature",
                 "precedence",
             ],
@@ -702,7 +702,7 @@ impl Metrics {
                     connector.name.as_str(),
                     connector.provider.as_str(),
                     declaration_order.as_str(),
-                    rpc_api_label(connector.rpc_api),
+                    solana_rpc_compatibility_label(connector.solana_rpc_compatibility),
                     bool_label(connector.has_rpc()),
                     bool_label(connector.has_ws()),
                 ])
@@ -736,8 +736,10 @@ impl Metrics {
                     route.connector,
                     route.provider,
                     route.transport.as_str(),
-                    rpc_api_label(route.rpc_api),
-                    rpc_api_label(route.command.source_requirement().rpc_api),
+                    solana_rpc_compatibility_label(route.solana_rpc_compatibility),
+                    solana_rpc_compatibility_label(
+                        route.command.source_requirement().solana_rpc_compatibility,
+                    ),
                     feature_label(route.feature),
                     precedence.as_str(),
                     bool_label(route.available),
@@ -797,8 +799,10 @@ impl Metrics {
                     source.connector.as_ref(),
                     source.provider.as_ref(),
                     source.transport.as_str(),
-                    rpc_api_label(source.rpc_api),
-                    rpc_api_label(source.command.source_requirement().rpc_api),
+                    solana_rpc_compatibility_label(source.solana_rpc_compatibility),
+                    solana_rpc_compatibility_label(
+                        source.command.source_requirement().solana_rpc_compatibility,
+                    ),
                     feature_label(source.feature),
                     precedence.as_str(),
                 ])
@@ -1076,8 +1080,8 @@ fn bool_label(value: bool) -> &'static str {
     }
 }
 
-fn rpc_api_label(rpc_api: Option<RpcApiLevel>) -> &'static str {
-    rpc_api.map_or("", RpcApiLevel::as_str)
+fn solana_rpc_compatibility_label(compatibility: Option<SolanaRpcCompatibility>) -> &'static str {
+    compatibility.map_or("", SolanaRpcCompatibility::as_str)
 }
 
 fn feature_label(feature: Option<ProviderFeature>) -> &'static str {
@@ -1109,7 +1113,7 @@ mod tests {
             EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
             LeadershipModeConfig, ModesConfig,
         },
-        mode::{CommandId, ModeId, ProviderFeature, RpcApiLevel, Transport},
+        mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport},
         source::SourceChain,
     };
     use anyhow::Result;
@@ -1180,7 +1184,7 @@ mod tests {
                     connector: Arc::from("local-validator"),
                     provider: Arc::from("solana-validator"),
                     transport: Transport::Rpc,
-                    rpc_api: Some(RpcApiLevel::Minimal),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
                     feature: None,
                     precedence: 1,
                 },
@@ -1190,7 +1194,7 @@ mod tests {
                     connector: Arc::from("helius-rpc"),
                     provider: Arc::from("helius"),
                     transport: Transport::Rpc,
-                    rpc_api: Some(RpcApiLevel::Full),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     feature: Some(ProviderFeature::HistoricalData),
                     precedence: 2,
                 },
@@ -1230,7 +1234,7 @@ mod tests {
                     name: "local-validator".to_string(),
                     provider: "solana-validator".to_string(),
                     features: Vec::new(),
-                    rpc_api: Some(RpcApiLevel::Minimal),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
                     rpc_url: Some("http://127.0.0.1:8899".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1238,7 +1242,7 @@ mod tests {
                     name: "helius-rpc".to_string(),
                     provider: "helius".to_string(),
                     features: vec![ProviderFeature::HistoricalData],
-                    rpc_api: Some(RpcApiLevel::Full),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     rpc_url: Some("https://rpc.helius.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1250,16 +1254,16 @@ mod tests {
                     ..ConnectorConfig::default()
                 },
                 ConnectorConfig {
-                    name: "full-rpc".to_string(),
+                    name: "extended-rpc".to_string(),
                     provider: "solana-validator".to_string(),
                     features: vec![ProviderFeature::HistoricalData],
-                    rpc_api: Some(RpcApiLevel::Full),
-                    rpc_url: Some("https://full-rpc.example".to_string()),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                    rpc_url: Some("https://extended-rpc.example".to_string()),
                     ..ConnectorConfig::default()
                 },
             ],
             modes: modes_for(
-                &["local-validator", "helius-rpc", "full-rpc"],
+                &["local-validator", "helius-rpc", "extended-rpc"],
                 Some("helius-ws"),
                 true,
             ),
@@ -1273,14 +1277,14 @@ mod tests {
         let rendered = metrics.render()?;
 
         assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_rpc=\"true\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"solana-validator\",rpc_api=\"minimal\"} 1"));
-        assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_rpc=\"false\",has_ws=\"true\",network=\"mainnet-beta\",provider=\"helius\",rpc_api=\"\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_rpc=\"true\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"solana-validator\",solana_rpc_compatibility=\"core\"} 1"));
+        assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_rpc=\"false\",has_ws=\"true\",network=\"mainnet-beta\",provider=\"helius\",solana_rpc_compatibility=\"\"} 1"));
         assert!(rendered.contains("sol_connector_feature_info{connector=\"helius-rpc\",feature=\"historical-data\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
-        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_rpc_api=\"minimal\",rpc_api=\"minimal\",transport=\"rpc\"} 1"));
-        assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_rpc_api=\"\",rpc_api=\"minimal\",transport=\"websocket\"} 1"));
-        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_rpc_api=\"\",rpc_api=\"\",transport=\"websocket\"} 1"));
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_rpc_api=\"minimal\",rpc_api=\"minimal\",transport=\"rpc\"} 1"));
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-data\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_rpc_api=\"full\",rpc_api=\"full\",transport=\"rpc\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"core\",transport=\"websocket\"} 1"));
+        assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"websocket\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-data\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
         assert!(
             rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1")
         );
@@ -1365,7 +1369,7 @@ mod tests {
                 name: "primary".to_string(),
                 provider: "solana".to_string(),
                 features: Vec::new(),
-                rpc_api: Some(RpcApiLevel::Full),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
                 ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
                 ..ConnectorConfig::default()
@@ -1413,7 +1417,7 @@ mod tests {
                 connector: Arc::from("primary"),
                 provider: Arc::from("solana"),
                 transport: Transport::Rpc,
-                rpc_api: Some(RpcApiLevel::Full),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 feature: None,
                 precedence: 1,
             }],
@@ -1495,7 +1499,7 @@ mod tests {
                     name: "primary".to_string(),
                     provider: "solana".to_string(),
                     features: Vec::new(),
-                    rpc_api: Some(RpcApiLevel::Full),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     rpc_url: Some("https://primary.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1503,7 +1507,7 @@ mod tests {
                     name: "fallback".to_string(),
                     provider: "helius".to_string(),
                     features: Vec::new(),
-                    rpc_api: Some(RpcApiLevel::Full),
+                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     rpc_url: Some("https://fallback.example".to_string()),
                     ..ConnectorConfig::default()
                 },
@@ -1518,7 +1522,7 @@ mod tests {
             connector: Arc::from(connector),
             provider: Arc::from(provider),
             transport: Transport::Rpc,
-            rpc_api: Some(RpcApiLevel::Full),
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
             feature: None,
             precedence,
         };
@@ -1533,11 +1537,11 @@ mod tests {
             }],
             ..Snapshot::default()
         });
-        assert!(metrics.render()?.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",required_rpc_api=\"minimal\",rpc_api=\"full\",transport=\"rpc\"} 1"));
+        assert!(metrics.render()?.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
 
         metrics.begin_poll(&config, &sources);
         let rendered = metrics.render()?;
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",required_rpc_api=\"minimal\",rpc_api=\"full\",transport=\"rpc\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
         assert!(rendered.contains("sol_mode_up{mode=\"consensus\",network=\"mainnet-beta\"} 1"));
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
@@ -1545,8 +1549,8 @@ mod tests {
             ..Snapshot::default()
         });
         let rendered = metrics.render()?;
-        assert!(!rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",required_rpc_api=\"minimal\",rpc_api=\"full\",transport=\"rpc\"} 1"));
-        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"fallback\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_rpc_api=\"minimal\",rpc_api=\"full\",transport=\"rpc\"} 1"));
+        assert!(!rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"fallback\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
         assert!(!rendered.contains("sol_mode_up{mode=\"consensus\""));
 
         Ok(())

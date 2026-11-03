@@ -169,7 +169,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Declared connector fallback order and API level versus the command minimum. Available reflects whether the configured transport and capabilities satisfy the route.",
+      "description": "Declared connector fallback order and standard Solana RPC compatibility versus the command requirement. Available reflects whether the configured transport and capabilities satisfy the route.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -241,8 +241,8 @@
             },
             "indexByName": {
               "available": 0,
-              "rpc_api": 1,
-              "required_rpc_api": 2,
+              "solana_rpc_compatibility": 1,
+              "required_solana_rpc_compatibility": 2,
               "provider": 3,
               "transport": 4,
               "feature": 5,
@@ -259,8 +259,8 @@
               "connector": "Connector",
               "provider": "Provider",
               "transport": "Transport",
-              "rpc_api": "Connector RPC API",
-              "required_rpc_api": "Required RPC API",
+              "solana_rpc_compatibility": "Solana RPC Compatibility",
+              "required_solana_rpc_compatibility": "Required Solana RPC Compatibility",
               "feature": "Required Feature",
               "precedence": "Order",
               "available": "Available"
@@ -276,7 +276,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Connector that supplied each command's latest successful result. API columns distinguish the connector declaration from the command minimum.",
+      "description": "Connector that supplied each command's latest successful result. Compatibility columns describe only the standard Solana RPC surface, independently of provider-specific APIs.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -347,8 +347,8 @@
               "job": true
             },
             "indexByName": {
-              "rpc_api": 0,
-              "required_rpc_api": 1,
+              "solana_rpc_compatibility": 0,
+              "required_solana_rpc_compatibility": 1,
               "provider": 2,
               "transport": 3,
               "feature": 4,
@@ -365,8 +365,8 @@
               "connector": "Connector",
               "provider": "Provider",
               "transport": "Transport",
-              "rpc_api": "Connector RPC API",
-              "required_rpc_api": "Required RPC API",
+              "solana_rpc_compatibility": "Solana RPC Compatibility",
+              "required_solana_rpc_compatibility": "Required Solana RPC Compatibility",
               "feature": "Required Feature",
               "precedence": "Order"
             }
