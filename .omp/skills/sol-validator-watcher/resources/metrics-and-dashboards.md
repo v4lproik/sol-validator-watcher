@@ -36,6 +36,10 @@ operator-facing semantics.
   command requirement as `required_solana_rpc_compatibility`, plus independent
   provider, transport, and optional required-feature labels. Do not infer
   successful execution from a configured route or connector.
+- Watcher readiness, completed rounds, the bounded clean-round streak, failed
+  RPC attempts, HTTP response classes, and exact 200/403/429/500 counts are
+  separate metrics. Readiness is zero until five failure-free completed rounds
+  and must not be inferred from process liveness or a configured route.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.

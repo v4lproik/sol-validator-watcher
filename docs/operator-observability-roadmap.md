@@ -9,9 +9,10 @@ These changes do not require new exporter metrics.
 ### Overview dashboard
 
 - Keep the top row focused on operator state.
-  - watcher health
-  - RPC health
-  - websocket health
+  - process health
+  - five-round readiness admission and clean-poll streak
+  - RPC and websocket health
+  - failed RPC attempts, HTTP response classes, and readiness-critical status codes
   - metrics freshness
 - Show every watched validator directly in the operator-state row.
   - map each identity to an explicit `ACTIVE` or `DELINQUENT` voting state
@@ -51,6 +52,12 @@ These changes do not require new exporter metrics.
   lag for additional liveness context.
 - Vote-credit sample, total, and efficiency series are absent when no
   current-epoch sample is available; missing credits are not reported as zero.
+- `/healthz` is process liveness. `/readyz` and `sol_watcher_ready` require five
+  consecutive required polling rounds to complete without a failed RPC attempt.
+- Use `sol_rpc_request_failure_count` for all failed RPC attempts,
+  `sol_rpc_http_response_class_count` for received 2xx/3xx/4xx/5xx responses,
+  and `sol_rpc_http_response_status_count` for exact 200, 403, 429, and 500
+  counts. The structured `watcher state` log reports 30-second deltas.
 
 ## Current operator timing and funding signals
 

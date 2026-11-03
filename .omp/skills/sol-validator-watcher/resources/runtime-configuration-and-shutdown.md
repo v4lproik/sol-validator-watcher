@@ -14,7 +14,8 @@ liveness files, signals, and shutdown.
 - `source.rs` constructs RPC and WebSocket clients once, compiles command routes
   into immutable connector index chains, and verifies declared RPC capabilities.
 - `main.rs` owns transactional reload, startup capability verification, the
-  polling loop, dependency guards, and the `/metrics` and `/healthz` surfaces.
+  polling loop, dependency guards, the supervised single-owner watcher-state
+  actor, and the `/metrics`, `/healthz`, and `/readyz` surfaces.
 - `tasks.rs` owns task registration, first-failure handling, shutdown broadcast,
   and join errors.
 - `websocket.rs` owns websocket connect/probe behavior.
@@ -84,9 +85,17 @@ liveness files, signals, and shutdown.
   is fatal; reload verification failure preserves the last-known-good runtime.
 - Update the liveness file only after a complete snapshot has updated metrics.
   A process that is looping but failing collection is not live by this contract.
-- `/healthz` currently proves the HTTP process is serving. Do not silently turn
-  it into dependency readiness without updating callers, docs, tests, and
-  operational expectations.
+- `/healthz` proves only that the HTTP process is serving. `/readyz` admits the
+  current configuration only after five consecutive required polling rounds
+  complete without a failed RPC attempt. A failed attempt or accepted
+  configuration reload resets the admission streak.
+- The watcher-state actor is the sole writer for readiness, completed rounds,
+  the clean-round streak, their Prometheus samples, and the 30-second state
+  report. Poll completion and accepted-reload events are acknowledged only
+  after the actor publishes a coherent snapshot for HTTP readers.
+- Report bounded failed-attempt totals and RPC response-class counts plus exact
+  200, 403, 429, and 500 counts every 30 seconds without logging response bodies
+  or endpoint URLs.
 
 ## Reload Review Gates
 
@@ -128,5 +137,5 @@ separation, and exact command-route order. Exercise capability probes and reload
 rejection at a controlled HTTP/JSON-RPC boundary with valid method-specific
 success responses.
 Use task tests for completion/error/panic/shutdown outcomes. Smoke the binary
-with controlled RPC endpoints, fetch `/healthz` and `/metrics`, trigger
-shutdown, and observe a clean exit when runtime wiring changes.
+through five controlled polling rounds, verify `/healthz`, `/readyz`, and
+`/metrics`, trigger shutdown, and observe a clean exit when runtime wiring changes.
