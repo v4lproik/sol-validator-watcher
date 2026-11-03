@@ -25,9 +25,10 @@ checks.
 
 ## CI Contracts
 
-- `.github/workflows/ci.yml` runs `just rust doctor`, `just ci verify`, the
-  coverage gate, LCOV/HTML generation, artifact uploads, and optional Codecov
-  upload. Local verification must exercise every changed step that can run locally.
+- `.github/workflows/ci.yml` runs `just rust doctor`, `just ci verify`,
+  `just rust doc`, the coverage gate, LCOV/HTML generation, artifact uploads,
+  and optional Codecov upload. Local verification must exercise every changed
+  step that can run locally.
 - Keep the required verification job name stable unless repository protection
   is updated in the same operational change.
 - Workflow permissions remain least-privilege. Do not grant write scopes to a
