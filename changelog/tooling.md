@@ -10,5 +10,5 @@
 - Added an end-to-end configuration-loading benchmark for one- and 48-connector profiles, including command-route parsing and validation.
 - Updated runtime configuration guidance to keep transport ownership inside connectors.
 - Documented mode source requirements and secret-safe verification for complete credential-bearing provider URLs.
-- Documented core/extended standard Solana RPC compatibility, independent provider API surfaces, valid method-specific probes, and transactional reload verification in the repository engineering guidance.
+- Documented command implementation ownership, core/extended standard Solana RPC compatibility, independent provider API surfaces, valid method-specific probes, and transactional reload verification in the repository engineering guidance.
 - Extended the opt-in Surfpool smoke to verify the connector's declared standard Solana RPC compatibility against the live local endpoint before collecting a snapshot.

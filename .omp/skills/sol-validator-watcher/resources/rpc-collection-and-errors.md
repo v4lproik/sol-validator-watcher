@@ -11,6 +11,8 @@ probes, and economics collection.
 - `collector.rs` owns JSON-RPC request/response types, HTTP status handling,
   method implementations and probes, snapshot source records, batching, and
   aggregation inputs.
+- `collector/command.rs` maps typed source commands to RPC operations and
+  outputs.
 - `mode.rs` owns stable mode and command identifiers plus each command's
   transport, standard Solana RPC compatibility, and provider-feature
   requirements.
