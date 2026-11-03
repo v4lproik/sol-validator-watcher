@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Published configured poll intervals, successful snapshot timestamps, success/failure durations, and failed-round totals while preserving fatal collection and liveness semantics.
+- Made watcher-state publication loss during an already-requested cooperative shutdown complete normally, while preserving actor loss as fatal outside shutdown.
+- Made post-startup RPC and collection failures recoverable at the whole-poll boundary: affected modes go down, readiness resets, the last successful snapshot and liveness timestamp remain unchanged, and polling resumes after exponential 1, 2, 4, 8, 16, then 30-second delays. Startup and configuration contract failures remain fatal.
+- Published configured poll intervals, successful snapshot timestamps, success/failure durations, and failed-round totals.
 - Split the binary entrypoint into runtime application, HTTP, polling, reload state, and single-owner watcher-state modules while preserving process behavior.
 - Added Rust documentation for runtime wiring, transactional reloads, polling commits, HTTP readiness, watcher-state transitions, RPC telemetry, and task supervision.
 - Changed the default CLI profile path to `config/local/validator.toml` while preserving local-validator behavior.

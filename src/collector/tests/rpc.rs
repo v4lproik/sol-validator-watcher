@@ -31,6 +31,7 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
         "confirmed".to_string(),
         telemetry.for_connector("mock-rpc"),
     )?;
+    drop(telemetry);
     let mut tasks = TaskManager::new();
     tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
     tasks.spawn("rpc-client-scenario", async move {

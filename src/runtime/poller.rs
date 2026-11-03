@@ -1,7 +1,9 @@
-//! Polling lifecycle, dependency guards, and liveness-file updates.
+//! Polling lifecycle, dependency guards, liveness-file updates, and recovery.
 //!
-//! A polling round reloads configuration transactionally, validates capabilities,
-//! collects one snapshot, publishes metrics, and then commits readiness state.
+//! Polls reload configuration transactionally, validate startup capabilities,
+//! and commit only complete snapshots. Post-startup collection failures reset
+//! readiness without replacing the last snapshot, then retry after bounded
+//! exponential backoff.
 
 use super::state::RuntimeState;
 use crate::{
@@ -13,7 +15,7 @@ use crate::{
     metrics::Metrics,
     mode::ModeId,
     tasks::{Shutdown, TaskExit},
-    watcher_state::{PollCompletion, WatcherState, ADMISSION_CLEAN_POLL_ROUNDS},
+    watcher_state::{WatcherState, WatcherStateError, ADMISSION_CLEAN_POLL_ROUNDS},
 };
 use anyhow::{Context, Result};
 use std::{
@@ -25,15 +27,48 @@ use std::{
 use tokio::time::sleep;
 use tracing::{info, warn};
 
-/// Runs complete polling rounds until shutdown or a fatal collection error.
+const POLL_RETRY_POLICY: PollRetryPolicy = PollRetryPolicy {
+    initial_delay: Duration::from_secs(1),
+    max_delay: Duration::from_secs(30),
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PollRetryPolicy {
+    initial_delay: Duration,
+    max_delay: Duration,
+}
+
+impl PollRetryPolicy {
+    fn delay(self, consecutive_failed_rounds: u32) -> Duration {
+        debug_assert!(consecutive_failed_rounds > 0);
+        let exponent = consecutive_failed_rounds.saturating_sub(1).min(31);
+        self.initial_delay
+            .saturating_mul(2_u32.pow(exponent))
+            .min(self.max_delay)
+    }
+}
+
+/// Runs polling rounds until shutdown, retrying post-startup collection failures.
 ///
-/// Metrics, liveness, and readiness are committed only after snapshot collection
-/// succeeds.
+/// Startup and configuration contract failures remain fatal. A failed runtime
+/// collection resets readiness, retains the last successful snapshot, and waits
+/// with bounded exponential backoff before starting a new polling round.
 pub(super) async fn run_watcher_loop(
+    runtime: RuntimeState,
+    metrics: Arc<Metrics>,
+    watcher_state: WatcherState,
+    shutdown: Shutdown,
+) -> Result<TaskExit> {
+    run_watcher_loop_with_retry_policy(runtime, metrics, watcher_state, shutdown, POLL_RETRY_POLICY)
+        .await
+}
+
+async fn run_watcher_loop_with_retry_policy(
     mut runtime: RuntimeState,
     metrics: Arc<Metrics>,
     watcher_state: WatcherState,
     mut shutdown: Shutdown,
+    retry_policy: PollRetryPolicy,
 ) -> Result<TaskExit> {
     info!(
         network = runtime.config.network,
@@ -43,15 +78,21 @@ pub(super) async fn run_watcher_loop(
         admission_clean_poll_rounds = ADMISSION_CLEAN_POLL_ROUNDS,
         "starting Solana validator watcher"
     );
+    let mut consecutive_failed_poll_rounds = 0_u32;
 
     loop {
         let previous_config_modified = runtime.config_modified;
         match runtime.reload_if_needed().await {
             Ok(()) if runtime.config_modified != previous_config_modified => {
-                watcher_state
-                    .reset_admission(&runtime.config.network)
-                    .await
-                    .context("failed to reset readiness after configuration reload")?;
+                let reset = watcher_state.reset_admission(&runtime.config.network).await;
+                let Some(()) = state_transition_or_shutdown(reset, &shutdown)
+                    .context("failed to reset readiness after configuration reload")?
+                else {
+                    return Ok(finish_watcher_shutdown(
+                        metrics.as_ref(),
+                        &runtime.config.network,
+                    ));
+                };
             }
             Ok(()) => {}
             Err(err) => {
@@ -59,24 +100,52 @@ pub(super) async fn run_watcher_loop(
             }
         }
         ensure_connector_capabilities_ready(&mut runtime).await?;
-
+        ensure_economics_capabilities_ready(&mut runtime).await?;
         metrics.set_watcher_up(&runtime.config.network, true);
         metrics.begin_poll(&runtime.config, &runtime.sources);
-        watcher_state
-            .begin_poll()
-            .await
-            .context("failed to begin polling round")?;
+        let Some(()) = state_transition_or_shutdown(watcher_state.begin_poll().await, &shutdown)
+            .context("failed to begin polling round")?
+        else {
+            return Ok(finish_watcher_shutdown(
+                metrics.as_ref(),
+                &runtime.config.network,
+            ));
+        };
         let snapshot_started_at = Instant::now();
-        let poll_result =
-            collect_and_publish_snapshot(&mut runtime, metrics.as_ref(), &watcher_state).await;
-        let (snapshot, completion) = match poll_result {
-            Ok(result) => result,
+        let poll_result = collect_poll_snapshot(&runtime, metrics.as_ref()).await;
+        let snapshot = match poll_result {
+            Ok(snapshot) => snapshot,
             Err(error) => {
+                mark_collection_modes_down(&runtime.config, metrics.as_ref());
                 metrics.record_snapshot_failure(
                     &runtime.config.network,
                     snapshot_started_at.elapsed(),
                 );
-                return Err(error);
+                let Some(completion) =
+                    state_transition_or_shutdown(watcher_state.fail_poll().await, &shutdown)
+                        .context("failed to publish failed polling round")?
+                else {
+                    return Ok(finish_watcher_shutdown(
+                        metrics.as_ref(),
+                        &runtime.config.network,
+                    ));
+                };
+                consecutive_failed_poll_rounds = consecutive_failed_poll_rounds.saturating_add(1);
+                let retry_delay = retry_policy.delay(consecutive_failed_poll_rounds);
+                warn!(
+                    error = ?error,
+                    consecutive_failed_poll_rounds,
+                    retry_delay_seconds = retry_delay.as_secs_f64(),
+                    ready = completion.state.ready,
+                    "polling round failed; last successful snapshot remains unchanged"
+                );
+                if shutdown_requested_before(&mut shutdown, retry_delay).await {
+                    return Ok(finish_watcher_shutdown(
+                        metrics.as_ref(),
+                        &runtime.config.network,
+                    ));
+                }
+                continue;
             }
         };
         let completed_at_unix_seconds = match SystemTime::now().duration_since(UNIX_EPOCH) {
@@ -89,11 +158,23 @@ pub(super) async fn run_watcher_loop(
                 return Err(error).context("system clock is before UNIX_EPOCH");
             }
         };
+        metrics.update_snapshot(&snapshot);
+        let Some(completion) =
+            state_transition_or_shutdown(watcher_state.complete_poll().await, &shutdown)
+                .context("failed to publish completed polling round")?
+        else {
+            return Ok(finish_watcher_shutdown(
+                metrics.as_ref(),
+                &runtime.config.network,
+            ));
+        };
         metrics.record_snapshot_success(
             &runtime.config.network,
             snapshot_started_at.elapsed(),
             completed_at_unix_seconds,
         );
+        update_liveness_file(runtime.config.liveness_file.as_deref())?;
+        consecutive_failed_poll_rounds = 0;
         let state = completion.state;
         if completion.admitted {
             info!(
@@ -111,34 +192,25 @@ pub(super) async fn run_watcher_loop(
             "updated Prometheus metrics"
         );
 
-        tokio::select! {
-            _ = shutdown.cancelled() => {
-                metrics.set_watcher_up(&runtime.config.network, false);
-                info!("watcher loop shutting down");
-                return Ok(TaskExit::Finished);
-            }
-            _ = sleep(Duration::from_secs(runtime.config.poll_interval_sec)) => {}
+        if shutdown_requested_before(
+            &mut shutdown,
+            Duration::from_secs(runtime.config.poll_interval_sec),
+        )
+        .await
+        {
+            return Ok(finish_watcher_shutdown(
+                metrics.as_ref(),
+                &runtime.config.network,
+            ));
         }
     }
 }
 
-async fn collect_and_publish_snapshot(
-    runtime: &mut RuntimeState,
-    metrics: &Metrics,
-    watcher_state: &WatcherState,
-) -> Result<(Snapshot, PollCompletion)> {
+async fn collect_poll_snapshot(runtime: &RuntimeState, metrics: &Metrics) -> Result<Snapshot> {
     let (health_sources, health_status) = guard_dependencies_healthy(runtime, metrics).await?;
-    if let Err(error) = ensure_economics_capabilities_ready(runtime).await {
-        metrics.set_mode_up(&runtime.config.network, ModeId::Economics, false);
-        return Err(error);
-    }
-    let mut snapshot = match collect_snapshot(&runtime.sources, &runtime.config).await {
-        Ok(snapshot) => snapshot,
-        Err(error) => {
-            mark_collection_modes_down(&runtime.config, metrics);
-            return Err(error).context("failed to collect snapshot from configured command routes");
-        }
-    };
+    let mut snapshot = collect_snapshot(&runtime.sources, &runtime.config)
+        .await
+        .context("failed to collect snapshot from configured command routes")?;
     snapshot.data_sources.extend(health_sources);
     snapshot.mode_statuses.push(health_status);
     if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
@@ -148,14 +220,36 @@ async fn collect_and_publish_snapshot(
             "configured watched validators did not match any vote accounts in the latest snapshot; watched-validator panels will be empty"
         );
     }
-    metrics.update_snapshot(&snapshot);
-    update_liveness_file(runtime.config.liveness_file.as_deref())?;
-    let completion = watcher_state
-        .complete_poll()
-        .await
-        .context("failed to publish completed polling round")?;
 
-    Ok((snapshot, completion))
+    Ok(snapshot)
+}
+
+async fn shutdown_requested_before(shutdown: &mut Shutdown, delay: Duration) -> bool {
+    tokio::select! {
+        _ = shutdown.cancelled() => true,
+        _ = sleep(delay) => false,
+    }
+}
+
+/// Preserves state-transition failures unless cooperative shutdown already won.
+///
+/// The actor and poller are sibling supervised tasks, so the actor may receive
+/// shutdown immediately before the poller publishes its final transition.
+fn state_transition_or_shutdown<T>(
+    transition: std::result::Result<T, WatcherStateError>,
+    shutdown: &Shutdown,
+) -> Result<Option<T>> {
+    match transition {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.is_actor_stopped() && shutdown.is_cancelled() => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn finish_watcher_shutdown(metrics: &Metrics, network: &str) -> TaskExit {
+    metrics.set_watcher_up(network, false);
+    info!("watcher loop shutting down");
+    TaskExit::Finished
 }
 
 async fn guard_dependencies_healthy(

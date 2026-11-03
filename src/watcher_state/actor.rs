@@ -8,7 +8,7 @@ use crate::{
     metrics::Metrics,
     tasks::{Shutdown, TaskExit},
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use std::{fmt, sync::Arc, time::Duration};
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -48,6 +48,18 @@ pub(crate) struct WatcherState {
     snapshots: watch::Receiver<WatcherStateSnapshot>,
 }
 
+/// Error returned while publishing a transition to the watcher-state actor.
+#[derive(Debug)]
+pub(crate) struct WatcherStateError {
+    kind: WatcherStateErrorKind,
+}
+
+#[derive(Debug)]
+enum WatcherStateErrorKind {
+    ActorStopped(&'static str),
+    InvalidTransition(StateTransitionError),
+}
+
 /// Single owner of readiness transitions and RPC response counters.
 pub(crate) struct WatcherStateActor {
     commands: mpsc::UnboundedReceiver<WatcherStateCommand>,
@@ -80,6 +92,7 @@ enum WatcherStateCommand {
         reply: oneshot::Sender<Result<(), StateTransitionError>>,
     },
     CompletePoll {
+        outcome: PollOutcome,
         reply: oneshot::Sender<Result<PollCompletion, StateTransitionError>>,
     },
 }
@@ -88,6 +101,12 @@ enum WatcherStateCommand {
 enum PollState {
     Idle,
     Active { dirty: bool },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PollOutcome {
+    Succeeded,
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,6 +125,43 @@ impl fmt::Display for StateTransitionError {
 }
 
 impl std::error::Error for StateTransitionError {}
+
+impl WatcherStateError {
+    fn actor_stopped(message: &'static str) -> Self {
+        Self {
+            kind: WatcherStateErrorKind::ActorStopped(message),
+        }
+    }
+
+    fn invalid_transition(error: StateTransitionError) -> Self {
+        Self {
+            kind: WatcherStateErrorKind::InvalidTransition(error),
+        }
+    }
+
+    /// Returns whether the actor stopped before acknowledging the transition.
+    pub(crate) fn is_actor_stopped(&self) -> bool {
+        matches!(self.kind, WatcherStateErrorKind::ActorStopped(_))
+    }
+}
+
+impl fmt::Display for WatcherStateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.kind {
+            WatcherStateErrorKind::ActorStopped(message) => formatter.write_str(message),
+            WatcherStateErrorKind::InvalidTransition(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for WatcherStateError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            WatcherStateErrorKind::ActorStopped(_) => None,
+            WatcherStateErrorKind::InvalidTransition(error) => Some(error),
+        }
+    }
+}
 
 impl WatcherStateMailbox {
     /// Creates an unstarted mailbox.
@@ -234,44 +290,83 @@ impl ConnectorRpcTelemetry {
 
 impl WatcherState {
     /// Resets readiness admission and switches the active network atomically.
-    pub(crate) async fn reset_admission(&self, network: &str) -> Result<()> {
+    pub(crate) async fn reset_admission(
+        &self,
+        network: &str,
+    ) -> std::result::Result<(), WatcherStateError> {
         let (reply, acknowledgment) = oneshot::channel();
         self.commands
             .send(WatcherStateCommand::ResetAdmission {
                 network: Arc::from(network),
                 reply,
             })
-            .map_err(|_| anyhow!("watcher state actor stopped before admission reset"))?;
-        acknowledgment
-            .await
-            .context("watcher state actor stopped while resetting admission")
+            .map_err(|_| {
+                WatcherStateError::actor_stopped(
+                    "watcher state actor stopped before admission reset",
+                )
+            })?;
+        acknowledgment.await.map_err(|_| {
+            WatcherStateError::actor_stopped(
+                "watcher state actor stopped while resetting admission",
+            )
+        })
     }
 
     /// Opens a polling round before any RPC attempt is dispatched.
-    pub(crate) async fn begin_poll(&self) -> Result<()> {
+    pub(crate) async fn begin_poll(&self) -> std::result::Result<(), WatcherStateError> {
         let (reply, acknowledgment) = oneshot::channel();
         self.commands
             .send(WatcherStateCommand::BeginPoll { reply })
-            .map_err(|_| anyhow!("watcher state actor stopped before beginning a poll"))?;
+            .map_err(|_| {
+                WatcherStateError::actor_stopped(
+                    "watcher state actor stopped before beginning a poll",
+                )
+            })?;
         acknowledgment
             .await
-            .context("watcher state actor stopped while beginning a poll")??;
-        Ok(())
+            .map_err(|_| {
+                WatcherStateError::actor_stopped(
+                    "watcher state actor stopped while beginning a poll",
+                )
+            })?
+            .map_err(WatcherStateError::invalid_transition)
     }
 
-    /// Completes the active poll and returns the resulting admission transition.
+    /// Completes a successful active poll and returns the admission transition.
     ///
     /// Any failed RPC attempt or non-2xx response recorded between `begin_poll`
     /// and this call resets the clean-round streak.
-    pub(crate) async fn complete_poll(&self) -> Result<PollCompletion> {
+    pub(crate) async fn complete_poll(
+        &self,
+    ) -> std::result::Result<PollCompletion, WatcherStateError> {
+        self.finish_poll(PollOutcome::Succeeded).await
+    }
+
+    /// Completes a failed active poll and resets readiness admission.
+    pub(crate) async fn fail_poll(&self) -> std::result::Result<PollCompletion, WatcherStateError> {
+        self.finish_poll(PollOutcome::Failed).await
+    }
+
+    async fn finish_poll(
+        &self,
+        outcome: PollOutcome,
+    ) -> std::result::Result<PollCompletion, WatcherStateError> {
         let (reply, completion) = oneshot::channel();
         self.commands
-            .send(WatcherStateCommand::CompletePoll { reply })
-            .map_err(|_| anyhow!("watcher state actor stopped before poll completion"))?;
+            .send(WatcherStateCommand::CompletePoll { outcome, reply })
+            .map_err(|_| {
+                WatcherStateError::actor_stopped(
+                    "watcher state actor stopped before poll completion",
+                )
+            })?;
         completion
             .await
-            .context("watcher state actor stopped while completing a poll")?
-            .map_err(Into::into)
+            .map_err(|_| {
+                WatcherStateError::actor_stopped(
+                    "watcher state actor stopped while completing a poll",
+                )
+            })?
+            .map_err(WatcherStateError::invalid_transition)
     }
 
     /// Returns the latest readiness flag and clean-round streak.
@@ -362,8 +457,8 @@ impl WatcherStateActor {
                 // The requester may be cancelled after the state transition commits.
                 let _ = reply.send(result);
             }
-            WatcherStateCommand::CompletePoll { reply } => {
-                let result = self.complete_poll();
+            WatcherStateCommand::CompletePoll { outcome, reply } => {
+                let result = self.complete_poll(outcome);
                 // The requester may be cancelled after the state transition commits.
                 let _ = reply.send(result);
             }
@@ -383,13 +478,16 @@ impl WatcherStateActor {
         self.mark_poll_dirty();
     }
 
-    fn complete_poll(&mut self) -> Result<PollCompletion, StateTransitionError> {
+    fn complete_poll(
+        &mut self,
+        outcome: PollOutcome,
+    ) -> Result<PollCompletion, StateTransitionError> {
         let PollState::Active { dirty } = self.poll else {
             return Err(StateTransitionError::PollNotActive);
         };
         self.poll = PollState::Idle;
         self.state.completed_poll_rounds = self.state.completed_poll_rounds.saturating_add(1);
-        self.state.clean_poll_rounds = if dirty {
+        self.state.clean_poll_rounds = if dirty || outcome == PollOutcome::Failed {
             0
         } else {
             self.state

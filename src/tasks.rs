@@ -23,6 +23,11 @@ impl Shutdown {
 
         let _ = self.receiver.changed().await;
     }
+
+    /// Returns whether process-wide shutdown has already been requested.
+    pub fn is_cancelled(&self) -> bool {
+        *self.receiver.borrow()
+    }
 }
 
 /// Intentional completion state returned by a supervised task.

@@ -7,8 +7,8 @@ mod actor;
 mod model;
 
 pub(crate) use actor::{
-    ConnectorRpcTelemetry, RpcRequestOutcome, RpcTelemetry, WatcherState, WatcherStateMailbox,
-    ADMISSION_CLEAN_POLL_ROUNDS,
+    ConnectorRpcTelemetry, RpcRequestOutcome, RpcTelemetry, WatcherState, WatcherStateError,
+    WatcherStateMailbox, ADMISSION_CLEAN_POLL_ROUNDS,
 };
 pub(crate) use model::{PollCompletion, RpcResponseCounts, WatcherStateSnapshot};
 

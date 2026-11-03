@@ -86,16 +86,27 @@ liveness files, signals, and shutdown.
 - Verify every declared standard Solana RPC compatibility profile and provider
   feature before dependency health or collection. Startup verification failure
   is fatal; reload verification failure preserves the last-known-good runtime.
+- After startup verification, treat required RPC and collection failures as
+  failed whole polling rounds. Mark affected modes down, reset readiness through
+  the watcher-state actor, retain the last successful snapshot, and retry after
+  exponential 1, 2, 4, 8, 16, then 30-second delays. A successful round resets
+  the backoff. Do not retry individual methods inside the collector.
 - Update the liveness file only after a complete snapshot has updated metrics.
-  A process that is looping but failing collection is not live by this contract.
+  A watcher that is retrying failed collection remains process-healthy through
+  `/healthz`, but does not advance this data-liveness timestamp.
 - `/healthz` proves only that the HTTP process is serving. `/readyz` admits the
   current configuration only after five consecutive required polling rounds
-  complete without a failed RPC attempt. A failed attempt or accepted
-  configuration reload resets the admission streak.
+  complete without a failed RPC attempt. A failed attempt, failed whole poll, or
+  accepted configuration reload resets the admission streak.
 - The watcher-state actor is the sole writer for readiness, completed rounds,
   the clean-round streak, their Prometheus samples, and the 30-second state
-  report. Poll completion and accepted-reload events are acknowledged only
-  after the actor publishes a coherent snapshot for HTTP readers.
+  report. Successful and failed poll completions plus accepted-reload events are
+  acknowledged only after the actor publishes a coherent snapshot for HTTP
+  readers.
+- A watcher-state transition failure remains fatal unless process-wide shutdown
+  was already requested. During cooperative shutdown, the actor may stop before
+  the poller publishes its final transition; treat only that ordering race as
+  normal task completion.
 - Report bounded failed-attempt totals and RPC response-class counts plus exact
   200, 403, 429, and 500 counts every 30 seconds without logging response bodies
   or endpoint URLs.
@@ -141,4 +152,8 @@ rejection at a controlled HTTP/JSON-RPC boundary with valid method-specific
 success responses.
 Use task tests for completion/error/panic/shutdown outcomes. Smoke the binary
 through five controlled polling rounds, verify `/healthz`, `/readyz`, and
-`/metrics`, trigger shutdown, and observe a clean exit when runtime wiring changes.
+`/metrics`, force a post-startup RPC failure, and prove that health remains up,
+readiness resets, the successful-snapshot timestamp remains unchanged, bounded
+backoff delays another round, and five new clean rounds restore readiness.
+Trigger shutdown during a wait and observe a clean exit when runtime wiring
+changes.

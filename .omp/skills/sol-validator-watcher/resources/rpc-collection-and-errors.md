@@ -111,8 +111,9 @@ probes, and economics collection.
 - Do not classify by broad substring outside the narrow adapter that has no
   structured alternative.
 - Fallback to another connector and retrying the same connector are different
-  policies. This repository currently implements connector fallback, not an
-  implicit retry/backoff subsystem.
+  policies. Collection implements ordered connector fallback within one polling
+  round. The runtime poller owns explicit whole-poll recovery and bounded
+  backoff after post-startup collection failures.
 - Follow [Error handling](error-handling.md) when an error is ignored, mapped to
   absence, or used to continue.
 
@@ -137,7 +138,8 @@ probes, and economics collection.
 - Do not turn every provider error into an unsupported-method classification.
 - Do not return default block production, rewards, or schedules while claiming
   the source succeeded.
-- Do not retry forever, sleep inside the collector, or hide backoff in a helper.
+- Do not add per-request retries, sleep inside the collector, or move whole-poll
+  backoff outside the runtime poller.
 - Do not copy provider limits into tests or a second module.
 
 ## Boundary Proof
