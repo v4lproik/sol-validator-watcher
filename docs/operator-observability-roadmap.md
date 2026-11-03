@@ -37,6 +37,8 @@ These changes do not require new exporter metrics.
 ### Usage guidance
 
 - Use a concrete `Network` selection for day-to-day operations.
+- Use the overview dashboard's `Validators` multi-select to inspect one or more
+  watched identities; `All` preserves the fleet-wide watched-validator view.
 - Treat `scope:all-network` as the default health view.
 - Treat watched validators and custom scopes as investigation views.
 - `ACTIVE` means Solana currently lists the vote account in its current set.

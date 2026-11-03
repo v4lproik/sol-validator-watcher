@@ -1120,7 +1120,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max by (identity) (sol_watched_validator_info{network=~\"$network\",status=\"current\"}) or (max by (identity) (sol_watched_validator_info{network=~\"$network\",status=\"delinquent\"}) * 0)",
+          "expr": "max by (identity) (sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\",status=\"current\"}) or (max by (identity) (sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\",status=\"delinquent\"}) * 0)",
           "instant": true,
           "legendFormat": "{{identity}}",
           "range": false,
@@ -1197,7 +1197,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "clamp_max((max((100 * sol_watched_validator_blocks_missed{network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{network=~\"$network\"} + sol_watched_validator_blocks_produced{network=~\"$network\"}, 1)) > bool 5) or vector(0)) + (max((100 * sol_watched_validator_blocks_missed{network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{network=~\"$network\"} + sol_watched_validator_blocks_produced{network=~\"$network\"}, 1)) > bool 10) or vector(0)), 2)",
+          "expr": "clamp_max((max((100 * sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} + sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, 1)) > bool 5) or vector(0)) + (max((100 * sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} + sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, 1)) > bool 10) or vector(0)), 2)",
           "instant": true,
           "legendFormat": "skip_state",
           "range": false,
@@ -1263,7 +1263,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum((((max by (network, identity, vote_account) (sol_watched_validator_info{network=~\"$network\",status=\"delinquent\"}) > bool 0) + (max by (network, identity, vote_account) (sol_watched_validator_last_vote_slot_lag{network=~\"$network\"}) > bool 32) + (max by (network, identity, vote_account) (100 * sol_watched_validator_blocks_missed{network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{network=~\"$network\"} + sol_watched_validator_blocks_produced{network=~\"$network\"}, 1)) > bool 5)) > bool 0)) or vector(0)",
+          "expr": "sum((((max by (network, identity, vote_account) (sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\",status=\"delinquent\"}) > bool 0) + (max by (network, identity, vote_account) (sol_watched_validator_last_vote_slot_lag{identity=~\"$validator\",network=~\"$network\"}) > bool 32) + (max by (network, identity, vote_account) (100 * sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} + sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, 1)) > bool 5)) > bool 0)) or vector(0)",
           "instant": true,
           "legendFormat": "attention",
           "range": false,
@@ -1663,7 +1663,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1672,7 +1672,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_activated_stake_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_activated_stake_sol{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1681,7 +1681,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_vote_efficiency_pct{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_vote_efficiency_pct{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1690,7 +1690,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_last_vote_slot_lag{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_last_vote_slot_lag{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1699,7 +1699,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_root_slot_lag{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_root_slot_lag{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1708,7 +1708,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_commission_pct{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_commission_pct{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1717,7 +1717,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1726,7 +1726,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1735,7 +1735,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "100 * max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) / clamp_min(max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) + max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")), 1)",
+          "expr": "100 * max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) / clamp_min(max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")) + max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\")), 1)",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1744,7 +1744,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_future_leader_slots{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_future_leader_slots{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1753,7 +1753,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_epoch_reward_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1762,7 +1762,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1771,7 +1771,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_reward_per_block_sol{network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_reward_per_block_sol{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
@@ -1965,6 +1965,31 @@
         "refresh": 2,
         "sort": 1,
         "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(sol_watched_validator_info{network=~\"$network\"}, identity)",
+        "includeAll": true,
+        "label": "Validators",
+        "multi": true,
+        "name": "validator",
+        "options": [],
+        "query": {
+          "query": "label_values(sol_watched_validator_info{network=~\"$network\"}, identity)",
+          "refId": "PrometheusVariableQueryEditor-Validator"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -1976,6 +2001,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
