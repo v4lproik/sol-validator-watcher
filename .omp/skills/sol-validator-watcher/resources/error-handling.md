@@ -77,6 +77,13 @@ task failure.
 - Do not detach cleanup, ignore join errors, or convert cancellation into an
   ordinary failure.
 - Do not add retry/backoff around a non-idempotent or unbounded operation.
+- A required post-startup collection failure may continue only at the
+  idempotent whole-poll boundary: reset readiness, expose the failed round and
+  affected modes, preserve the last successful snapshot, and wait with bounded
+  backoff. Startup/configuration contract failures remain fatal.
+- Suppress a watcher-state publication failure only when process-wide shutdown
+  was already requested and the sibling actor won the shutdown race. Without
+  that cancellation state, actor loss remains a causal task failure.
 
 ## Boundary Proof
 

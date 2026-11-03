@@ -8,31 +8,64 @@ use serde_json::{json, Value};
 use std::{
     env,
     path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{net::TcpListener, task::JoinHandle};
 
+#[derive(Clone)]
+struct CapabilityProbeState {
+    missing_method: Option<&'static str>,
+    fail_health: Arc<AtomicBool>,
+}
+
+pub(super) struct CapabilityProbeControl {
+    fail_health: Arc<AtomicBool>,
+}
+
+impl CapabilityProbeControl {
+    pub(super) fn set_health_failure(&self, failed: bool) {
+        self.fail_health.store(failed, Ordering::Relaxed);
+    }
+}
+
 pub(super) async fn start_capability_probe_server(
     missing_method: Option<&'static str>,
 ) -> Result<(String, JoinHandle<()>)> {
+    let (url, _control, task) = start_controlled_capability_probe_server(missing_method).await?;
+    Ok((url, task))
+}
+
+pub(super) async fn start_controlled_capability_probe_server(
+    missing_method: Option<&'static str>,
+) -> Result<(String, CapabilityProbeControl, JoinHandle<()>)> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .context("failed to bind capability probe listener")?;
     let address = listener
         .local_addr()
         .context("failed to read capability probe listener address")?;
+    let fail_health = Arc::new(AtomicBool::new(false));
+    let state = CapabilityProbeState {
+        missing_method,
+        fail_health: Arc::clone(&fail_health),
+    };
     let app = Router::new()
         .route("/", post(capability_probe_handler))
-        .with_state(missing_method);
+        .with_state(state);
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
+    let control = CapabilityProbeControl { fail_health };
 
-    Ok((format!("http://{address}"), task))
+    Ok((format!("http://{address}"), control, task))
 }
 
 async fn capability_probe_handler(
-    State(missing_method): State<Option<&'static str>>,
+    State(state): State<CapabilityProbeState>,
     Json(request): Json<Value>,
 ) -> Json<Value> {
     let method = request
@@ -60,7 +93,17 @@ async fn capability_probe_handler(
             "id": 1
         }));
     }
-    if missing_method == Some(method) {
+    if method == "getHealth" && state.fail_health.load(Ordering::Relaxed) {
+        return Json(json!({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32005,
+                "message": "temporary upstream failure"
+            },
+            "id": 1
+        }));
+    }
+    if state.missing_method == Some(method) {
         return Json(json!({
             "jsonrpc": "2.0",
             "error": {

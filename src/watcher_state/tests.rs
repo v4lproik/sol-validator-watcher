@@ -57,6 +57,17 @@ async fn actor_orders_rpc_events_before_poll_completion_and_shuts_down_supervise
         assert!(completion.state.ready);
 
         state.begin_poll().await?;
+        let completion = state.fail_poll().await?;
+        assert!(!completion.admitted);
+        assert!(!completion.state.ready);
+        assert_eq!(completion.state.clean_poll_rounds, 0);
+        assert_eq!(
+            completion.state.completed_poll_rounds,
+            u64::from(ADMISSION_CLEAN_POLL_ROUNDS) + 1
+        );
+        assert_eq!(completion.state.rpc_responses.total, 5);
+
+        state.begin_poll().await?;
         telemetry.record_response(429)?;
         telemetry
             .for_connector("actor-rpc")

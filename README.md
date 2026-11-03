@@ -115,6 +115,15 @@ response-read, payload, JSON-RPC, and missing-result failures plus any non-2xx
 response reset the streak; an accepted configuration reload also restarts
 admission for the new runtime.
 
+After startup validation succeeds, a required RPC or collection failure fails
+the whole polling round rather than the process. The watcher marks affected
+collection modes down, resets readiness, retains the last successful snapshot,
+does not advance the liveness file, and retries after 1, 2, 4, 8, 16, then at
+most 30 seconds. A successful round resets the backoff; `/readyz` requires five
+new clean rounds before readmission. Startup capability or configuration
+contract failures remain fatal, while an invalid reload candidate continues to
+preserve the last-known-good runtime.
+
 Every 30 seconds, the watcher logs its readiness, completed and clean polling
 rounds, failed RPC attempts, cumulative response count, response-class counts,
 and exact counts for HTTP 200, 403, 429, and 500. Prometheus exposes the same
