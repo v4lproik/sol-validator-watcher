@@ -6,14 +6,14 @@ Read this resource for every repository change. It assigns durable ownership and
 
 ## Module Ownership
 
-| Module | Owns | Changelog |
-| --- | --- | --- |
-| Watcher | Typed mode commands, RPC and WebSocket collection, command fallback, source provenance, labels, validator records, aggregation, and economics collection | `changelog/watcher.md` |
-| Runtime | CLI startup, polling, HTTP serving, transactional source-chain reload, task supervision, liveness, signals, and shutdown | `changelog/runtime.md` |
-| Configuration | Config parsing, environment expansion, connector and command-route validation, and committed profiles | `changelog/configuration.md` |
-| Observability | Prometheus metrics and scraping, mode-focused Grafana provisioning and dashboards, and the Pages surface | `changelog/observability.md` |
-| Operations | Docker image, Compose profiles, Surfpool, local services, and stack lifecycle | `changelog/operations.md` |
-| Tooling | Just recipes, tests and coverage workflows, CI, publishing, scripts, contributor docs, and repository guidance | `changelog/tooling.md` |
+| Module | Source entry points | Owns | Changelog |
+| --- | --- | --- | --- |
+| Watcher | `src/mode.rs`, `src/source.rs`, `src/collector/`, `src/labels.rs`, `src/websocket.rs` | Typed mode commands, RPC and WebSocket collection, command fallback, source provenance, labels, validator records, aggregation, and economics collection | `changelog/watcher.md` |
+| Runtime | `src/main.rs`, `src/runtime/`, `src/watcher_state/`, `src/tasks.rs` | CLI startup, polling, HTTP serving, transactional source-chain reload, watcher state, task supervision, liveness, signals, and shutdown | `changelog/runtime.md` |
+| Configuration | `src/config/`, `config/` | Config parsing, environment expansion, connector and command-route validation, and committed profiles | `changelog/configuration.md` |
+| Observability | `src/metrics/`, `docker/prometheus/`, `docker/grafana/`, `site/` | Prometheus metrics and scraping, mode-focused Grafana provisioning and dashboards, and the Pages surface | `changelog/observability.md` |
+| Operations | `docker/` | Docker image, Compose profiles, Surfpool, local services, and stack lifecycle | `changelog/operations.md` |
+| Tooling | `Justfile`, `just/`, `.github/workflows/`, `.omp/skills/` | Just recipes, tests and coverage workflows, CI, publishing, scripts, contributor docs, and repository guidance | `changelog/tooling.md` |
 
 ## Changelog Contract
 
