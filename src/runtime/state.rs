@@ -10,6 +10,7 @@ use crate::{
 use anyhow::{Context, Result};
 use std::{
     fs,
+    net::SocketAddr,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -27,8 +28,8 @@ pub(super) struct RuntimeState {
     pub(super) rpc_telemetry: RpcTelemetry,
     /// Modification time of the active profile revision.
     pub(super) config_modified: SystemTime,
-    /// Startup HTTP port; port changes require process restart.
-    pub(super) metrics_port: u16,
+    /// Startup HTTP address; address changes require process restart.
+    pub(super) metrics_address: SocketAddr,
     /// Whether standard connector capability probes succeeded.
     pub(super) connector_capabilities_verified: bool,
     /// Whether enabled economics routes passed live validation.
@@ -40,7 +41,7 @@ impl RuntimeState {
     pub(super) fn load(config_path: PathBuf, rpc_telemetry: RpcTelemetry) -> Result<Self> {
         let config = Config::load(&config_path)?;
         let config_modified = config_mtime(&config_path)?;
-        let metrics_port = config.metrics_port;
+        let metrics_address = SocketAddr::new(config.metrics_host, config.metrics_port);
         let sources = SourceChain::from_config(&config, rpc_telemetry.clone())?;
 
         Ok(Self {
@@ -49,7 +50,7 @@ impl RuntimeState {
             sources,
             rpc_telemetry,
             config_modified,
-            metrics_port,
+            metrics_address,
             connector_capabilities_verified: false,
             economics_capabilities_verified: false,
         })
@@ -66,11 +67,12 @@ impl RuntimeState {
         }
 
         let next = Config::load(&self.config_path)?;
-        if next.metrics_port != self.metrics_port {
+        let next_metrics_address = SocketAddr::new(next.metrics_host, next.metrics_port);
+        if next_metrics_address != self.metrics_address {
             warn!(
-                old_metrics_port = self.metrics_port,
-                new_metrics_port = next.metrics_port,
-                "metrics_port changed in config; restart the watcher to move the HTTP listener"
+                old_metrics_address = %self.metrics_address,
+                new_metrics_address = %next_metrics_address,
+                "metrics HTTP address changed in config; restart the watcher to move the listener"
             );
         }
 

@@ -16,9 +16,9 @@ services:
       - --studio-port
       - "3000"
     ports:
-      - "${SURFPOOL_HOST_RPC_PORT:-18899}:8899"
-      - "${SURFPOOL_HOST_WS_PORT:-18900}:8900"
-      - "${SURFPOOL_HOST_STUDIO_PORT:-13000}:3000"
+      - "127.0.0.1:${SURFPOOL_HOST_RPC_PORT:-18899}:8899"
+      - "127.0.0.1:${SURFPOOL_HOST_WS_PORT:-18900}:8900"
+      - "127.0.0.1:${SURFPOOL_HOST_STUDIO_PORT:-13000}:3000"
     restart: unless-stopped
 
   watcher-surfpool:
@@ -35,8 +35,15 @@ services:
       RUST_LOG: info
     volumes:
       - ../config/compose/surfpool.toml:/app/config/compose/surfpool.toml:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - surfpool
     ports:
-      - "${WATCHER_SURFPOOL_METRICS_PORT:-8000}:8000"
+      - "127.0.0.1:${WATCHER_SURFPOOL_METRICS_PORT:-8000}:8000"
     restart: on-failure

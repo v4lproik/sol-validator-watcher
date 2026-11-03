@@ -36,7 +36,11 @@ pub(crate) async fn run(config_path: PathBuf) -> Result<()> {
     );
     tasks.spawn(
         "metrics-http-server",
-        run_http_server(server_state, runtime.metrics_port, tasks.shutdown_handle()),
+        run_http_server(
+            server_state,
+            runtime.metrics_address,
+            tasks.shutdown_handle(),
+        ),
     );
     tasks.spawn(
         "watcher-loop",

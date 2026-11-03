@@ -41,6 +41,25 @@ just stack down
 
 Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each runnable profile is one self-contained TOML file. Keep credentials in the ignored root `.env`.
 
+## HTTP and container security
+
+`metrics_host` defaults to `127.0.0.1`, so direct watcher runs expose
+`/metrics`, `/healthz`, and `/readyz` only on the local machine. Compose watcher
+profiles explicitly listen on `0.0.0.0` inside their private network so
+Prometheus can scrape them, while every published host port remains bound to
+`127.0.0.1`.
+
+The runtime image runs as the unprivileged `watcher` user. Compose drops all
+Linux capabilities, prevents privilege escalation, makes the root filesystem
+read-only, and mounts a bounded `/tmp` tmpfs for the liveness file. The image
+health check runs `sol-validator-watcher healthcheck`, which probes `/healthz`;
+collection failures remain a readiness concern and do not make the container
+unhealthy.
+
+Grafana and Prometheus are loopback-only local tools. Grafana uses the
+credentials from `.env` and defaults to `admin`/`admin`; change that password
+before intentionally adapting the Compose files for non-loopback access.
+
 ## Command routes
 
 `[[connectors]]` declares a stable provider name, its compatibility with the standard Solana JSON-RPC methods used by this watcher, optional provider features, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:

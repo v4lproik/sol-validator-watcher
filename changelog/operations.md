@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Hardened the watcher image and Compose profiles with a non-root runtime user, dropped capabilities, no-new-privileges, read-only root filesystems, bounded liveness tmpfs mounts, graceful container stop signaling, endpoint health checks, and loopback-only published ports for watchers, Prometheus, Grafana, and Surfpool.
 - Provisioned tested Prometheus alert rules and selected-profile target discovery with the local observability stack while leaving notification routing to external Alertmanager deployments.
 - Updated container defaults and Compose mounts to consume one self-contained TOML file per profile.
 - Added container and Compose profiles for Surfpool, an external validator, Devnet, and Mainnet.

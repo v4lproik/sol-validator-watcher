@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Defaulted the metrics HTTP listener to loopback and added a bounded `healthcheck` command that probes process liveness without conflating recoverable collection failures with container health.
 - Made watcher-state publication loss during an already-requested cooperative shutdown complete normally, while preserving actor loss as fatal outside shutdown.
 - Made post-startup RPC and collection failures recoverable at the whole-poll boundary: affected modes go down, readiness resets, the last successful snapshot and liveness timestamp remain unchanged, and polling resumes after exponential 1, 2, 4, 8, 16, then 30-second delays. Startup and configuration contract failures remain fatal.
 - Published configured poll intervals, successful snapshot timestamps, success/failure durations, and failed-round totals.

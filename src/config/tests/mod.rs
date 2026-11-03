@@ -9,6 +9,7 @@ use crate::mode::{
 use anyhow::{Context, Result};
 use std::{
     fs,
+    net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };

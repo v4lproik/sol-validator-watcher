@@ -11,10 +11,18 @@ services:
       - /app/config/remote/mainnet.toml
     environment:
       RUST_LOG: info
+      SOL_WATCHER_METRICS_HOST: "0.0.0.0"
       SOL_MAINNET_RPC_URL: ${SOL_MAINNET_RPC_URL}
       SOL_MAINNET_WS_URL: ${SOL_MAINNET_WS_URL}
     volumes:
       - ../config/remote/mainnet.toml:/app/config/remote/mainnet.toml:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "${WATCHER_MAINNET_METRICS_PORT:-8003}:8000"
+      - "127.0.0.1:${WATCHER_MAINNET_METRICS_PORT:-8003}:8000"
     restart: on-failure

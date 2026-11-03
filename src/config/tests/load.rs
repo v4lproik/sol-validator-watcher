@@ -54,6 +54,11 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
     let config = Config::load(&config_path)?;
 
     assert_eq!(config.network, "testnet");
+    assert_eq!(
+        config.metrics_host,
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        "omitted metrics_host must remain loopback-only"
+    );
     assert_eq!(config.connectors.len(), 3);
     assert_eq!(config.connectors[0].name, "local-validator");
     assert_eq!(config.connectors[0].provider, "solana-validator");
@@ -167,6 +172,15 @@ fn loads_every_committed_profile() -> Result<()> {
         .with_context(|| format!("failed to load committed profile {}", path.display()))?;
 
         assert_eq!(config.network, network, "profile {relative_path}");
+        let expected_metrics_host = if relative_path.starts_with("config/compose/") {
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+        } else {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        };
+        assert_eq!(
+            config.metrics_host, expected_metrics_host,
+            "profile {relative_path}"
+        );
         assert_eq!(config.connectors.len(), 1, "profile {relative_path}");
         assert_eq!(
             config.connectors[0].name, connector_name,

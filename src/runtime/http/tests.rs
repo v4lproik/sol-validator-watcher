@@ -1,12 +1,13 @@
-use super::{readiness_handler, AppState};
+use super::{check_health, readiness_handler, AppState};
 use crate::{
     metrics::Metrics,
     tasks::{TaskExit, TaskManager},
     watcher_state::{WatcherStateMailbox, ADMISSION_CLEAN_POLL_ROUNDS},
 };
 use anyhow::Result;
-use axum::{extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode, routing::get, Router};
 use std::sync::Arc;
+use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn readiness_handler_tracks_actor_admission() -> Result<()> {
@@ -40,6 +41,53 @@ async fn readiness_handler_tracks_actor_admission() -> Result<()> {
             format!(
                 "ready: {ADMISSION_CLEAN_POLL_ROUNDS}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
             )
+        );
+        Ok(TaskExit::ShutdownRequested)
+    });
+
+    tasks.run().await
+}
+
+#[tokio::test]
+async fn healthcheck_accepts_liveness_and_rejects_unavailable_status() -> Result<()> {
+    let healthy_listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+    let healthy_address = healthy_listener.local_addr()?;
+    let unavailable_listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+    let unavailable_address = unavailable_listener.local_addr()?;
+    let mut tasks = TaskManager::new();
+    let mut healthy_shutdown = tasks.shutdown_handle();
+    tasks.spawn("healthy-http-server", async move {
+        let app = Router::new().route("/healthz", get(|| async { StatusCode::OK }));
+        axum::serve(healthy_listener, app)
+            .with_graceful_shutdown(async move {
+                healthy_shutdown.cancelled().await;
+            })
+            .await?;
+        Ok(TaskExit::Finished)
+    });
+    let mut unavailable_shutdown = tasks.shutdown_handle();
+    tasks.spawn("unavailable-http-server", async move {
+        let app = Router::new().route(
+            "/healthz",
+            get(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+        );
+        axum::serve(unavailable_listener, app)
+            .with_graceful_shutdown(async move {
+                unavailable_shutdown.cancelled().await;
+            })
+            .await?;
+        Ok(TaskExit::Finished)
+    });
+    tasks.spawn("healthcheck-scenario", async move {
+        check_health(healthy_address).await?;
+        let Err(error) = check_health(unavailable_address).await else {
+            anyhow::bail!("a non-200 health response must fail the health check");
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("health endpoint returned unexpected status"),
+            "{error:#}"
         );
         Ok(TaskExit::ShutdownRequested)
     });

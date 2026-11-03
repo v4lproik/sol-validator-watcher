@@ -27,6 +27,8 @@ liveness files, signals, and shutdown.
 
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
   variables fail with the config field/path context; never log resolved secrets.
+- Default `metrics_host` to `127.0.0.1`; non-loopback HTTP binding must be
+  explicit in a validated profile.
 - Keep connectors inline in the profile. Each connector has one stable
   `provider` name plus an explicit `features` array, which may be empty.
   Provider names are provenance, not capabilities.
@@ -67,8 +69,8 @@ liveness files, signals, and shutdown.
   changed runtime dependency, verify declared RPC capabilities, then replace the
   last known-good state. A failed reload keeps the prior state and remains
   observable.
-- A changed metrics port requires restart because the listener is already
-  bound. Do not pretend a reload moved it.
+- A changed metrics host or port requires restart because the listener is
+  already bound. Do not pretend a reload moved it.
 
 ## Runtime and Shutdown Invariants
 
@@ -98,6 +100,9 @@ liveness files, signals, and shutdown.
   current configuration only after five consecutive required polling rounds
   complete without a failed RPC attempt. A failed attempt, failed whole poll, or
   accepted configuration reload resets the admission streak.
+- The `healthcheck` CLI command probes `/healthz`, not `/readyz`, so container
+  health tracks the serving process without restarting on recoverable
+  collection failures.
 - The watcher-state actor is the sole writer for readiness, completed rounds,
   the clean-round streak, their Prometheus samples, and the 30-second state
   report. Successful and failed poll completions plus accepted-reload events are
@@ -157,3 +162,6 @@ readiness resets, the successful-snapshot timestamp remains unchanged, bounded
 backoff delays another round, and five new clean rounds restore readiness.
 Trigger shutdown during a wait and observe a clean exit when runtime wiring
 changes.
+When the HTTP bind contract or container health check changes, also confirm the
+actual bound address, execute the healthcheck command against the running
+binary, and retain the failure/recovery smoke above.

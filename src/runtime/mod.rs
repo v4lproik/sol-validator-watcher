@@ -9,6 +9,7 @@ mod poller;
 mod state;
 
 pub(crate) use app::run;
+pub(crate) use http::check_health;
 
 #[cfg(test)]
 mod test_support;

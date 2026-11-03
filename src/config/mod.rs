@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     env, fs,
+    net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
 };
 
@@ -321,6 +322,8 @@ pub struct Config {
     pub connectors: Vec<ConnectorConfig>,
     /// Mode enablement and per-command fallback routes.
     pub modes: ModesConfig,
+    /// IP address on which the metrics HTTP server listens.
+    pub metrics_host: IpAddr,
     /// Port on which the metrics HTTP server listens.
     pub metrics_port: u16,
     /// Delay between completed polling rounds, in seconds.
@@ -339,6 +342,7 @@ impl Default for Config {
             network: default_network(),
             connectors: vec![],
             modes: ModesConfig::default(),
+            metrics_host: default_metrics_host(),
             metrics_port: default_metrics_port(),
             poll_interval_sec: default_poll_interval_sec(),
             delinquent_slot_distance: None,
@@ -358,6 +362,10 @@ fn default_rpc_timeout_sec() -> u64 {
 
 fn default_ws_timeout_sec() -> u64 {
     10
+}
+
+fn default_metrics_host() -> IpAddr {
+    IpAddr::V4(Ipv4Addr::LOCALHOST)
 }
 
 fn default_metrics_port() -> u16 {
