@@ -66,26 +66,38 @@ ws_health = ["helius-devnet"]
 [modes.consensus.commands]
 epoch_info = ["validator", "helius-devnet"]
 vote_accounts = ["validator", "helius-devnet"]
+recent_performance_samples = ["validator", "helius-devnet"]
 
 [modes.leadership.commands]
 current_block_production = ["helius-devnet", "validator"]
 current_leader_schedule = ["validator", "helius-devnet"]
 next_leader_schedule = ["validator", "helius-devnet"]
+
+[modes.economics]
+enabled = true
+
+[modes.economics.commands]
+account_balances = ["validator", "helius-devnet"]
+inflation_rewards = ["helius-devnet"]
+reward_epoch_block_production = ["helius-devnet"]
+
+[modes.economics.validator]
+vote_account = "<VOTE_ACCOUNT_PUBKEY>"
 ```
 
 The Helius Devnet profile maps modes to these source requirements:
 
 | Mode | Provider | Transport | Required provider feature |
 | --- | --- | --- | --- |
-| Health | `helius` | RPC | None |
-| Health | `helius` | WebSocket | None |
+| Health | `helius` | RPC or WebSocket | None |
 | Consensus | `helius` | RPC | None |
 | Leadership | `helius` | RPC | None |
-| Economics | `helius` | RPC | `historical-data` |
+| Economics account balances | `helius` | RPC | None |
+| Economics prior-epoch rewards | `helius` | RPC | `historical-data` |
 
 The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token.
 
-`rpc_url` and `ws_url` define the available `rpc` and `websocket` transports; they are not provider features. The current watcher-specific provider feature is `historical-data`. Economics commands require that feature because they query prior-epoch rewards and block production. Standard health, consensus, and leadership commands require only the matching transport. Provider names identify the service supplying each command result and are exported with connector, route, and selected-source metrics.
+`rpc_url` and `ws_url` define the available `rpc` and `websocket` transports; they are not provider features. The current watcher-specific provider feature is `historical-data`. Economics account balances use standard RPC, while prior-epoch inflation rewards and block production require `historical-data`. Standard health, consensus, and leadership commands require only the matching transport. Provider names identify the service supplying each command result and are exported with connector, route, and selected-source metrics.
 
 Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects missing providers or feature arrays, duplicate features, unknown names, duplicate route entries, missing required routes, routes without the command's transport, and routes lacking an optional feature required by that command. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
 

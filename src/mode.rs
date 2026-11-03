@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const MODE_COUNT: usize = 4;
-pub const COMMAND_COUNT: usize = 9;
+pub const COMMAND_COUNT: usize = 11;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Transport {
@@ -52,10 +52,16 @@ const RPC_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 1] = [ModeSourceRequireme
     transport: Transport::Rpc,
     feature: None,
 }];
-const ECONOMICS_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 1] = [ModeSourceRequirement {
-    transport: Transport::Rpc,
-    feature: Some(ProviderFeature::HistoricalData),
-}];
+const ECONOMICS_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 2] = [
+    ModeSourceRequirement {
+        transport: Transport::Rpc,
+        feature: None,
+    },
+    ModeSourceRequirement {
+        transport: Transport::Rpc,
+        feature: Some(ProviderFeature::HistoricalData),
+    },
+];
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -99,9 +105,11 @@ pub enum CommandId {
     WsHealth,
     EpochInfo,
     VoteAccounts,
+    RecentPerformanceSamples,
     CurrentBlockProduction,
     CurrentLeaderSchedule,
     NextLeaderSchedule,
+    AccountBalances,
     InflationRewards,
     RewardEpochBlockProduction,
 }
@@ -112,9 +120,11 @@ impl CommandId {
         Self::WsHealth,
         Self::EpochInfo,
         Self::VoteAccounts,
+        Self::RecentPerformanceSamples,
         Self::CurrentBlockProduction,
         Self::CurrentLeaderSchedule,
         Self::NextLeaderSchedule,
+        Self::AccountBalances,
         Self::InflationRewards,
         Self::RewardEpochBlockProduction,
     ];
@@ -125,9 +135,11 @@ impl CommandId {
             Self::WsHealth => "ws-health",
             Self::EpochInfo => "epoch-info",
             Self::VoteAccounts => "vote-accounts",
+            Self::RecentPerformanceSamples => "recent-performance-samples",
             Self::CurrentBlockProduction => "current-block-production",
             Self::CurrentLeaderSchedule => "current-leader-schedule",
             Self::NextLeaderSchedule => "next-leader-schedule",
+            Self::AccountBalances => "account-balances",
             Self::InflationRewards => "inflation-rewards",
             Self::RewardEpochBlockProduction => "reward-epoch-block-production",
         }
@@ -136,11 +148,15 @@ impl CommandId {
     pub const fn mode(self) -> ModeId {
         match self {
             Self::RpcHealth | Self::WsHealth => ModeId::Health,
-            Self::EpochInfo | Self::VoteAccounts => ModeId::Consensus,
+            Self::EpochInfo | Self::VoteAccounts | Self::RecentPerformanceSamples => {
+                ModeId::Consensus
+            }
             Self::CurrentBlockProduction
             | Self::CurrentLeaderSchedule
             | Self::NextLeaderSchedule => ModeId::Leadership,
-            Self::InflationRewards | Self::RewardEpochBlockProduction => ModeId::Economics,
+            Self::AccountBalances | Self::InflationRewards | Self::RewardEpochBlockProduction => {
+                ModeId::Economics
+            }
         }
     }
 
@@ -148,12 +164,15 @@ impl CommandId {
         match self {
             Self::RpcHealth => ModeId::Health.source_requirements()[0],
             Self::WsHealth => ModeId::Health.source_requirements()[1],
-            Self::EpochInfo | Self::VoteAccounts => ModeId::Consensus.source_requirements()[0],
+            Self::EpochInfo | Self::VoteAccounts | Self::RecentPerformanceSamples => {
+                ModeId::Consensus.source_requirements()[0]
+            }
             Self::CurrentBlockProduction
             | Self::CurrentLeaderSchedule
             | Self::NextLeaderSchedule => ModeId::Leadership.source_requirements()[0],
+            Self::AccountBalances => ModeId::Economics.source_requirements()[0],
             Self::InflationRewards | Self::RewardEpochBlockProduction => {
-                ModeId::Economics.source_requirements()[0]
+                ModeId::Economics.source_requirements()[1]
             }
         }
     }
@@ -164,11 +183,13 @@ impl CommandId {
             Self::WsHealth => 1,
             Self::EpochInfo => 2,
             Self::VoteAccounts => 3,
-            Self::CurrentBlockProduction => 4,
-            Self::CurrentLeaderSchedule => 5,
-            Self::NextLeaderSchedule => 6,
-            Self::InflationRewards => 7,
-            Self::RewardEpochBlockProduction => 8,
+            Self::RecentPerformanceSamples => 4,
+            Self::CurrentBlockProduction => 5,
+            Self::CurrentLeaderSchedule => 6,
+            Self::NextLeaderSchedule => 7,
+            Self::AccountBalances => 8,
+            Self::InflationRewards => 9,
+            Self::RewardEpochBlockProduction => 10,
         }
     }
 }
@@ -184,8 +205,12 @@ mod tests {
         }
 
         assert_eq!(CommandId::RpcHealth.mode(), ModeId::Health);
-        assert_eq!(CommandId::EpochInfo.mode(), ModeId::Consensus);
+        assert_eq!(
+            CommandId::RecentPerformanceSamples.mode(),
+            ModeId::Consensus
+        );
         assert_eq!(CommandId::CurrentLeaderSchedule.mode(), ModeId::Leadership);
+        assert_eq!(CommandId::AccountBalances.mode(), ModeId::Economics);
         assert_eq!(CommandId::InflationRewards.mode(), ModeId::Economics);
 
         assert_eq!(
@@ -217,12 +242,17 @@ mod tests {
         );
         assert_eq!(
             ModeId::Economics.source_requirements(),
-            [ModeSourceRequirement {
-                transport: Transport::Rpc,
-                feature: Some(ProviderFeature::HistoricalData),
-            }]
+            [
+                ModeSourceRequirement {
+                    transport: Transport::Rpc,
+                    feature: None,
+                },
+                ModeSourceRequirement {
+                    transport: Transport::Rpc,
+                    feature: Some(ProviderFeature::HistoricalData),
+                },
+            ]
         );
-
         for command in CommandId::ALL {
             assert!(
                 command

@@ -39,6 +39,7 @@ ws_health = ["mainnet-rpc"]
 [modes.consensus.commands]
 epoch_info = ["mainnet-rpc"]
 vote_accounts = ["mainnet-rpc"]
+recent_performance_samples = ["mainnet-rpc"]
 
 [modes.leadership.commands]
 current_block_production = ["mainnet-rpc"]
@@ -47,10 +48,12 @@ next_leader_schedule = ["mainnet-rpc"]
 
 [modes.economics]
 enabled = false
-# Enable economics only on RPC endpoints that can serve getInflationReward and
-# previous-epoch getBlockProduction, then add both command routes and a target:
+# Enable economics only on RPC endpoints that can serve getMultipleAccounts,
+# getMinimumBalanceForRentExemption, getInflationReward, and previous-epoch
+# getBlockProduction, then add all command routes and a target:
 #
 # [modes.economics.commands]
+# account_balances = ["mainnet-rpc"]
 # inflation_rewards = ["mainnet-rpc"]
 # reward_epoch_block_production = ["mainnet-rpc"]
 #

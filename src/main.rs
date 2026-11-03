@@ -18,9 +18,13 @@ mod tasks;
 mod websocket;
 
 use crate::{
-    collector::{collect_snapshot, command::GetHealth, ensure_economics_supported},
+    collector::{
+        collect_snapshot, command::GetHealth, ensure_economics_supported, ModeStatus,
+        SnapshotDataSource,
+    },
     config::Config,
     metrics::Metrics,
+    mode::ModeId,
     source::SourceChain,
     tasks::{Shutdown, TaskExit, TaskManager},
 };
@@ -171,11 +175,22 @@ async fn run_watcher_loop(
 
         metrics.set_watcher_up(&runtime.config.network, true);
         metrics.begin_poll(&runtime.config, &runtime.sources);
-        guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
-        ensure_economics_capabilities_ready(&mut runtime).await?;
-        let snapshot = collect_snapshot(&runtime.sources, &runtime.config)
-            .await
-            .context("failed to collect snapshot from configured command routes")?;
+        let (health_sources, health_status) =
+            guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
+        if let Err(error) = ensure_economics_capabilities_ready(&mut runtime).await {
+            metrics.set_mode_up(&runtime.config.network, ModeId::Economics, false);
+            return Err(error);
+        }
+        let mut snapshot = match collect_snapshot(&runtime.sources, &runtime.config).await {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                mark_collection_modes_down(&runtime.config, metrics.as_ref());
+                return Err(error)
+                    .context("failed to collect snapshot from configured command routes");
+            }
+        };
+        snapshot.data_sources.extend(health_sources);
+        snapshot.mode_statuses.push(health_status);
         if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
             warn!(
                 configured_watched_validators = runtime.config.watched_validators.len(),
@@ -203,22 +218,27 @@ async fn run_watcher_loop(
     }
 }
 
-async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -> Result<()> {
+async fn guard_dependencies_healthy(
+    runtime: &RuntimeState,
+    metrics: &Metrics,
+) -> Result<(Vec<SnapshotDataSource>, ModeStatus)> {
     metrics.set_rpc_up(&runtime.config.network, false);
     metrics.set_ws_up(&runtime.config.network, false);
 
-    let rpc_health = runtime
-        .sources
-        .required(&GetHealth)
-        .await
-        .context("RPC health command failed for all configured connectors")?;
+    let rpc_health = match runtime.sources.required(&GetHealth).await {
+        Ok(health) => health,
+        Err(error) => {
+            metrics.set_mode_up(&runtime.config.network, ModeId::Health, false);
+            return Err(error).context("RPC health command failed for all configured connectors");
+        }
+    };
     metrics.set_rpc_up(&runtime.config.network, true);
-    metrics.set_command_source(&runtime.config.network, &rpc_health.source);
+    let mut sources = vec![rpc_health.source.into()];
 
     let health_up = match runtime.sources.websocket_healthy().await {
         Ok(Some(source)) => {
             metrics.set_ws_up(&runtime.config.network, true);
-            metrics.set_command_source(&runtime.config.network, &source);
+            sources.push(source.into());
             true
         }
         Ok(None) => true,
@@ -230,13 +250,23 @@ async fn guard_dependencies_healthy(runtime: &RuntimeState, metrics: &Metrics) -
             false
         }
     };
-    metrics.set_mode_up(
-        &runtime.config.network,
-        crate::mode::ModeId::Health,
-        health_up,
-    );
+    metrics.set_mode_up(&runtime.config.network, ModeId::Health, health_up);
 
-    Ok(())
+    Ok((
+        sources,
+        ModeStatus {
+            mode: ModeId::Health,
+            up: health_up,
+        },
+    ))
+}
+
+fn mark_collection_modes_down(config: &Config, metrics: &Metrics) {
+    for mode in [ModeId::Consensus, ModeId::Leadership, ModeId::Economics] {
+        if config.modes.enabled(mode) {
+            metrics.set_mode_up(&config.network, mode, false);
+        }
+    }
 }
 
 async fn ensure_economics_capabilities_ready(runtime: &mut RuntimeState) -> Result<()> {
@@ -371,7 +401,7 @@ fn init_tracing() -> Result<()> {
 mod tests {
     use super::{
         config_mtime, economics_capability_check_required, ensure_economics_capabilities_ready,
-        update_liveness_file, RuntimeState,
+        mark_collection_modes_down, update_liveness_file, RuntimeState,
     };
     use crate::{
         config::{
@@ -379,7 +409,8 @@ mod tests {
             HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig,
             ModesConfig, WatchedValidatorConfig,
         },
-        mode::CommandId,
+        metrics::Metrics,
+        mode::{CommandId, ModeId},
         source::SourceChain,
     };
     use anyhow::{Context, Result};
@@ -421,6 +452,28 @@ mod tests {
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn collection_failure_marks_enabled_collection_modes_down() -> Result<()> {
+        let mut config = Config {
+            network: "mainnet-beta".to_string(),
+            ..Config::default()
+        };
+        config.modes.economics.enabled = true;
+        let metrics = Metrics::new()?;
+        for mode in ModeId::ALL {
+            metrics.set_mode_up(&config.network, mode, true);
+        }
+
+        mark_collection_modes_down(&config, &metrics);
+
+        let rendered = metrics.render()?;
+        assert!(rendered.contains("sol_mode_up{mode=\"health\",network=\"mainnet-beta\"} 1"));
+        assert!(rendered.contains("sol_mode_up{mode=\"consensus\",network=\"mainnet-beta\"} 0"));
+        assert!(rendered.contains("sol_mode_up{mode=\"leadership\",network=\"mainnet-beta\"} 0"));
+        assert!(rendered.contains("sol_mode_up{mode=\"economics\",network=\"mainnet-beta\"} 0"));
         Ok(())
     }
 
@@ -505,6 +558,7 @@ ws_health = ["fallback"]
 [modes.consensus.commands]
 epoch_info = ["primary"]
 vote_accounts = ["primary"]
+recent_performance_samples = ["primary"]
 
 [modes.leadership.commands]
 current_block_production = ["primary"]
@@ -546,6 +600,7 @@ ws_health = ["fallback"]
 [modes.consensus.commands]
 epoch_info = ["replacement", "fallback"]
 vote_accounts = ["replacement", "fallback"]
+recent_performance_samples = ["replacement", "fallback"]
 
 [modes.leadership.commands]
 current_block_production = ["fallback", "replacement"]
@@ -607,6 +662,7 @@ rpc_health = ["primary"]
 [modes.consensus.commands]
 epoch_info = ["primary"]
 vote_accounts = ["primary"]
+recent_performance_samples = ["primary"]
 
 [modes.leadership.commands]
 current_block_production = ["primary"]
@@ -700,6 +756,7 @@ ws_url = "wss://ws-only.example"
                 commands: ConsensusCommands {
                     epoch_info: route(),
                     vote_accounts: route(),
+                    recent_performance_samples: route(),
                 },
             },
             leadership: LeadershipModeConfig {

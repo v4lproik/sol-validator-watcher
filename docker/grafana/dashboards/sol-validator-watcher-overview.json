@@ -67,7 +67,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Whether the health mode is disabled, down, or completing successfully.",
+      "description": "Whether the health mode is disabled, pending its first result, failed its latest result, or succeeded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -90,6 +90,11 @@
                   "color": "green",
                   "index": 2,
                   "text": "UP"
+                },
+                "3": {
+                  "color": "yellow",
+                  "index": 3,
+                  "text": "PENDING"
                 }
               },
               "type": "value"
@@ -109,6 +114,10 @@
               {
                 "color": "green",
                 "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
               }
             ]
           },
@@ -145,7 +154,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"health\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"health\"}))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"health\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"health\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Health status",
           "range": false,
@@ -160,7 +169,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Whether the consensus mode is disabled, down, or completing successfully.",
+      "description": "Whether the consensus mode is disabled, pending its first result, failed its latest result, or succeeded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -183,6 +192,11 @@
                   "color": "green",
                   "index": 2,
                   "text": "UP"
+                },
+                "3": {
+                  "color": "yellow",
+                  "index": 3,
+                  "text": "PENDING"
                 }
               },
               "type": "value"
@@ -202,6 +216,10 @@
               {
                 "color": "green",
                 "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
               }
             ]
           },
@@ -238,7 +256,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"consensus\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"consensus\"}))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"consensus\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"consensus\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Consensus status",
           "range": false,
@@ -253,7 +271,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Whether the leadership mode is disabled, down, or completing successfully.",
+      "description": "Whether the leadership mode is disabled, pending its first result, failed its latest result, or succeeded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -276,6 +294,11 @@
                   "color": "green",
                   "index": 2,
                   "text": "UP"
+                },
+                "3": {
+                  "color": "yellow",
+                  "index": 3,
+                  "text": "PENDING"
                 }
               },
               "type": "value"
@@ -295,6 +318,10 @@
               {
                 "color": "green",
                 "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
               }
             ]
           },
@@ -331,7 +358,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"leadership\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"leadership\"}))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"leadership\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"leadership\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Leadership status",
           "range": false,
@@ -346,7 +373,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Whether the economics mode is disabled, down, or completing successfully.",
+      "description": "Whether the economics mode is disabled, pending its first result, failed its latest result, or succeeded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -369,6 +396,11 @@
                   "color": "green",
                   "index": 2,
                   "text": "UP"
+                },
+                "3": {
+                  "color": "yellow",
+                  "index": 3,
+                  "text": "PENDING"
                 }
               },
               "type": "value"
@@ -388,6 +420,10 @@
               {
                 "color": "green",
                 "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
               }
             ]
           },
@@ -424,7 +460,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"}))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Economics status",
           "range": false,

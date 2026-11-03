@@ -28,6 +28,7 @@ ws_health = ["helius-devnet"]
 [modes.consensus.commands]
 epoch_info = ["helius-devnet"]
 vote_accounts = ["helius-devnet"]
+recent_performance_samples = ["helius-devnet"]
 
 [modes.leadership.commands]
 current_block_production = ["helius-devnet"]
@@ -38,6 +39,7 @@ next_leader_schedule = ["helius-devnet"]
 enabled = true
 
 [modes.economics.commands]
+account_balances = ["helius-devnet"]
 inflation_rewards = ["helius-devnet"]
 reward_epoch_block_production = ["helius-devnet"]
 
