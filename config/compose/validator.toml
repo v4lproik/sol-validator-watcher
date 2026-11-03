@@ -22,6 +22,7 @@ ws_health = ["external-validator"]
 [modes.consensus.commands]
 epoch_info = ["external-validator"]
 vote_accounts = ["external-validator"]
+recent_performance_samples = ["external-validator"]
 
 [modes.leadership.commands]
 current_block_production = ["external-validator"]

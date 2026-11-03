@@ -21,6 +21,7 @@ pub struct HealthCommands {
 pub struct ConsensusCommands {
     pub epoch_info: Vec<String>,
     pub vote_accounts: Vec<String>,
+    pub recent_performance_samples: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -34,6 +35,7 @@ pub struct LeadershipCommands {
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct EconomicsCommands {
+    pub account_balances: Vec<String>,
     pub inflation_rewards: Vec<String>,
     pub reward_epoch_block_production: Vec<String>,
 }
@@ -90,9 +92,13 @@ impl ModesConfig {
             CommandId::WsHealth => &self.health.commands.ws_health,
             CommandId::EpochInfo => &self.consensus.commands.epoch_info,
             CommandId::VoteAccounts => &self.consensus.commands.vote_accounts,
+            CommandId::RecentPerformanceSamples => {
+                &self.consensus.commands.recent_performance_samples
+            }
             CommandId::CurrentBlockProduction => &self.leadership.commands.current_block_production,
             CommandId::CurrentLeaderSchedule => &self.leadership.commands.current_leader_schedule,
             CommandId::NextLeaderSchedule => &self.leadership.commands.next_leader_schedule,
+            CommandId::AccountBalances => &self.economics.commands.account_balances,
             CommandId::InflationRewards => &self.economics.commands.inflation_rewards,
             CommandId::RewardEpochBlockProduction => {
                 &self.economics.commands.reward_epoch_block_production
@@ -375,9 +381,9 @@ impl Config {
             );
             let required = match command {
                 CommandId::WsHealth => false,
-                CommandId::InflationRewards | CommandId::RewardEpochBlockProduction => {
-                    self.modes.economics.enabled
-                }
+                CommandId::AccountBalances
+                | CommandId::InflationRewards
+                | CommandId::RewardEpochBlockProduction => self.modes.economics.enabled,
                 _ => true,
             };
 
@@ -633,6 +639,7 @@ ws_health = ["helius-ws"]
 [modes.consensus.commands]
 epoch_info = ["local-validator", "helius-rpc"]
 vote_accounts = ["local-validator", "helius-rpc"]
+recent_performance_samples = ["local-validator", "helius-rpc"]
 
 [modes.leadership.commands]
 current_block_production = ["helius-rpc", "local-validator"]
@@ -659,6 +666,10 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
             ["helius-rpc", "local-validator"]
         );
         assert_eq!(config.modes.health.commands.ws_health, ["helius-ws"]);
+        assert_eq!(
+            config.modes.consensus.commands.recent_performance_samples,
+            ["local-validator", "helius-rpc"]
+        );
 
         fs::remove_dir_all(&test_dir)
             .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
@@ -1118,6 +1129,26 @@ transport_mode = "poll-http"
     }
 
     #[test]
+    fn permits_economics_balance_route_without_historical_data_feature() -> Result<()> {
+        let mut standard = rpc_connector("standard");
+        standard.features = Vec::new();
+        let historical = rpc_connector("historical");
+        let mut config = Config {
+            connectors: vec![standard, historical],
+            modes: modes_for("historical", None, true),
+            ..Config::default()
+        };
+        config.modes.economics.commands.account_balances = vec!["standard".to_string()];
+        config.modes.economics.validator = Some(WatchedValidatorConfig {
+            identity: Some("id-1".to_string()),
+            vote_account: Some("vote-1".to_string()),
+            labels: vec![],
+        });
+
+        config.validate()
+    }
+
+    #[test]
     fn rejects_economics_routes_while_mode_is_disabled() -> Result<()> {
         let mut config = Config {
             connectors: vec![rpc_connector("primary")],
@@ -1205,6 +1236,7 @@ transport_mode = "poll-http"
                     enabled: true,
                     validator: None,
                     commands: EconomicsCommands {
+                        account_balances: vec!["primary".to_string()],
                         inflation_rewards: vec!["primary".to_string()],
                         reward_epoch_block_production: vec!["primary".to_string()],
                     },
@@ -1324,6 +1356,7 @@ rpc_url = "${WATCHER_RPC_URL}"
                 commands: ConsensusCommands {
                     epoch_info: rpc_route(),
                     vote_accounts: rpc_route(),
+                    recent_performance_samples: rpc_route(),
                 },
             },
             leadership: LeadershipModeConfig {
@@ -1337,6 +1370,7 @@ rpc_url = "${WATCHER_RPC_URL}"
                 enabled: economics_enabled,
                 validator: None,
                 commands: EconomicsCommands {
+                    account_balances: economics_enabled.then(rpc_route).unwrap_or_default(),
                     inflation_rewards: economics_enabled.then(rpc_route).unwrap_or_default(),
                     reward_epoch_block_production: economics_enabled
                         .then(rpc_route)

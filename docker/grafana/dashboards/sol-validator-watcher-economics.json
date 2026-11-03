@@ -67,7 +67,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Whether the economics mode is disabled, down, or completing successfully.",
+      "description": "Whether the economics mode is disabled, pending its first result, failed its latest result, or succeeded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -90,6 +90,11 @@
                   "color": "green",
                   "index": 2,
                   "text": "UP"
+                },
+                "3": {
+                  "color": "yellow",
+                  "index": 3,
+                  "text": "PENDING"
                 }
               },
               "type": "value"
@@ -109,6 +114,10 @@
               {
                 "color": "green",
                 "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
               }
             ]
           },
@@ -145,7 +154,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"}))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Economics status",
           "range": false,
@@ -536,6 +545,444 @@
       "title": "Rewarded Blocks",
       "type": "stat",
       "description": "Produced blocks counted in the sampled reward epoch."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 9,
+      "panels": [],
+      "title": "Funding Runway and Timing",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Current account balances and the vote-account reserve above rent exemption. VAT runway counts complete future 0.8 SOL charges; it excludes future rewards or transfers.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "text",
+            "mode": "fixed"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Identity Balance"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Balance"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rent Minimum"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VAT Reserve"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.8
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VAT Runway"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "unit",
+                "value": "suffix: epochs"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Next VAT"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": {
+                        "color": "red",
+                        "index": 0,
+                        "text": "UNDERFUNDED"
+                      },
+                      "1": {
+                        "color": "green",
+                        "index": 1,
+                        "text": "FUNDED"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_identity_balance_sol{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "Identity Balance",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_vote_account_balance_sol{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "Vote Balance",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_vote_account_rent_exempt_minimum_sol{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "Rent Minimum",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_vat_reserve_sol{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "VAT Reserve",
+          "range": false,
+          "refId": "D"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_vat_epochs_available{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "VAT Runway",
+          "range": false,
+          "refId": "E"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_vat_next_epoch_funded{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "Next VAT",
+          "range": false,
+          "refId": "F"
+        }
+      ],
+      "title": "Account Balances and VAT Runway",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Epoch estimates use the latest getRecentPerformanceSamples average. Next-leader ETA is omitted when no current or next-epoch schedule is available for the economics validator.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Epoch Progress"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Average Slot"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Epoch End"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Next Leader"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max(sol_epoch_progress_pct{network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Epoch Progress",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max(sol_average_slot_time_seconds{network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "Average Slot",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max(sol_estimated_epoch_end_unixtime{network=~\"$network\"}) * 1000",
+          "instant": true,
+          "legendFormat": "Epoch End",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "expr": "min(sol_watched_validator_seconds_until_next_leader{network=~\"$network\"} * on(network, identity, vote_account) group_left() sol_watched_validator_scope_info{network=~\"$network\",scope=\"focus:economics\"})",
+          "instant": true,
+          "legendFormat": "Next Leader",
+          "range": false,
+          "refId": "D"
+        }
+      ],
+      "title": "Epoch and Leader Timing",
+      "type": "stat"
     }
   ],
   "refresh": "15s",
@@ -584,6 +1031,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

@@ -46,8 +46,9 @@ probes, and economics collection.
   connector-order fallback.
 - Mode source requirements separate transport from provider capability. Health
   permits RPC and WebSocket sources, consensus and leadership require RPC, and
-  economics requires RPC plus `historical-data`. Each command selects one of
-  its mode's requirements; each configured connector supplies the provider.
+  economics permits standard RPC for account balances plus RPC with
+  `historical-data` for prior-epoch rewards. Each command selects one of its
+  mode's requirements; each configured connector supplies the provider.
   Validate the complete route before polling; do not discover declared
   capability by trial and error.
 - Required and optional execution are separate policies. Required commands

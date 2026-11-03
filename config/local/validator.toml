@@ -23,6 +23,7 @@ rpc_health = ["local-validator"]
 [modes.consensus.commands]
 epoch_info = ["local-validator"]
 vote_accounts = ["local-validator"]
+recent_performance_samples = ["local-validator"]
 
 [modes.leadership.commands]
 current_block_production = ["local-validator"]

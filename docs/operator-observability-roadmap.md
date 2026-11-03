@@ -33,6 +33,9 @@ These changes do not require new exporter metrics.
   together; distinguish a disabled mode from a failed or stale command.
 - Every mode dashboard must expose its enabled state, configured command routes,
   latest successful command sources, and source health.
+- Mode status cards use four states: `DISABLED` for a disabled mode, `PENDING`
+  until an enabled mode completes once, `DOWN` when its latest execution
+  failed, and `UP` when its latest execution succeeded.
 
 ### Usage guidance
 
@@ -45,6 +48,29 @@ These changes do not require new exporter metrics.
   `DELINQUENT` means the vote account is not keeping up with cluster voting.
   These states do not probe a validator's private RPC process; use vote and root
   lag for additional liveness context.
+- Vote-credit sample, total, and efficiency series are absent when no
+  current-epoch sample is available; missing credits are not reported as zero.
+
+## Current operator timing and funding signals
+
+The exporter and economics dashboard now publish:
+
+- `sol_epoch_progress_pct`, `sol_epoch_slots_remaining`,
+  `sol_average_slot_time_seconds`, and
+  `sol_estimated_epoch_end_unixtime`
+- `sol_watched_validator_next_leader_slot`,
+  `sol_watched_validator_slots_until_next_leader`, and
+  `sol_watched_validator_seconds_until_next_leader`
+- economics-target identity and vote-account balances, vote-account rent
+  exemption, VAT reserve, complete funded VAT epochs, and next-epoch VAT
+  funding status
+
+Timing estimates use the latest `getRecentPerformanceSamples` result. Missing
+performance samples or leader schedules produce no estimate series rather than
+a healthy-looking zero. VAT runway is the current vote-account balance above
+rent exemption divided by the current 0.8 SOL epoch charge; it excludes future
+rewards and transfers. If an RPC omits the vote account's data size, account
+balances remain available while rent and VAT series are omitted.
 
 ## Metrics the exporter should add
 
@@ -68,20 +94,9 @@ These are the operator signals that would most improve the dashboards.
 - validator client version
 - node health summary
 
-### Epoch and schedule context
+### Remaining rewards and balances
 
-- epoch progress percent
-- slots remaining in epoch
-- average slot time
-- estimated time to next epoch
-- time to next leader slot per watched validator
-
-### Rewards and balances
-
-- vote account balance
-- identity balance
 - reserve wallet balance
-- epoch rewards
 - cumulative rewards
 
 ### Validator economics and revenue
@@ -102,8 +117,7 @@ These are the operator signals that would most improve the dashboards.
 
 ## Recommended order
 
-1. Improve the watched-validator table and outlier panels with current metrics.
-2. Add freshness and scrape reliability metrics.
-3. Add node-local operator health metrics.
-4. Add epoch progress and timing metrics.
-5. Add rewards, balances, validator economics, and optional topology enrichment.
+1. Improve freshness and scrape reliability metrics.
+2. Add node-local operator health metrics.
+3. Add finalized revenue components and configurable operating costs.
+4. Add stake and topology history.

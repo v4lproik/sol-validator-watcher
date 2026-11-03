@@ -1,4 +1,4 @@
-use super::{BlockProduction, EpochInfo, RewardSample, RpcClient, VoteAccounts};
+use super::{AccountBalances, BlockProduction, EpochInfo, RewardSample, RpcClient, VoteAccounts};
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -48,6 +48,20 @@ impl SourceCommand for GetVoteAccounts {
     }
 }
 
+pub(crate) struct GetRecentPerformanceSamples;
+
+impl SourceCommand for GetRecentPerformanceSamples {
+    const ID: CommandId = CommandId::RecentPerformanceSamples;
+    type Output = Option<f64>;
+
+    async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
+        client
+            .get_average_slot_time_seconds()
+            .await
+            .context("getRecentPerformanceSamples failed")
+    }
+}
+
 pub(crate) struct GetCurrentBlockProduction;
 
 impl SourceCommand for GetCurrentBlockProduction {
@@ -91,6 +105,23 @@ impl SourceCommand for GetNextLeaderSchedule {
             .get_leader_schedule(self.slot)
             .await
             .context("getLeaderSchedule for next epoch failed")
+    }
+}
+
+pub(crate) struct GetAccountBalances<'a> {
+    pub identity: &'a str,
+    pub vote_account: &'a str,
+}
+
+impl SourceCommand for GetAccountBalances<'_> {
+    const ID: CommandId = CommandId::AccountBalances;
+    type Output = AccountBalances;
+
+    async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
+        client
+            .get_account_balances(self.identity, self.vote_account)
+            .await
+            .context("account balance collection failed")
     }
 }
 

@@ -2,7 +2,7 @@ use crate::{
     collector::{Snapshot, WatchedValidatorMetrics},
     config::{Config, ConnectorConfig},
     mode::{ModeId, ProviderFeature},
-    source::{SourceChain, SourceSelection},
+    source::SourceChain,
 };
 use anyhow::{Context, Result};
 use prometheus::{Encoder, GaugeVec, IntGaugeVec, Opts, Registry, TextEncoder};
@@ -16,6 +16,10 @@ pub struct Metrics {
     sol_epoch: IntGaugeVec,
     sol_vote_credits_sample_epoch: IntGaugeVec,
     sol_reward_sample_epoch: IntGaugeVec,
+    sol_epoch_progress_pct: GaugeVec,
+    sol_epoch_slots_remaining: IntGaugeVec,
+    sol_average_slot_time_seconds: GaugeVec,
+    sol_estimated_epoch_end_unixtime: GaugeVec,
     sol_watcher_up: IntGaugeVec,
     sol_rpc_up: IntGaugeVec,
     sol_ws_up: IntGaugeVec,
@@ -43,6 +47,12 @@ pub struct Metrics {
     sol_blocks_missed: GaugeVec,
     sol_block_production_rate: GaugeVec,
     sol_future_leader_slots: GaugeVec,
+    sol_economics_identity_balance_sol: GaugeVec,
+    sol_economics_vote_account_balance_sol: GaugeVec,
+    sol_economics_vote_account_rent_exempt_minimum_sol: GaugeVec,
+    sol_economics_vat_reserve_sol: GaugeVec,
+    sol_economics_vat_epochs_available: IntGaugeVec,
+    sol_economics_vat_next_epoch_funded: IntGaugeVec,
     sol_watched_validator_info: IntGaugeVec,
     sol_watched_validator_scope_info: IntGaugeVec,
     sol_watched_validator_activated_stake_sol: GaugeVec,
@@ -58,6 +68,9 @@ pub struct Metrics {
     sol_watched_validator_blocks_missed: GaugeVec,
     sol_watched_validator_block_production_rate: GaugeVec,
     sol_watched_validator_future_leader_slots: GaugeVec,
+    sol_watched_validator_next_leader_slot: IntGaugeVec,
+    sol_watched_validator_slots_until_next_leader: IntGaugeVec,
+    sol_watched_validator_seconds_until_next_leader: GaugeVec,
 }
 
 impl Metrics {
@@ -79,6 +92,34 @@ impl Metrics {
             Opts::new(
                 "sol_reward_sample_epoch",
                 "Epoch used for latest epoch reward metrics",
+            ),
+            &["network"],
+        )?;
+        let sol_epoch_progress_pct = GaugeVec::new(
+            Opts::new(
+                "sol_epoch_progress_pct",
+                "Completed percentage of the current epoch",
+            ),
+            &["network"],
+        )?;
+        let sol_epoch_slots_remaining = IntGaugeVec::new(
+            Opts::new(
+                "sol_epoch_slots_remaining",
+                "Slots remaining in the current epoch",
+            ),
+            &["network"],
+        )?;
+        let sol_average_slot_time_seconds = GaugeVec::new(
+            Opts::new(
+                "sol_average_slot_time_seconds",
+                "Average slot time from the latest Solana performance sample",
+            ),
+            &["network"],
+        )?;
+        let sol_estimated_epoch_end_unixtime = GaugeVec::new(
+            Opts::new(
+                "sol_estimated_epoch_end_unixtime",
+                "Estimated Unix time when the current epoch will end",
             ),
             &["network"],
         )?;
@@ -289,6 +330,49 @@ impl Metrics {
             ),
             &["scope", "network"],
         )?;
+        let economics_labels = &["network", "identity", "vote_account"];
+        let sol_economics_identity_balance_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_identity_balance_sol",
+                "Identity account balance in SOL for the configured economics validator",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_vote_account_balance_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_vote_account_balance_sol",
+                "Vote account balance in SOL for the configured economics validator",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_vote_account_rent_exempt_minimum_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_vote_account_rent_exempt_minimum_sol",
+                "Rent-exempt minimum in SOL for the configured economics vote account",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_vat_reserve_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_vat_reserve_sol",
+                "Vote account balance above rent exemption available for future VAT charges",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_vat_epochs_available = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_vat_epochs_available",
+                "Complete future 0.8 SOL VAT charges funded above rent exemption",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_vat_next_epoch_funded = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_vat_next_epoch_funded",
+                "Whether the vote account can fund the next 0.8 SOL VAT charge above rent exemption",
+            ),
+            economics_labels,
+        )?;
         let sol_watched_validator_info = IntGaugeVec::new(
             Opts::new(
                 "sol_watched_validator_info",
@@ -394,11 +478,36 @@ impl Metrics {
             ),
             &["network", "identity", "vote_account", "status"],
         )?;
+        let sol_watched_validator_next_leader_slot = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_next_leader_slot",
+                "Next scheduled leader slot for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_slots_until_next_leader = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_slots_until_next_leader",
+                "Slots until the next scheduled leader slot for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_seconds_until_next_leader = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_seconds_until_next_leader",
+                "Estimated seconds until the next scheduled leader slot for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
 
         register(&registry, &sol_slot)?;
         register(&registry, &sol_epoch)?;
         register(&registry, &sol_vote_credits_sample_epoch)?;
         register(&registry, &sol_reward_sample_epoch)?;
+        register(&registry, &sol_epoch_progress_pct)?;
+        register(&registry, &sol_epoch_slots_remaining)?;
+        register(&registry, &sol_average_slot_time_seconds)?;
+        register(&registry, &sol_estimated_epoch_end_unixtime)?;
         register(&registry, &sol_watcher_up)?;
         register(&registry, &sol_rpc_up)?;
         register(&registry, &sol_ws_up)?;
@@ -426,6 +535,15 @@ impl Metrics {
         register(&registry, &sol_blocks_missed)?;
         register(&registry, &sol_block_production_rate)?;
         register(&registry, &sol_future_leader_slots)?;
+        register(&registry, &sol_economics_identity_balance_sol)?;
+        register(&registry, &sol_economics_vote_account_balance_sol)?;
+        register(
+            &registry,
+            &sol_economics_vote_account_rent_exempt_minimum_sol,
+        )?;
+        register(&registry, &sol_economics_vat_reserve_sol)?;
+        register(&registry, &sol_economics_vat_epochs_available)?;
+        register(&registry, &sol_economics_vat_next_epoch_funded)?;
         register(&registry, &sol_watched_validator_info)?;
         register(&registry, &sol_watched_validator_scope_info)?;
         register(&registry, &sol_watched_validator_activated_stake_sol)?;
@@ -444,6 +562,9 @@ impl Metrics {
         register(&registry, &sol_watched_validator_blocks_missed)?;
         register(&registry, &sol_watched_validator_block_production_rate)?;
         register(&registry, &sol_watched_validator_future_leader_slots)?;
+        register(&registry, &sol_watched_validator_next_leader_slot)?;
+        register(&registry, &sol_watched_validator_slots_until_next_leader)?;
+        register(&registry, &sol_watched_validator_seconds_until_next_leader)?;
 
         Ok(Self {
             registry,
@@ -451,6 +572,10 @@ impl Metrics {
             sol_epoch,
             sol_vote_credits_sample_epoch,
             sol_reward_sample_epoch,
+            sol_epoch_progress_pct,
+            sol_epoch_slots_remaining,
+            sol_average_slot_time_seconds,
+            sol_estimated_epoch_end_unixtime,
             sol_watcher_up,
             sol_rpc_up,
             sol_ws_up,
@@ -478,6 +603,12 @@ impl Metrics {
             sol_blocks_missed,
             sol_block_production_rate,
             sol_future_leader_slots,
+            sol_economics_identity_balance_sol,
+            sol_economics_vote_account_balance_sol,
+            sol_economics_vote_account_rent_exempt_minimum_sol,
+            sol_economics_vat_reserve_sol,
+            sol_economics_vat_epochs_available,
+            sol_economics_vat_next_epoch_funded,
             sol_watched_validator_info,
             sol_watched_validator_scope_info,
             sol_watched_validator_activated_stake_sol,
@@ -493,6 +624,9 @@ impl Metrics {
             sol_watched_validator_blocks_missed,
             sol_watched_validator_block_production_rate,
             sol_watched_validator_future_leader_slots,
+            sol_watched_validator_next_leader_slot,
+            sol_watched_validator_slots_until_next_leader,
+            sol_watched_validator_seconds_until_next_leader,
         })
     }
 
@@ -533,24 +667,7 @@ impl Metrics {
             .set(i64::from(is_up));
     }
 
-    pub fn set_command_source(&self, network: &str, source: &SourceSelection) {
-        let precedence = source.precedence.to_string();
-        self.sol_mode_command_source_info
-            .with_label_values(&[
-                network,
-                source.mode.as_str(),
-                source.command.as_str(),
-                source.connector.as_ref(),
-                source.provider.as_ref(),
-                source.transport.as_str(),
-                feature_label(source.feature),
-                precedence.as_str(),
-            ])
-            .set(1);
-    }
-
     pub fn begin_poll(&self, config: &Config, sources: &SourceChain) {
-        self.sol_mode_command_source_info.reset();
         self.update_runtime_config(config, sources);
     }
 
@@ -567,7 +684,6 @@ impl Metrics {
         self.sol_connector_info.reset();
         self.sol_connector_feature_info.reset();
         self.sol_mode_enabled.reset();
-        self.sol_mode_up.reset();
         self.sol_mode_command_route_info.reset();
         self.sol_watcher_config_info
             .with_label_values(&[&config.network, transport_mode, bool_label(ws_configured)])
@@ -602,9 +718,6 @@ impl Metrics {
             self.sol_mode_enabled
                 .with_label_values(&[&config.network, mode.as_str()])
                 .set(i64::from(enabled));
-            if enabled {
-                self.set_mode_up(&config.network, mode, false);
-            }
         }
 
         for route in sources.routes() {
@@ -626,24 +739,41 @@ impl Metrics {
     }
 
     pub fn update_snapshot(&self, snapshot: &Snapshot) {
+        self.sol_mode_command_source_info.reset();
+        self.sol_mode_up.reset();
         self.reset_dynamic_metrics();
-
         self.sol_slot
             .with_label_values(&[&snapshot.network])
             .set(snapshot.slot as i64);
         self.sol_epoch
             .with_label_values(&[&snapshot.network])
             .set(snapshot.epoch as i64);
-        self.sol_vote_credits_sample_epoch
+        if let Some(sample_epoch) = snapshot.vote_credits_sample_epoch {
+            self.sol_vote_credits_sample_epoch
+                .with_label_values(&[&snapshot.network])
+                .set(sample_epoch as i64);
+        }
+        if let Some(sample_epoch) = snapshot.reward_sample_epoch {
+            self.sol_reward_sample_epoch
+                .with_label_values(&[&snapshot.network])
+                .set(sample_epoch as i64);
+        }
+        self.sol_epoch_progress_pct
             .with_label_values(&[&snapshot.network])
-            .set(
-                snapshot
-                    .vote_credits_sample_epoch
-                    .map_or(0, |epoch| epoch as i64),
-            );
-        self.sol_reward_sample_epoch
+            .set(snapshot.epoch_progress_pct);
+        self.sol_epoch_slots_remaining
             .with_label_values(&[&snapshot.network])
-            .set(snapshot.reward_sample_epoch.map_or(0, |epoch| epoch as i64));
+            .set(snapshot.epoch_slots_remaining as i64);
+        if let Some(slot_time) = snapshot.average_slot_time_seconds {
+            self.sol_average_slot_time_seconds
+                .with_label_values(&[&snapshot.network])
+                .set(slot_time);
+        }
+        if let Some(epoch_end) = snapshot.estimated_epoch_end_unixtime {
+            self.sol_estimated_epoch_end_unixtime
+                .with_label_values(&[&snapshot.network])
+                .set(epoch_end);
+        }
 
         for status in &snapshot.mode_statuses {
             self.set_mode_up(&snapshot.network, status.mode, status.up);
@@ -663,6 +793,41 @@ impl Metrics {
                     precedence.as_str(),
                 ])
                 .set(1);
+        }
+        if let Some(economics) = &snapshot.economics {
+            let labels = [
+                snapshot.network.as_str(),
+                economics.identity.as_str(),
+                economics.vote_account.as_str(),
+            ];
+            self.sol_economics_identity_balance_sol
+                .with_label_values(&labels)
+                .set(lamports_to_sol(economics.identity_balance_lamports));
+            self.sol_economics_vote_account_balance_sol
+                .with_label_values(&labels)
+                .set(lamports_to_sol(economics.vote_account_balance_lamports));
+            if let Some(rent_exempt_minimum_lamports) =
+                economics.vote_account_rent_exempt_minimum_lamports
+            {
+                self.sol_economics_vote_account_rent_exempt_minimum_sol
+                    .with_label_values(&labels)
+                    .set(lamports_to_sol(rent_exempt_minimum_lamports));
+            }
+            if let Some(vat_reserve_lamports) = economics.vat_reserve_lamports {
+                self.sol_economics_vat_reserve_sol
+                    .with_label_values(&labels)
+                    .set(lamports_to_sol(vat_reserve_lamports));
+            }
+            if let Some(vat_epochs_available) = economics.vat_epochs_available {
+                self.sol_economics_vat_epochs_available
+                    .with_label_values(&labels)
+                    .set(vat_epochs_available as i64);
+            }
+            if let Some(vat_next_epoch_funded) = economics.vat_next_epoch_funded {
+                self.sol_economics_vat_next_epoch_funded
+                    .with_label_values(&labels)
+                    .set(i64::from(vat_next_epoch_funded));
+            }
         }
 
         for (scope, metrics) in &snapshot.scopes {
@@ -691,9 +856,11 @@ impl Metrics {
             self.sol_delinquent_stake_sol
                 .with_label_values(&[scope, network])
                 .set(lamports_to_sol(metrics.delinquent_stake_lamports));
-            self.sol_vote_credits_latest_epoch
-                .with_label_values(&[scope, network])
-                .set(metrics.latest_epoch_vote_credits as f64);
+            if let Some(vote_credits) = metrics.latest_epoch_vote_credits {
+                self.sol_vote_credits_latest_epoch
+                    .with_label_values(&[scope, network])
+                    .set(vote_credits as f64);
+            }
             self.sol_epoch_reward_sol
                 .with_label_values(&[scope, network])
                 .set(lamports_to_sol(metrics.latest_epoch_reward_lamports));
@@ -706,9 +873,11 @@ impl Metrics {
                     metrics.latest_epoch_reward_lamports,
                     metrics.latest_epoch_rewarded_blocks_produced,
                 ));
-            self.sol_vote_efficiency_pct
-                .with_label_values(&[scope, network])
-                .set(metrics.vote_efficiency_pct);
+            if let Some(vote_efficiency_pct) = metrics.vote_efficiency_pct {
+                self.sol_vote_efficiency_pct
+                    .with_label_values(&[scope, network])
+                    .set(vote_efficiency_pct);
+            }
             self.sol_last_vote_slot_lag
                 .with_label_values(&[scope, network])
                 .set(metrics.last_vote_slot_lag);
@@ -738,6 +907,17 @@ impl Metrics {
     }
 
     fn reset_dynamic_metrics(&self) {
+        self.sol_vote_credits_sample_epoch.reset();
+        self.sol_reward_sample_epoch.reset();
+        self.sol_average_slot_time_seconds.reset();
+        self.sol_estimated_epoch_end_unixtime.reset();
+        self.sol_economics_identity_balance_sol.reset();
+        self.sol_economics_vote_account_balance_sol.reset();
+        self.sol_economics_vote_account_rent_exempt_minimum_sol
+            .reset();
+        self.sol_economics_vat_reserve_sol.reset();
+        self.sol_economics_vat_epochs_available.reset();
+        self.sol_economics_vat_next_epoch_funded.reset();
         self.sol_validator_status_count.reset();
         self.sol_validator_status_stake_sol.reset();
         self.sol_activated_stake_sol.reset();
@@ -771,6 +951,9 @@ impl Metrics {
         self.sol_watched_validator_blocks_missed.reset();
         self.sol_watched_validator_block_production_rate.reset();
         self.sol_watched_validator_future_leader_slots.reset();
+        self.sol_watched_validator_next_leader_slot.reset();
+        self.sol_watched_validator_slots_until_next_leader.reset();
+        self.sol_watched_validator_seconds_until_next_leader.reset();
     }
 
     fn update_watched_validator_metrics(&self, network: &str, validator: &WatchedValidatorMetrics) {
@@ -782,9 +965,11 @@ impl Metrics {
         self.sol_watched_validator_activated_stake_sol
             .with_label_values(&labels)
             .set(lamports_to_sol(validator.activated_stake_lamports));
-        self.sol_watched_validator_vote_credits_latest_epoch
-            .with_label_values(&labels)
-            .set(validator.latest_epoch_vote_credits as f64);
+        if let Some(vote_credits) = validator.latest_epoch_vote_credits {
+            self.sol_watched_validator_vote_credits_latest_epoch
+                .with_label_values(&labels)
+                .set(vote_credits as f64);
+        }
         self.sol_watched_validator_epoch_reward_sol
             .with_label_values(&labels)
             .set(lamports_to_sol(validator.latest_epoch_reward_lamports));
@@ -797,9 +982,11 @@ impl Metrics {
                 validator.latest_epoch_reward_lamports,
                 validator.latest_epoch_rewarded_blocks_produced,
             ));
-        self.sol_watched_validator_vote_efficiency_pct
-            .with_label_values(&labels)
-            .set(validator.vote_efficiency_pct);
+        if let Some(vote_efficiency_pct) = validator.vote_efficiency_pct {
+            self.sol_watched_validator_vote_efficiency_pct
+                .with_label_values(&labels)
+                .set(vote_efficiency_pct);
+        }
         self.sol_watched_validator_last_vote_slot_lag
             .with_label_values(&labels)
             .set(validator.last_vote_slot_lag as f64);
@@ -821,6 +1008,21 @@ impl Metrics {
         self.sol_watched_validator_future_leader_slots
             .with_label_values(&labels)
             .set(validator.future_leader_slots as f64);
+        if let Some(next_leader_slot) = validator.next_leader_slot {
+            self.sol_watched_validator_next_leader_slot
+                .with_label_values(&labels)
+                .set(next_leader_slot as i64);
+        }
+        if let Some(slots_until_next_leader) = validator.slots_until_next_leader {
+            self.sol_watched_validator_slots_until_next_leader
+                .with_label_values(&labels)
+                .set(slots_until_next_leader as i64);
+        }
+        if let Some(seconds_until_next_leader) = validator.seconds_until_next_leader {
+            self.sol_watched_validator_seconds_until_next_leader
+                .with_label_values(&labels)
+                .set(seconds_until_next_leader);
+        }
 
         for scope in &validator.scopes {
             self.sol_watched_validator_scope_info
@@ -885,8 +1087,8 @@ mod tests {
     use super::{bool_label, Metrics};
     use crate::{
         collector::{
-            ModeStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
-            WatchedValidatorMetrics,
+            EconomicsMetrics, ModeStatus, ScopeMetrics, Snapshot, SnapshotDataSource,
+            ValidatorStatus, WatchedValidatorMetrics,
         },
         config::{
             Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -894,7 +1096,7 @@ mod tests {
             LeadershipModeConfig, ModesConfig,
         },
         mode::{CommandId, ModeId, ProviderFeature, Transport},
-        source::{SourceChain, SourceSelection},
+        source::SourceChain,
     };
     use anyhow::Result;
     use std::{collections::BTreeMap, sync::Arc};
@@ -906,6 +1108,10 @@ mod tests {
             network: "mainnet-beta".to_string(),
             epoch: 42,
             slot: 1234,
+            epoch_progress_pct: 34.5,
+            epoch_slots_remaining: 65,
+            average_slot_time_seconds: Some(0.4),
+            estimated_epoch_end_unixtime: Some(1_800_000_000.0),
             vote_credits_sample_epoch: Some(41),
             reward_sample_epoch: Some(41),
             scopes: BTreeMap::from([(
@@ -915,10 +1121,10 @@ mod tests {
                     delinquent_count: 0,
                     current_stake_lamports: 1_500_000_000,
                     delinquent_stake_lamports: 0,
-                    latest_epoch_vote_credits: 11,
+                    latest_epoch_vote_credits: Some(11),
                     latest_epoch_reward_lamports: 6_000_000_000,
                     latest_epoch_rewarded_blocks_produced: 3,
-                    vote_efficiency_pct: 91.5,
+                    vote_efficiency_pct: Some(91.5),
                     last_vote_slot_lag: 4.0,
                     root_slot_lag: 5.0,
                     average_commission_pct: 8.0,
@@ -938,10 +1144,10 @@ mod tests {
                     "region:sbg".to_string(),
                 ],
                 activated_stake_lamports: 1_500_000_000,
-                latest_epoch_vote_credits: 11,
+                latest_epoch_vote_credits: Some(11),
                 latest_epoch_reward_lamports: 6_000_000_000,
                 latest_epoch_rewarded_blocks_produced: 3,
-                vote_efficiency_pct: 91.5,
+                vote_efficiency_pct: Some(91.5),
                 last_vote_slot_lag: 4,
                 root_slot_lag: 5,
                 commission_pct: 8,
@@ -949,6 +1155,9 @@ mod tests {
                 blocks_missed: 1,
                 block_production_rate: 75.0,
                 future_leader_slots: 2,
+                next_leader_slot: Some(1300),
+                slots_until_next_leader: Some(66),
+                seconds_until_next_leader: Some(26.4),
             }],
             data_sources: vec![
                 SnapshotDataSource {
@@ -984,6 +1193,16 @@ mod tests {
                     up: true,
                 },
             ],
+            economics: Some(EconomicsMetrics {
+                identity: "id-1".to_string(),
+                vote_account: "vote-1".to_string(),
+                identity_balance_lamports: 3_000_000_000,
+                vote_account_balance_lamports: 2_500_000_000,
+                vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
+                vat_reserve_lamports: Some(1_600_000_000),
+                vat_epochs_available: Some(2),
+                vat_next_epoch_funded: Some(true),
+            }),
         };
         metrics.set_watcher_up("mainnet-beta", true);
         metrics.set_rpc_up("mainnet-beta", true);
@@ -1048,20 +1267,71 @@ mod tests {
         );
         assert!(rendered.contains("sol_mode_up{mode=\"leadership\",network=\"mainnet-beta\"} 1"));
         assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
+        assert!(rendered.contains("sol_vote_credits_sample_epoch{network=\"mainnet-beta\"} 41"));
         assert!(rendered.contains("sol_reward_sample_epoch{network=\"mainnet-beta\"} 41"));
+        assert!(rendered.contains("sol_epoch_progress_pct{network=\"mainnet-beta\"} 34.5"));
+        assert!(rendered.contains("sol_epoch_slots_remaining{network=\"mainnet-beta\"} 65"));
+        assert!(rendered.contains("sol_average_slot_time_seconds{network=\"mainnet-beta\"} 0.4"));
+        assert!(rendered
+            .contains("sol_estimated_epoch_end_unixtime{network=\"mainnet-beta\"} 1800000000"));
+        assert!(rendered.contains("sol_economics_identity_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 3"));
+        assert!(rendered.contains("sol_economics_vote_account_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2.5"));
+        assert!(rendered.contains("sol_economics_vote_account_rent_exempt_minimum_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.9"));
+        assert!(rendered.contains("sol_economics_vat_reserve_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.6"));
+        assert!(rendered.contains("sol_economics_vat_epochs_available{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2"));
+        assert!(rendered.contains("sol_economics_vat_next_epoch_funded{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));
         assert!(rendered
             .contains("sol_epoch_reward_sol{network=\"mainnet-beta\",scope=\"scope:watched\"} 6"));
         assert!(rendered.contains(
             "sol_reward_per_block_sol{network=\"mainnet-beta\",scope=\"scope:watched\"} 2"
         ));
+        assert!(rendered.contains(
+            "sol_vote_credits_latest_epoch{network=\"mainnet-beta\",scope=\"scope:watched\"} 11"
+        ));
+        assert!(rendered.contains(
+            "sol_vote_efficiency_pct{network=\"mainnet-beta\",scope=\"scope:watched\"} 91.5"
+        ));
         assert!(rendered.contains("sol_watched_validator_info{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_watched_validator_scope_info{identity=\"id-1\",network=\"mainnet-beta\",scope=\"region:sbg\",vote_account=\"vote-1\"} 1"));
         assert!(rendered.contains("sol_watched_validator_activated_stake_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1.5"));
+        assert!(rendered.contains("sol_watched_validator_vote_credits_latest_epoch{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 11"));
+        assert!(rendered.contains("sol_watched_validator_vote_efficiency_pct{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 91.5"));
         assert!(rendered.contains("sol_watched_validator_epoch_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 6"));
         assert!(rendered.contains("sol_watched_validator_reward_per_block_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 2"));
         assert!(rendered.contains("sol_watched_validator_block_production_rate{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 75"));
+        assert!(rendered.contains("sol_watched_validator_next_leader_slot{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1300"));
+        assert!(rendered.contains("sol_watched_validator_slots_until_next_leader{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 66"));
+        assert!(rendered.contains("sol_watched_validator_seconds_until_next_leader{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 26.4"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
+        let metrics = Metrics::new()?;
+        metrics.update_snapshot(&Snapshot {
+            network: "mainnet-beta".to_string(),
+            economics: Some(EconomicsMetrics {
+                identity: "id-1".to_string(),
+                vote_account: "vote-1".to_string(),
+                identity_balance_lamports: 3_000_000_000,
+                vote_account_balance_lamports: 2_500_000_000,
+                vote_account_rent_exempt_minimum_lamports: None,
+                vat_reserve_lamports: None,
+                vat_epochs_available: None,
+                vat_next_epoch_funded: None,
+            }),
+            ..Snapshot::default()
+        });
+
+        let rendered = metrics.render()?;
+        assert!(rendered.contains("sol_economics_identity_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 3"));
+        assert!(rendered.contains("sol_economics_vote_account_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2.5"));
+        assert!(!rendered.contains("sol_economics_vote_account_rent_exempt_minimum_sol{"));
+        assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
+        assert!(!rendered.contains("sol_economics_vat_epochs_available{"));
+        assert!(!rendered.contains("sol_economics_vat_next_epoch_funded{"));
         Ok(())
     }
 
@@ -1089,6 +1359,10 @@ mod tests {
             network: network.to_string(),
             epoch: 1,
             slot: 1,
+            epoch_progress_pct: 10.0,
+            epoch_slots_remaining: 90,
+            average_slot_time_seconds: Some(0.4),
+            estimated_epoch_end_unixtime: Some(1_800_000_000.0),
             vote_credits_sample_epoch: Some(1),
             reward_sample_epoch: Some(1),
             scopes: BTreeMap::new(),
@@ -1098,10 +1372,10 @@ mod tests {
                 status: ValidatorStatus::Current,
                 scopes: vec!["scope:watched".to_string()],
                 activated_stake_lamports: 1_000_000_000,
-                latest_epoch_vote_credits: 1,
+                latest_epoch_vote_credits: Some(1),
                 latest_epoch_reward_lamports: 1_000_000_000,
                 latest_epoch_rewarded_blocks_produced: 1,
-                vote_efficiency_pct: 100.0,
+                vote_efficiency_pct: Some(100.0),
                 last_vote_slot_lag: 0,
                 root_slot_lag: 0,
                 commission_pct: 0,
@@ -1109,6 +1383,9 @@ mod tests {
                 blocks_missed: 0,
                 block_production_rate: 100.0,
                 future_leader_slots: 0,
+                next_leader_slot: Some(10),
+                slots_until_next_leader: Some(9),
+                seconds_until_next_leader: Some(3.6),
             }],
             data_sources: vec![SnapshotDataSource {
                 mode: ModeId::Consensus,
@@ -1123,28 +1400,71 @@ mod tests {
                 mode: ModeId::Consensus,
                 up: true,
             }],
+            economics: Some(EconomicsMetrics {
+                identity: "old-id".to_string(),
+                vote_account: "old-vote".to_string(),
+                identity_balance_lamports: 1_000_000_000,
+                vote_account_balance_lamports: 1_000_000_000,
+                vote_account_rent_exempt_minimum_lamports: Some(500_000_000),
+                vat_reserve_lamports: Some(500_000_000),
+                vat_epochs_available: Some(0),
+                vat_next_epoch_funded: Some(false),
+            }),
         });
         metrics.update_snapshot(&Snapshot {
             network: network.to_string(),
             epoch: 2,
             slot: 2,
-            vote_credits_sample_epoch: Some(2),
-            reward_sample_epoch: Some(2),
+            epoch_progress_pct: 20.0,
+            epoch_slots_remaining: 80,
+            average_slot_time_seconds: None,
+            estimated_epoch_end_unixtime: None,
+            vote_credits_sample_epoch: None,
+            reward_sample_epoch: None,
             scopes: BTreeMap::new(),
-            watched_validators: vec![],
+            watched_validators: vec![WatchedValidatorMetrics {
+                identity: "current-id".to_string(),
+                vote_account: "current-vote".to_string(),
+                status: ValidatorStatus::Current,
+                scopes: vec!["scope:watched".to_string()],
+                activated_stake_lamports: 1_000_000_000,
+                latest_epoch_vote_credits: None,
+                latest_epoch_reward_lamports: 0,
+                latest_epoch_rewarded_blocks_produced: 0,
+                vote_efficiency_pct: None,
+                last_vote_slot_lag: 0,
+                root_slot_lag: 0,
+                commission_pct: 0,
+                blocks_produced: 0,
+                blocks_missed: 0,
+                block_production_rate: 0.0,
+                future_leader_slots: 0,
+                next_leader_slot: None,
+                slots_until_next_leader: None,
+                seconds_until_next_leader: None,
+            }],
             data_sources: vec![],
             mode_statuses: vec![],
+            economics: None,
         });
 
         let rendered = metrics.render()?;
         assert!(!rendered.contains("old-id"));
         assert!(!rendered.contains("old-vote"));
+        assert!(rendered.contains("sol_watched_validator_info{identity=\"current-id\""));
+        assert!(!rendered.contains("sol_vote_credits_sample_epoch{"));
+        assert!(!rendered.contains("sol_reward_sample_epoch{"));
+        assert!(!rendered.contains("sol_watched_validator_vote_credits_latest_epoch{"));
+        assert!(!rendered.contains("sol_watched_validator_vote_efficiency_pct{"));
+        assert!(!rendered.contains("sol_average_slot_time_seconds{"));
+        assert!(!rendered.contains("sol_estimated_epoch_end_unixtime{"));
+        assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
 
         Ok(())
     }
 
     #[test]
-    fn begin_poll_replaces_command_source_after_fallback_transition() -> Result<()> {
+    fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() -> Result<()> {
         let metrics = Metrics::new()?;
         let network = "mainnet-beta";
         let config = Config {
@@ -1169,34 +1489,41 @@ mod tests {
             ..Config::default()
         };
         let sources = SourceChain::from_config(&config)?;
-        let primary = SourceSelection {
+        let source = |connector, provider, precedence| SnapshotDataSource {
             mode: ModeId::Consensus,
             command: CommandId::EpochInfo,
-            connector: Arc::from("primary"),
-            provider: Arc::from("solana"),
+            connector: Arc::from(connector),
+            provider: Arc::from(provider),
             transport: Transport::Rpc,
             feature: None,
-            precedence: 1,
-        };
-        let fallback = SourceSelection {
-            mode: ModeId::Consensus,
-            command: CommandId::EpochInfo,
-            connector: Arc::from("fallback"),
-            provider: Arc::from("helius"),
-            transport: Transport::Rpc,
-            feature: None,
-            precedence: 2,
+            precedence,
         };
 
         metrics.begin_poll(&config, &sources);
-        metrics.set_command_source(network, &primary);
+        metrics.update_snapshot(&Snapshot {
+            network: network.to_string(),
+            data_sources: vec![source("primary", "solana", 1)],
+            mode_statuses: vec![ModeStatus {
+                mode: ModeId::Consensus,
+                up: true,
+            }],
+            ..Snapshot::default()
+        });
         assert!(metrics.render()?.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",transport=\"rpc\"} 1"));
 
         metrics.begin_poll(&config, &sources);
-        metrics.set_command_source(network, &fallback);
+        let rendered = metrics.render()?;
+        assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",transport=\"rpc\"} 1"));
+        assert!(rendered.contains("sol_mode_up{mode=\"consensus\",network=\"mainnet-beta\"} 1"));
+        metrics.update_snapshot(&Snapshot {
+            network: network.to_string(),
+            data_sources: vec![source("fallback", "helius", 2)],
+            ..Snapshot::default()
+        });
         let rendered = metrics.render()?;
         assert!(!rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"primary\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana\",transport=\"rpc\"} 1"));
         assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"fallback\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",transport=\"rpc\"} 1"));
+        assert!(!rendered.contains("sol_mode_up{mode=\"consensus\""));
 
         Ok(())
     }
@@ -1226,6 +1553,7 @@ mod tests {
                 commands: ConsensusCommands {
                     epoch_info: rpc_route(),
                     vote_accounts: rpc_route(),
+                    recent_performance_samples: rpc_route(),
                 },
             },
             leadership: LeadershipModeConfig {
@@ -1239,6 +1567,7 @@ mod tests {
                 enabled: economics_enabled,
                 validator: None,
                 commands: EconomicsCommands {
+                    account_balances: economics_enabled.then(rpc_route).unwrap_or_default(),
                     inflation_rewards: economics_enabled.then(rpc_route).unwrap_or_default(),
                     reward_epoch_block_production: economics_enabled
                         .then(rpc_route)

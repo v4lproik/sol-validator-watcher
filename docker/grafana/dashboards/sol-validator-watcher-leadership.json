@@ -67,7 +67,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Whether the leadership mode is disabled, down, or completing successfully.",
+      "description": "Whether the leadership mode is disabled, pending its first result, failed its latest result, or succeeded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -90,6 +90,11 @@
                   "color": "green",
                   "index": 2,
                   "text": "UP"
+                },
+                "3": {
+                  "color": "yellow",
+                  "index": 3,
+                  "text": "PENDING"
                 }
               },
               "type": "value"
@@ -109,6 +114,10 @@
               {
                 "color": "green",
                 "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
               }
             ]
           },
@@ -145,7 +154,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"leadership\"}) * (1 + max(sol_mode_up{network=~\"$network\",mode=\"leadership\"}))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"leadership\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"leadership\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Leadership status",
           "range": false,
