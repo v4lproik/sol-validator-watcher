@@ -192,6 +192,86 @@ enabled = false
     Ok(())
 }
 
+#[tokio::test]
+async fn failed_collection_records_snapshot_failure_without_publishing_freshness() -> Result<()> {
+    let (rpc_url, server_task) = start_capability_probe_server(Some("getHealth")).await?;
+    let test_dir = unique_test_dir("snapshot-failure");
+    fs::create_dir_all(&test_dir)
+        .with_context(|| format!("failed to create {}", test_dir.display()))?;
+    let config_path = test_dir.join("watcher.toml");
+    let liveness_path = test_dir.join("watcher.liveness");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+network = "snapshot-failure-test"
+liveness_file = "{}"
+
+[[connectors]]
+name = "failing-rpc"
+provider = "mock-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc_url = "{rpc_url}"
+
+[modes.health.commands]
+rpc_health = ["failing-rpc"]
+
+[modes.consensus.commands]
+epoch_info = ["failing-rpc"]
+vote_accounts = ["failing-rpc"]
+recent_performance_samples = ["failing-rpc"]
+
+[modes.economics]
+enabled = false
+"#,
+            liveness_path.display()
+        ),
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+    let mailbox = WatcherStateMailbox::new();
+    let mut runtime = RuntimeState::load(config_path, mailbox.rpc_telemetry())?;
+    runtime.connector_capabilities_verified = true;
+    let metrics = Arc::new(Metrics::new()?);
+    let (watcher_state, watcher_state_actor) =
+        mailbox.start("snapshot-failure-test", Arc::clone(&metrics));
+    let mut tasks = TaskManager::new();
+    tasks.spawn(
+        "watcher-state-actor",
+        watcher_state_actor.run(tasks.shutdown_handle()),
+    );
+    tasks.spawn(
+        "watcher-loop",
+        run_watcher_loop(
+            runtime,
+            Arc::clone(&metrics),
+            watcher_state,
+            tasks.shutdown_handle(),
+        ),
+    );
+
+    let Err(error) = tasks.run().await else {
+        anyhow::bail!("failed required RPC health must terminate collection");
+    };
+    assert!(
+        format!("{error:#}").contains("RPC health command failed"),
+        "{error:#}"
+    );
+    let rendered = metrics.render()?;
+    assert!(rendered.contains(
+        "sol_snapshot_duration_seconds_count{network=\"snapshot-failure-test\",outcome=\"failure\"} 1"
+    ));
+    assert!(rendered.contains("sol_snapshot_failures_total{network=\"snapshot-failure-test\"} 1"));
+    assert!(!rendered.contains("sol_last_successful_snapshot_timestamp_seconds{"));
+    assert!(!liveness_path.exists());
+
+    fs::remove_dir_all(&test_dir)
+        .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+    server_task.abort();
+    Ok(())
+}
+
 fn disabled_economics_runtime() -> Result<RuntimeState> {
     let config = Config {
         connectors: vec![ConnectorConfig {

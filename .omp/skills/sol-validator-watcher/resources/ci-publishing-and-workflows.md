@@ -29,6 +29,8 @@ checks.
   `just rust doc`, the coverage gate, LCOV/HTML generation, artifact uploads,
   and optional Codecov upload. Local verification must exercise every changed
   step that can run locally.
+- Prometheus configuration or rule changes run `just stack check` locally and
+  in the required CI job.
 - Keep the required verification job name stable unless repository protection
   is updated in the same operational change.
 - Workflow permissions remain least-privilege. Do not grant write scopes to a
@@ -84,6 +86,7 @@ checks.
   `just --show <module>::<verb>`, then execute the harmless changed path.
 - Rust documentation: run `just rust doc` to render private production modules with warnings denied.
 - GitHub Actions: `actionlint -color` plus every referenced local `just` recipe.
+- Prometheus configuration and alerts: `just stack check`.
 - Coverage logic: `just coverage check` and applicable artifact generation.
 - Pages: `just site build` and inspect the generated root/coverage links.
 - Container: `just container build` with a local tag.

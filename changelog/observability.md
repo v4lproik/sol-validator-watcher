@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added snapshot-age, configured poll-interval, and RPC reliability metrics, an overview freshness panel, and poll-aware freshness-gated Prometheus alerts for watcher, validator, leadership, and VAT-funding risks.
 - Split Prometheus registration, state updates, rendering, and tests into an observability module tree without changing the exported metric contract.
 - Added Rust documentation for Prometheus registration, reset behavior, watcher-state publication, and completed-snapshot updates.
 - Clarified `sol_watcher_ready` help to state that failed RPC attempts and non-2xx responses both reset five-round admission.

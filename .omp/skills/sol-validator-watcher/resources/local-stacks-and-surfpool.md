@@ -28,6 +28,11 @@ image builds, stack inspection, and teardown.
 - Run `just stack config <target>` before a changed stack is started. Rendered
   config must resolve files, environment interpolation, networks, ports,
   volumes, and dependencies without mutation.
+- Prometheus file discovery must contain only the watcher profiles selected by
+  the current `just stack <action> <target>` invocation. Unselected static
+  targets must not produce target-down alerts.
+- Run `just stack check` after Prometheus configuration or alert rule changes;
+  it parses the mounted configuration and executes the rule behavior tests.
 - Start stacks only when the behavior requires a live boundary. Use the
   narrowest `just stack up <target>` profile and inspect it with matching
   `just stack ps <target>` and `just stack logs <target>` commands.

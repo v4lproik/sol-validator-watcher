@@ -86,7 +86,7 @@ impl Connector {
                     url.clone(),
                     Duration::from_secs(config.rpc_timeout_sec),
                     config.commitment_config()?,
-                    telemetry,
+                    telemetry.for_connector(&config.name),
                 )
             })
             .transpose()

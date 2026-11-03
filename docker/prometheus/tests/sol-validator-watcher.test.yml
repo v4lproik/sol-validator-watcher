@@ -1,0 +1,211 @@
+rule_files:
+  - /etc/prometheus/rules/sol-validator-watcher.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: watcher availability and freshness alerts
+    interval: 1m
+    input_series:
+      - series: 'up{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet"}'
+        values: '0+0x6'
+      - series: 'sol_watcher_up{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '1+0x6'
+      - series: 'sol_watcher_ready{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '0+0x6'
+      - series: 'sol_watcher_poll_interval_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '15+0x6'
+      - series: 'sol_last_successful_snapshot_timestamp_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '0+0x6'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatcherTargetDown
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              severity: critical
+            exp_annotations:
+              summary: "Solana Validator Watcher target is down"
+              description: "Prometheus cannot scrape watcher:8000 for deployment mainnet."
+      - eval_time: 5m
+        alertname: SolValidatorWatcherNotReady
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "Watcher is not ready for mainnet-beta"
+              description: "The watcher is serving metrics but has not completed five consecutive clean polling rounds."
+      - eval_time: 5m
+        alertname: SolValidatorWatcherSnapshotStale
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: critical
+            exp_annotations:
+              summary: "Watcher snapshot is stale for mainnet-beta"
+              description: "No complete snapshot has been published within the configured freshness window."
+
+  - name: watcher without a successful snapshot
+    interval: 1m
+    input_series:
+      - series: 'sol_watcher_up{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '1+0x3'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SolValidatorWatcherSnapshotStale
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: critical
+            exp_annotations:
+              summary: "Watcher snapshot is stale for mainnet-beta"
+              description: "No complete snapshot has been published within the configured freshness window."
+
+  - name: rpc failure burst alert
+    interval: 1m
+    input_series:
+      - series: 'sol_rpc_request_failures_total{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",connector="primary",method="getEpochInfo"}'
+        values: '0 1 2 3 4 5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatcherRpcFailureBurst
+        exp_alerts:
+          - exp_labels:
+              connector: primary
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              method: getEpochInfo
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "Repeated getEpochInfo failures on primary"
+              description: "Connector primary recorded at least three getEpochInfo failures in five minutes."
+
+  - name: fresh validator risk and funding alerts
+    interval: 1m
+    input_series:
+      - series: 'sol_last_successful_snapshot_timestamp_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '0 60 120 180 240 300'
+      - series: 'sol_watcher_poll_interval_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '15+0x5'
+      - series: 'sol_watched_validator_info{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1",status="delinquent"}'
+        values: '1+0x5'
+      - series: 'sol_watched_validator_last_vote_slot_lag{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1",status="delinquent"}'
+        values: '40+0x5'
+      - series: 'sol_watched_validator_seconds_until_next_leader{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1",status="delinquent"}'
+        values: '200+0x5'
+      - series: 'sol_economics_vat_next_epoch_funded{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatchedValidatorDelinquent
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              identity: validator-1
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+              status: delinquent
+              vote_account: vote-1
+            exp_annotations:
+              summary: "Watched validator validator-1 is delinquent"
+              description: "Vote account vote-1 is reported delinquent on mainnet-beta."
+      - eval_time: 5m
+        alertname: SolValidatorWatchedValidatorVoteLagHigh
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              identity: validator-1
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+              status: delinquent
+              vote_account: vote-1
+            exp_annotations:
+              summary: "Watched validator validator-1 has high vote lag"
+              description: "Vote account vote-1 is more than 32 slots behind on mainnet-beta."
+      - eval_time: 5m
+        alertname: SolValidatorUpcomingLeaderUnhealthy
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              identity: validator-1
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: critical
+              status: delinquent
+              vote_account: vote-1
+            exp_annotations:
+              summary: "Unhealthy validator validator-1 leads within five minutes"
+              description: "Vote account vote-1 has an upcoming leader slot while delinquent or lagging."
+      - eval_time: 5m
+        alertname: SolValidatorVatNextEpochUnfunded
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              identity: validator-1
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: critical
+              vote_account: vote-1
+            exp_annotations:
+              summary: "Vote account vote-1 lacks next-epoch VAT funding"
+              description: "The available reserve is below the 0.8 SOL vote-account charge for the next epoch."
+
+  - name: stale snapshot suppresses validator condition alerts
+    interval: 1m
+    input_series:
+      - series: 'sol_last_successful_snapshot_timestamp_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '0+0x6'
+      - series: 'sol_watcher_poll_interval_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '15+0x6'
+      - series: 'sol_watched_validator_info{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1",status="delinquent"}'
+        values: '1+0x6'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatchedValidatorDelinquent
+        exp_alerts: []
+
+  - name: slow polling interval extends freshness window
+    interval: 1m
+    input_series:
+      - series: 'sol_watcher_up{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '1+0x11'
+      - series: 'sol_last_successful_snapshot_timestamp_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '0+0x11'
+      - series: 'sol_watcher_poll_interval_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '120+0x11'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatcherSnapshotStale
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: SolValidatorWatcherSnapshotStale
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: critical
+            exp_annotations:
+              summary: "Watcher snapshot is stale for mainnet-beta"
+              description: "No complete snapshot has been published within the configured freshness window."

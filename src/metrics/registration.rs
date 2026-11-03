@@ -5,7 +5,14 @@
 
 use super::{register, Metrics};
 use anyhow::Result;
-use prometheus::{GaugeVec, IntGaugeVec, Opts, Registry};
+use prometheus::{
+    GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry,
+};
+
+const SNAPSHOT_DURATION_BUCKETS_SECONDS: [f64; 10] =
+    [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0];
+const RPC_REQUEST_DURATION_BUCKETS_SECONDS: [f64; 11] =
+    [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0];
 
 impl Metrics {
     /// Constructs and registers the complete Prometheus metric contract.
@@ -83,6 +90,35 @@ impl Metrics {
             ),
             &["network"],
         )?;
+        let sol_watcher_poll_interval_seconds = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_poll_interval_seconds",
+                "Configured interval between completed polling rounds",
+            ),
+            &["network"],
+        )?;
+        let sol_last_successful_snapshot_timestamp_seconds = GaugeVec::new(
+            Opts::new(
+                "sol_last_successful_snapshot_timestamp_seconds",
+                "Unix timestamp when the latest complete snapshot was published",
+            ),
+            &["network"],
+        )?;
+        let sol_snapshot_duration_seconds = HistogramVec::new(
+            HistogramOpts::new(
+                "sol_snapshot_duration_seconds",
+                "Time spent producing one complete or failed snapshot",
+            )
+            .buckets(SNAPSHOT_DURATION_BUCKETS_SECONDS.to_vec()),
+            &["network", "outcome"],
+        )?;
+        let sol_snapshot_failures_total = IntCounterVec::new(
+            Opts::new(
+                "sol_snapshot_failures_total",
+                "Polling rounds that failed before publishing a complete snapshot for the current accepted configuration",
+            ),
+            &["network"],
+        )?;
         let sol_rpc_http_response_class_count = IntGaugeVec::new(
             Opts::new(
                 "sol_rpc_http_response_class_count",
@@ -103,6 +139,21 @@ impl Metrics {
                 "Cumulative failed RPC attempts since process start",
             ),
             &["network"],
+        )?;
+        let sol_rpc_request_duration_seconds = HistogramVec::new(
+            HistogramOpts::new(
+                "sol_rpc_request_duration_seconds",
+                "End-to-end duration of one Solana JSON-RPC request",
+            )
+            .buckets(RPC_REQUEST_DURATION_BUCKETS_SECONDS.to_vec()),
+            &["network", "connector", "method"],
+        )?;
+        let sol_rpc_request_failures_total = IntCounterVec::new(
+            Opts::new(
+                "sol_rpc_request_failures_total",
+                "Failed Solana JSON-RPC attempts by connector and method for the current accepted configuration",
+            ),
+            &["network", "connector", "method"],
         )?;
         let sol_rpc_up = IntGaugeVec::new(
             Opts::new(
@@ -499,9 +550,15 @@ impl Metrics {
         register(&registry, &sol_watcher_ready)?;
         register(&registry, &sol_watcher_poll_round_count)?;
         register(&registry, &sol_watcher_clean_poll_streak)?;
+        register(&registry, &sol_watcher_poll_interval_seconds)?;
+        register(&registry, &sol_last_successful_snapshot_timestamp_seconds)?;
+        register(&registry, &sol_snapshot_duration_seconds)?;
+        register(&registry, &sol_snapshot_failures_total)?;
         register(&registry, &sol_rpc_http_response_class_count)?;
         register(&registry, &sol_rpc_http_response_status_count)?;
         register(&registry, &sol_rpc_request_failure_count)?;
+        register(&registry, &sol_rpc_request_duration_seconds)?;
+        register(&registry, &sol_rpc_request_failures_total)?;
         register(&registry, &sol_mode_enabled)?;
         register(&registry, &sol_mode_up)?;
         register(&registry, &sol_mode_command_route_info)?;
@@ -575,9 +632,15 @@ impl Metrics {
             sol_watcher_ready,
             sol_watcher_poll_round_count,
             sol_watcher_clean_poll_streak,
+            sol_watcher_poll_interval_seconds,
+            sol_last_successful_snapshot_timestamp_seconds,
+            sol_snapshot_duration_seconds,
+            sol_snapshot_failures_total,
             sol_rpc_http_response_class_count,
             sol_rpc_http_response_status_count,
             sol_rpc_request_failure_count,
+            sol_rpc_request_duration_seconds,
+            sol_rpc_request_failures_total,
             sol_mode_command_route_info,
             sol_mode_command_source_info,
             sol_validator_status_count,

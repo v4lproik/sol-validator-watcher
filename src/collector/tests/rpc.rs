@@ -6,7 +6,7 @@ async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
         rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let block_production = client.get_block_production_for_range(700, 10_799).await?;
@@ -24,12 +24,12 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
     let mailbox = WatcherStateMailbox::new();
     let telemetry = mailbox.rpc_telemetry();
     let metrics = Arc::new(Metrics::new()?);
-    let (state, actor) = mailbox.start("rpc-telemetry-test", metrics);
+    let (state, actor) = mailbox.start("rpc-telemetry-test", Arc::clone(&metrics));
     let client = RpcClient::new(
         rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
-        telemetry,
+        telemetry.for_connector("mock-rpc"),
     )?;
     let mut tasks = TaskManager::new();
     tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
@@ -60,6 +60,13 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
         assert_eq!(completion.state.rpc_responses.client_error_4xx, 1);
         assert_eq!(completion.state.rpc_responses.failed_attempts, 1);
         assert!(!completion.state.ready);
+        let rendered = metrics.render()?;
+        assert!(rendered.contains(
+            "sol_rpc_request_duration_seconds_count{connector=\"mock-rpc\",method=\"getBlockProduction\",network=\"rpc-telemetry-test\"} 1"
+        ));
+        assert!(rendered.contains(
+            "sol_rpc_request_failures_total{connector=\"mock-rpc\",method=\"getBlockProduction\",network=\"rpc-telemetry-test\"} 1"
+        ));
         Ok(TaskExit::ShutdownRequested)
     });
 
@@ -73,7 +80,7 @@ async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
         rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
     let addresses = (0..205)
         .map(|index| format!("vote-{index}"))
@@ -110,7 +117,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
         rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let balances = client.get_account_balances("id-1", "vote-1").await?;
@@ -140,7 +147,7 @@ async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()>
         format!("{rpc_url}/?api-key={secret}"),
         Duration::from_secs(5),
         "confirmed".to_string(),
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let Err(error) = client.ensure_healthy().await else {

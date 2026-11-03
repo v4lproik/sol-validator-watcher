@@ -6,21 +6,21 @@
 use super::state::RuntimeState;
 use crate::{
     collector::{
-        collect_snapshot, command::GetHealth, ensure_economics_supported, ModeStatus,
+        collect_snapshot, command::GetHealth, ensure_economics_supported, ModeStatus, Snapshot,
         SnapshotDataSource,
     },
     config::Config,
     metrics::Metrics,
     mode::ModeId,
     tasks::{Shutdown, TaskExit},
-    watcher_state::{WatcherState, ADMISSION_CLEAN_POLL_ROUNDS},
+    watcher_state::{PollCompletion, WatcherState, ADMISSION_CLEAN_POLL_ROUNDS},
 };
 use anyhow::{Context, Result};
 use std::{
     fs,
     path::Path,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::time::sleep;
 use tracing::{info, warn};
@@ -66,35 +66,34 @@ pub(super) async fn run_watcher_loop(
             .begin_poll()
             .await
             .context("failed to begin polling round")?;
-        let (health_sources, health_status) =
-            guard_dependencies_healthy(&runtime, metrics.as_ref()).await?;
-        if let Err(error) = ensure_economics_capabilities_ready(&mut runtime).await {
-            metrics.set_mode_up(&runtime.config.network, ModeId::Economics, false);
-            return Err(error);
-        }
-        let mut snapshot = match collect_snapshot(&runtime.sources, &runtime.config).await {
-            Ok(snapshot) => snapshot,
+        let snapshot_started_at = Instant::now();
+        let poll_result =
+            collect_and_publish_snapshot(&mut runtime, metrics.as_ref(), &watcher_state).await;
+        let (snapshot, completion) = match poll_result {
+            Ok(result) => result,
             Err(error) => {
-                mark_collection_modes_down(&runtime.config, metrics.as_ref());
-                return Err(error)
-                    .context("failed to collect snapshot from configured command routes");
+                metrics.record_snapshot_failure(
+                    &runtime.config.network,
+                    snapshot_started_at.elapsed(),
+                );
+                return Err(error);
             }
         };
-        snapshot.data_sources.extend(health_sources);
-        snapshot.mode_statuses.push(health_status);
-        if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
-            warn!(
-                configured_watched_validators = runtime.config.watched_validators.len(),
-                economics_mode = runtime.config.modes.economics.as_str(),
-                "configured watched validators did not match any vote accounts in the latest snapshot; watched-validator panels will be empty"
-            );
-        }
-        metrics.update_snapshot(&snapshot);
-        update_liveness_file(runtime.config.liveness_file.as_deref())?;
-        let completion = watcher_state
-            .complete_poll()
-            .await
-            .context("failed to publish completed polling round")?;
+        let completed_at_unix_seconds = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs_f64(),
+            Err(error) => {
+                metrics.record_snapshot_failure(
+                    &runtime.config.network,
+                    snapshot_started_at.elapsed(),
+                );
+                return Err(error).context("system clock is before UNIX_EPOCH");
+            }
+        };
+        metrics.record_snapshot_success(
+            &runtime.config.network,
+            snapshot_started_at.elapsed(),
+            completed_at_unix_seconds,
+        );
         let state = completion.state;
         if completion.admitted {
             info!(
@@ -121,6 +120,42 @@ pub(super) async fn run_watcher_loop(
             _ = sleep(Duration::from_secs(runtime.config.poll_interval_sec)) => {}
         }
     }
+}
+
+async fn collect_and_publish_snapshot(
+    runtime: &mut RuntimeState,
+    metrics: &Metrics,
+    watcher_state: &WatcherState,
+) -> Result<(Snapshot, PollCompletion)> {
+    let (health_sources, health_status) = guard_dependencies_healthy(runtime, metrics).await?;
+    if let Err(error) = ensure_economics_capabilities_ready(runtime).await {
+        metrics.set_mode_up(&runtime.config.network, ModeId::Economics, false);
+        return Err(error);
+    }
+    let mut snapshot = match collect_snapshot(&runtime.sources, &runtime.config).await {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            mark_collection_modes_down(&runtime.config, metrics);
+            return Err(error).context("failed to collect snapshot from configured command routes");
+        }
+    };
+    snapshot.data_sources.extend(health_sources);
+    snapshot.mode_statuses.push(health_status);
+    if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
+        warn!(
+            configured_watched_validators = runtime.config.watched_validators.len(),
+            economics_mode = runtime.config.modes.economics.as_str(),
+            "configured watched validators did not match any vote accounts in the latest snapshot; watched-validator panels will be empty"
+        );
+    }
+    metrics.update_snapshot(&snapshot);
+    update_liveness_file(runtime.config.liveness_file.as_deref())?;
+    let completion = watcher_state
+        .complete_poll()
+        .await
+        .context("failed to publish completed polling round")?;
+
+    Ok((snapshot, completion))
 }
 
 async fn guard_dependencies_healthy(

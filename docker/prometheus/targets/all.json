@@ -1,0 +1,18 @@
+[
+  {
+    "targets": ["watcher-surfpool:8000"],
+    "labels": {"deployment": "surfpool"}
+  },
+  {
+    "targets": ["watcher-validator:8000"],
+    "labels": {"deployment": "validator"}
+  },
+  {
+    "targets": ["watcher-devnet:8000"],
+    "labels": {"deployment": "devnet"}
+  },
+  {
+    "targets": ["watcher-mainnet:8000"],
+    "labels": {"deployment": "mainnet"}
+  }
+]
