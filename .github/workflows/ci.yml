@@ -1,6 +1,10 @@
 name: ci
 
 on:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
   pull_request:
   push:
     branches:
@@ -11,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

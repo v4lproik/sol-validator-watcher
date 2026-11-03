@@ -61,6 +61,25 @@ Grafana and Prometheus are loopback-only local tools. Grafana uses the
 credentials from `.env` and defaults to `admin`/`admin`; change that password
 before intentionally adapting the Compose files for non-loopback access.
 
+## Published images
+
+The container workflow publishes only after the repository CI workflow passes
+for the same commit. Main-branch, version-tag, and explicitly dispatched builds
+produce a `linux/amd64` and `linux/arm64` image index with BuildKit provenance,
+an SBOM, and a GitHub artifact attestation for the published digest. Branch and
+version tags preserve the existing release semantics; `sha-*` tags contain the
+full verified commit identifier.
+
+After authenticating to GHCR, verify a published digest or tag against the
+repository and its publishing workflow:
+
+```bash
+gh attestation verify \
+  oci://ghcr.io/v4lproik/sol-validator-watcher:sha-<commit> \
+  --repo v4lproik/sol-validator-watcher \
+  --signer-workflow v4lproik/sol-validator-watcher/.github/workflows/container.yml
+```
+
 ## Command routes
 
 `[[connectors]]` declares a stable provider name, its compatibility with the standard Solana JSON-RPC methods used by this watcher, optional provider features, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
