@@ -195,8 +195,8 @@ impl WatcherState {
 
     /// Completes the active poll and returns the resulting admission transition.
     ///
-    /// Any failed RPC attempt recorded between `begin_poll` and this call resets the
-    /// clean-round streak.
+    /// Any failed RPC attempt or non-2xx response recorded between `begin_poll`
+    /// and this call resets the clean-round streak.
     pub(crate) async fn complete_poll(&self) -> Result<PollCompletion> {
         let (reply, completion) = oneshot::channel();
         self.commands

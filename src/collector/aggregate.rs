@@ -422,7 +422,7 @@ pub(super) fn resolve_economics_target(
     })
 }
 
-/// Derives vote-account tax reserve values from current account balances.
+/// Derives vote-account VAT reserve and 0.8 SOL runway values from current balances.
 pub(super) fn build_economics_metrics(
     target: &EconomicsTarget,
     balances: AccountBalances,

@@ -92,7 +92,7 @@ pub(crate) struct WatcherStateSnapshot {
     pub network: Arc<str>,
     /// Polling rounds completed for the active runtime.
     pub completed_poll_rounds: u64,
-    /// Consecutive completed rounds without a failed RPC attempt.
+    /// Consecutive rounds without a failed RPC attempt or non-2xx response.
     pub clean_poll_rounds: u8,
     /// Whether admission has reached the required clean-round streak.
     pub ready: bool,

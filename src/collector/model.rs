@@ -59,7 +59,7 @@ pub(crate) struct AccountBalances {
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
 }
 
-/// Operator-account balances and vote-account tax reserve estimates.
+/// Operator-account balances and 0.8 SOL VAT runway estimates.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EconomicsMetrics {
     /// Validator identity account address.
@@ -72,11 +72,11 @@ pub struct EconomicsMetrics {
     pub vote_account_balance_lamports: u64,
     /// Rent-exempt minimum for the vote account.
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
-    /// Vote-account balance available after preserving rent exemption.
+    /// Vote-account balance above rent exemption available for future VAT charges.
     pub vat_reserve_lamports: Option<u64>,
-    /// Whole future epochs covered by the available reserve.
+    /// Whole future 0.8 SOL VAT charges covered by the available reserve.
     pub vat_epochs_available: Option<u64>,
-    /// Whether the reserve covers the next epoch's estimated commission tax.
+    /// Whether the reserve covers the next 0.8 SOL VAT charge.
     pub vat_next_epoch_funded: Option<bool>,
 }
 

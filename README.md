@@ -110,9 +110,10 @@ Array order is the command's sole priority and fallback policy. A connector may 
 
 `/healthz` reports only that the HTTP process is serving. `/readyz` returns
 `503 Service Unavailable` until five consecutive required polling rounds
-complete without a failed RPC attempt. Transport, response-read, payload,
-JSON-RPC, missing-result, and non-success HTTP failures reset the streak; an
-accepted configuration reload also restarts admission for the new runtime.
+complete without a failed RPC attempt or non-2xx HTTP response. Transport,
+response-read, payload, JSON-RPC, and missing-result failures plus any non-2xx
+response reset the streak; an accepted configuration reload also restarts
+admission for the new runtime.
 
 Every 30 seconds, the watcher logs its readiness, completed and clean polling
 rounds, failed RPC attempts, cumulative response count, response-class counts,
