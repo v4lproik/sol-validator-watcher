@@ -8,14 +8,17 @@ liveness files, signals, and shutdown.
 
 ## Ownership and Boundaries
 
-- `config.rs` parses each self-contained TOML profile, expands environment
+- `config/mod.rs` parses each self-contained TOML profile, expands environment
   placeholders, normalizes values, and validates connectors plus every built-in
   mode's command routes. No other module reads raw environment-backed policy.
 - `source.rs` constructs RPC and WebSocket clients once, compiles command routes
   into immutable connector index chains, and verifies declared RPC capabilities.
-- `main.rs` owns transactional reload, startup capability verification, the
-  polling loop, dependency guards, the supervised single-owner watcher-state
-  actor, and the `/metrics`, `/healthz`, and `/readyz` surfaces.
+- `runtime/state.rs` owns transactional reload; `runtime/poller.rs` owns startup
+  capability verification, polling, dependency guards, and liveness updates;
+  `runtime/http.rs` owns `/metrics`, `/healthz`, and `/readyz`.
+- `watcher_state/actor.rs` is the single writer for readiness, completed rounds,
+  clean streaks, and bounded RPC response telemetry.
+- `runtime/app.rs` wires all supervised process tasks.
 - `tasks.rs` owns task registration, first-failure handling, shutdown broadcast,
   and join errors.
 - `websocket.rs` owns websocket connect/probe behavior.

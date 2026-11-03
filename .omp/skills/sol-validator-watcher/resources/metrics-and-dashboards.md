@@ -8,8 +8,8 @@ operator-facing semantics.
 
 ## Ownership and Contracts
 
-- `metrics.rs` is the single owner of metric registration, labels, updates,
-  resets, rendering, and unit conversion.
+- `metrics/registration.rs` owns metric construction and registration;
+  `metrics/mod.rs` owns labels, updates, resets, rendering, and unit conversion.
 - `collector::Snapshot` is the input contract. Collection code does not write
   Prometheus collectors directly.
 - Dashboard JSON under `docker/grafana/dashboards/` consumes the exported metric

@@ -5,7 +5,7 @@
 mod mode;
 
 #[allow(dead_code, unused_imports)]
-#[path = "../src/config.rs"]
+#[path = "../src/config/mod.rs"]
 mod config;
 
 use config::Config;

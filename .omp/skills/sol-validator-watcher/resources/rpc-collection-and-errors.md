@@ -8,25 +8,26 @@ probes, and economics collection.
 
 ## Ownership and Boundaries
 
-- `collector.rs` owns JSON-RPC request/response types, HTTP status handling,
-  method implementations and probes, snapshot source records, batching, and
-  aggregation inputs.
+- `collector/rpc.rs` owns JSON-RPC wire types, HTTP status handling, method
+  implementations, capability probes, and request batching.
 - `collector/command.rs` maps typed source commands to RPC operations and
   outputs.
+- `collector/model.rs`, `collector/aggregate.rs`, and `collector/snapshot.rs`
+  own snapshot records, validator aggregation, and collection orchestration.
 - `mode.rs` owns stable mode and command identifiers plus each command's
   transport, standard Solana RPC compatibility, and provider-feature
   requirements.
 - `source.rs` owns connector client construction, compiled command routes,
   declared-capability verification, required/optional fallback execution, and
   source selection.
-- `main.rs` owns dependency guard policy, startup verification, and
-  transactional source-chain reload.
-- `config.rs` owns connector transport, compatibility, and provider-feature
+- `runtime/state.rs` owns transactional source-chain reload;
+  `runtime/poller.rs` owns dependency guards and startup verification.
+- `config/mod.rs` owns connector transport, compatibility, and provider-feature
   declarations plus exact per-command route validation.
 - `websocket.rs` owns websocket reachability only. Do not infer RPC method
   support from websocket success.
-- `metrics.rs` publishes configured routes and the connector that supplied each
-  command's latest result.
+- `metrics/mod.rs` publishes configured routes and the connector that supplied
+  each command's latest result.
 
 ## Invariants
 
