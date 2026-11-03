@@ -22,15 +22,16 @@ public contracts require stricter evolution, documentation, and error-type disci
 
 ## Ownership and Module Boundaries
 
-- `main.rs` is the composition root: CLI parsing, runtime wiring, HTTP serving,
-  reload orchestration, and process lifecycle.
-- `collector.rs` owns Solana RPC transport, wire decoding, snapshot collection,
-  and validator aggregation until an intentional extraction moves a complete
-  responsibility.
-- `config.rs` owns parsing, normalization, defaults, environment expansion, and
+- `main.rs` is the composition root for CLI parsing, tracing, and runtime
+  startup. `runtime/` owns application wiring, HTTP serving, polling, reload,
+  and process lifecycle.
+- `collector/` separates typed commands, Solana RPC transport and wire decoding,
+  snapshot models, collection orchestration, and validator aggregation.
+- `config/` owns parsing, normalization, defaults, environment expansion, and
   validation.
-- `metrics.rs` owns Prometheus registration, update/reset behavior, rendering,
+- `metrics/` owns Prometheus registration, update/reset behavior, rendering,
   labels, and unit conversion.
+- `watcher_state/` owns the single-writer readiness and RPC telemetry actor.
 - `tasks.rs` owns task supervision and cooperative shutdown; `websocket.rs`
   owns websocket probing; `labels.rs` owns scope assignment.
 - New code belongs with the invariant it changes. Do not add a generic `utils`,

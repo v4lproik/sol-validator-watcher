@@ -16,10 +16,10 @@ Solana Validator Watcher executes typed health, consensus, leadership, and econo
 
 | Module | Owns | Start here | Changelog |
 | --- | --- | --- | --- |
-| Watcher | Typed mode commands, Solana RPC collection, connector fallback, provenance, labels, and validator aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/), [`src/collector.rs`](src/collector.rs) | [`changelog/watcher.md`](changelog/watcher.md) |
-| Runtime | Process startup, polling, HTTP serving, reload, task supervision, and shutdown | [`src/main.rs`](src/main.rs), [`src/tasks.rs`](src/tasks.rs) | [`changelog/runtime.md`](changelog/runtime.md) |
-| Configuration | TOML loading, environment expansion, validation, and committed profiles | [`src/config.rs`](src/config.rs), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
-| Observability | Prometheus metrics, scraping, Grafana provisioning, dashboards, and the Pages site | [`src/metrics.rs`](src/metrics.rs), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/), [`site/`](site/) | [`changelog/observability.md`](changelog/observability.md) |
+| Watcher | Typed mode commands, Solana RPC collection, connector fallback, provenance, labels, and validator aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/) | [`changelog/watcher.md`](changelog/watcher.md) |
+| Runtime | Process startup, polling, HTTP serving, reload, watcher state, task supervision, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/), [`src/watcher_state/`](src/watcher_state/), [`src/tasks.rs`](src/tasks.rs) | [`changelog/runtime.md`](changelog/runtime.md) |
+| Configuration | TOML loading, environment expansion, validation, and committed profiles | [`src/config/`](src/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
+| Observability | Prometheus metrics, scraping, Grafana provisioning, dashboards, and the Pages site | [`src/metrics/`](src/metrics/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/), [`site/`](site/) | [`changelog/observability.md`](changelog/observability.md) |
 | Operations | Container image, Compose profiles, Surfpool, and local stack lifecycle | [`docker/`](docker/) | [`changelog/operations.md`](changelog/operations.md) |
 | Tooling | Just commands, CI, coverage, publishing, scripts, and repository guidance | [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
 
@@ -110,9 +110,10 @@ Array order is the command's sole priority and fallback policy. A connector may 
 
 `/healthz` reports only that the HTTP process is serving. `/readyz` returns
 `503 Service Unavailable` until five consecutive required polling rounds
-complete without a failed RPC attempt. Transport, response-read, payload,
-JSON-RPC, missing-result, and non-success HTTP failures reset the streak; an
-accepted configuration reload also restarts admission for the new runtime.
+complete without a failed RPC attempt or non-2xx HTTP response. Transport,
+response-read, payload, JSON-RPC, and missing-result failures plus any non-2xx
+response reset the streak; an accepted configuration reload also restarts
+admission for the new runtime.
 
 Every 30 seconds, the watcher logs its readiness, completed and clean polling
 rounds, failed RPC attempts, cumulative response count, response-class counts,

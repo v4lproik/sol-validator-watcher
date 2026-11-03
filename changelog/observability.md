@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Split Prometheus registration, state updates, rendering, and tests into an observability module tree without changing the exported metric contract.
+- Added Rust documentation for Prometheus registration, reset behavior, watcher-state publication, and completed-snapshot updates.
+- Clarified `sol_watcher_ready` help to state that failed RPC attempts and non-2xx responses both reset five-round admission.
 - Added Prometheus network, validator, economics, and connector metrics.
 - Added the coverage-backed Pages site.
 - Moved Prometheus and Grafana configuration beside their Compose owners under `docker/`.

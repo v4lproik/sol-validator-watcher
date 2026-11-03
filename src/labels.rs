@@ -1,10 +1,19 @@
+//! Deterministic scope-label assignment for validator records.
+//!
+//! Labels are derived from validated watched-validator configuration and the
+//! built-in network and watched scopes.
+
 use crate::config::Config;
 use std::collections::{BTreeSet, HashMap};
 
+/// Scope label applied to every observed validator.
 pub const LABEL_SCOPE_ALL_NETWORK: &str = "scope:all-network";
+/// Scope label applied to validators not explicitly watched.
 pub const LABEL_SCOPE_NETWORK: &str = "scope:network";
+/// Scope label applied to explicitly watched validators.
 pub const LABEL_SCOPE_WATCHED: &str = "scope:watched";
 
+/// Precompiled identity and vote-account label lookup.
 #[derive(Clone, Debug, Default)]
 pub struct LabelMatcher {
     by_identity: HashMap<String, BTreeSet<String>>,
@@ -12,6 +21,7 @@ pub struct LabelMatcher {
 }
 
 impl LabelMatcher {
+    /// Builds deterministic lookup sets from validated watcher configuration.
     pub fn from_config(config: &Config) -> Self {
         let mut matcher = Self::default();
 
@@ -40,6 +50,7 @@ impl LabelMatcher {
         matcher
     }
 
+    /// Returns sorted, deduplicated built-in and configured labels for a validator.
     pub fn labels_for(&self, identity: &str, vote_account: &str) -> Vec<String> {
         let mut labels = BTreeSet::from([LABEL_SCOPE_ALL_NETWORK.to_string()]);
         let mut watched = false;

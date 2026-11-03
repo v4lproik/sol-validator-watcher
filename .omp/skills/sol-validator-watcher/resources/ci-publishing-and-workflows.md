@@ -81,6 +81,7 @@ checks.
 
 - `Justfile` or module files: `just --list --list-submodules`,
   `just --show <module>::<verb>`, then execute the harmless changed path.
+- Rust documentation: run `just rust doc` to render private production modules with warnings denied.
 - GitHub Actions: `actionlint -color` plus every referenced local `just` recipe.
 - Coverage logic: `just coverage check` and applicable artifact generation.
 - Pages: `just site build` and inspect the generated root/coverage links.

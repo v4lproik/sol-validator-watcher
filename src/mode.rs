@@ -1,15 +1,26 @@
+//! Stable identifiers and source requirements for watcher collection modes.
+//!
+//! Commands declare transport, standard Solana RPC compatibility, and optional
+//! provider-feature requirements here; routing code consumes those declarations.
+
 use serde::{Deserialize, Serialize};
 
+/// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
+/// Number of typed commands in [`CommandId::ALL`].
 pub const COMMAND_COUNT: usize = 11;
 
+/// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Transport {
+    /// Solana JSON-RPC over HTTP.
     Rpc,
+    /// Solana WebSocket connectivity.
     Websocket,
 }
 
 impl Transport {
+    /// Returns the stable label used in configuration and metrics.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Rpc => "rpc",
@@ -18,14 +29,18 @@ impl Transport {
     }
 }
 
+/// Standard Solana JSON-RPC method profile declared by a connector.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SolanaRpcCompatibility {
+    /// Methods needed for health, epoch, vote-account, and leader-schedule reads.
     Core,
+    /// The core profile plus performance, block-production, and account reads.
     Extended,
 }
 
 impl SolanaRpcCompatibility {
+    /// Returns the stable kebab-case configuration value.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Core => "core",
@@ -33,6 +48,7 @@ impl SolanaRpcCompatibility {
         }
     }
 
+    /// Returns whether this declaration satisfies `required`.
     pub const fn supports(self, required: Self) -> bool {
         matches!(
             (self, required),
@@ -41,13 +57,16 @@ impl SolanaRpcCompatibility {
     }
 }
 
+/// Provider-specific capability consumed by a typed watcher command.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderFeature {
+    /// Retained prior-epoch data needed for historical rewards and production.
     HistoricalData,
 }
 
 impl ProviderFeature {
+    /// Returns the stable kebab-case configuration value.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::HistoricalData => "historical-data",
@@ -55,10 +74,14 @@ impl ProviderFeature {
     }
 }
 
+/// Complete connector requirement for one typed command.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ModeSourceRequirement {
+    /// Transport on which the command executes.
     pub transport: Transport,
+    /// Minimum standard Solana RPC profile, if the command uses RPC.
     pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    /// Additional provider capability, if one is required.
     pub feature: Option<ProviderFeature>,
 }
 
@@ -83,16 +106,22 @@ const WEBSOCKET_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequiremen
     feature: None,
 };
 
+/// Stable identifier for an independently reported watcher mode.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModeId {
+    /// RPC and WebSocket dependency health.
     Health,
+    /// Epoch and validator voting state.
     Consensus,
+    /// Block production and leader scheduling.
     Leadership,
+    /// Single-validator balances and prior-epoch rewards.
     Economics,
 }
 
 impl ModeId {
+    /// Every mode in stable metric-label order.
     pub const ALL: [Self; MODE_COUNT] = [
         Self::Health,
         Self::Consensus,
@@ -100,6 +129,7 @@ impl ModeId {
         Self::Economics,
     ];
 
+    /// Returns the stable metric and configuration label.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Health => "health",
@@ -110,23 +140,36 @@ impl ModeId {
     }
 }
 
+/// Stable identifier for a routed watcher operation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandId {
+    /// Solana RPC health check.
     RpcHealth,
+    /// WebSocket reachability check.
     WsHealth,
+    /// Current epoch and slot information.
     EpochInfo,
+    /// Current and delinquent vote accounts.
     VoteAccounts,
+    /// Recent cluster slot-performance sample.
     RecentPerformanceSamples,
+    /// Block production in the current epoch range.
     CurrentBlockProduction,
+    /// Leader schedule covering the current slot.
     CurrentLeaderSchedule,
+    /// Leader schedule for the next epoch boundary.
     NextLeaderSchedule,
+    /// Identity and vote-account balances plus rent exemption.
     AccountBalances,
+    /// Prior-epoch inflation rewards.
     InflationRewards,
+    /// Block production retained for the prior reward epoch.
     RewardEpochBlockProduction,
 }
 
 impl CommandId {
+    /// Every command in stable routing-array order.
     pub const ALL: [Self; COMMAND_COUNT] = [
         Self::RpcHealth,
         Self::WsHealth,
@@ -141,6 +184,7 @@ impl CommandId {
         Self::RewardEpochBlockProduction,
     ];
 
+    /// Returns the stable metric and configuration label.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::RpcHealth => "rpc-health",
@@ -157,6 +201,7 @@ impl CommandId {
         }
     }
 
+    /// Returns the mode that owns this command.
     pub const fn mode(self) -> ModeId {
         match self {
             Self::RpcHealth | Self::WsHealth => ModeId::Health,
@@ -172,6 +217,7 @@ impl CommandId {
         }
     }
 
+    /// Returns the transport and capability contract for this command.
     pub const fn source_requirement(self) -> ModeSourceRequirement {
         match self {
             Self::RpcHealth
@@ -189,6 +235,7 @@ impl CommandId {
         }
     }
 
+    /// Returns the stable array index used by compiled command routes.
     pub const fn index(self) -> usize {
         match self {
             Self::RpcHealth => 0,

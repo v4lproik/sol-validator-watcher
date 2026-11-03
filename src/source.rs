@@ -1,41 +1,69 @@
+//! Connector construction, command routing, fallback, and source provenance.
+//!
+//! A source chain compiles validated configuration into immutable per-command
+//! routes and returns the connector that supplied each successful value.
+
 use crate::{
-    collector::{command::SourceCommand, RpcClient, RpcResponseStats},
+    collector::{command::SourceCommand, RpcClient},
     config::{Config, ConnectorConfig},
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
+    watcher_state::RpcTelemetry,
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tracing::warn;
 
+/// Provenance for the connector that successfully supplied one command result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceSelection {
+    /// Mode that owns the command.
     pub mode: ModeId,
+    /// Command that produced the value.
     pub command: CommandId,
+    /// Stable configured connector name.
     pub connector: Arc<str>,
+    /// Operator-declared provider name.
     pub provider: Arc<str>,
+    /// Transport used by the command.
     pub transport: Transport,
+    /// Standard Solana RPC profile declared by the connector.
     pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    /// Provider feature required by the command, if any.
     pub feature: Option<ProviderFeature>,
+    /// One-based position of the connector in the command's route.
     pub precedence: usize,
 }
 
+/// A collected value paired with its successful source.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sourced<T> {
+    /// Command output.
     pub value: T,
+    /// Provenance for the successful command attempt.
     pub source: SourceSelection,
 }
 
+/// Read-only description of one configured command-route entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceRoute<'a> {
+    /// Mode that owns the command.
     pub mode: ModeId,
+    /// Routed command.
     pub command: CommandId,
+    /// Stable configured connector name.
     pub connector: &'a str,
+    /// Operator-declared provider name.
     pub provider: &'a str,
+    /// Required command transport.
     pub transport: Transport,
+    /// Solana RPC profile declared by the connector.
     pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    /// Provider feature required by the command, if any.
     pub feature: Option<ProviderFeature>,
+    /// One-based fallback position.
     pub precedence: usize,
+    /// Whether the connector satisfies the command's declared requirements.
     pub available: bool,
 }
 
@@ -49,7 +77,7 @@ struct Connector {
 }
 
 impl Connector {
-    fn from_config(config: &ConnectorConfig, responses: RpcResponseStats) -> Result<Self> {
+    fn from_config(config: &ConnectorConfig, telemetry: RpcTelemetry) -> Result<Self> {
         let rpc_client = config
             .rpc_url
             .as_ref()
@@ -58,7 +86,7 @@ impl Connector {
                     url.clone(),
                     Duration::from_secs(config.rpc_timeout_sec),
                     config.commitment_config()?,
-                    responses,
+                    telemetry,
                 )
             })
             .transpose()
@@ -111,17 +139,19 @@ impl Connector {
     }
 }
 
+/// Immutable connector clients and compiled fallback routes for every command.
 pub struct SourceChain {
     connectors: Vec<Connector>,
     routes: [Vec<usize>; COMMAND_COUNT],
 }
 
 impl SourceChain {
-    pub fn from_config(config: &Config, responses: RpcResponseStats) -> Result<Self> {
+    /// Builds clients once and compiles validated connector names into route indices.
+    pub fn from_config(config: &Config, telemetry: RpcTelemetry) -> Result<Self> {
         let connectors = config
             .connectors
             .iter()
-            .map(|connector| Connector::from_config(connector, responses.clone()))
+            .map(|connector| Connector::from_config(connector, telemetry.clone()))
             .collect::<Result<Vec<_>>>()?;
         let connector_indices = connectors
             .iter()
@@ -151,6 +181,7 @@ impl SourceChain {
         Ok(Self { connectors, routes })
     }
 
+    /// Iterates every declared route entry in command and precedence order.
     pub fn routes(&self) -> impl Iterator<Item = SourceRoute<'_>> + '_ {
         CommandId::ALL.into_iter().flat_map(move |command| {
             self.routes[command.index()]
@@ -174,6 +205,10 @@ impl SourceChain {
         })
     }
 
+    /// Probes every connector method promised by its declared capabilities.
+    ///
+    /// The first failing connector aborts verification with connector and provider
+    /// context. Endpoint URLs are not included in that context.
     pub async fn verify_capabilities(&self) -> Result<()> {
         for connector in &self.connectors {
             let (Some(client), Some(solana_rpc_compatibility)) = (
@@ -196,6 +231,9 @@ impl SourceChain {
         Ok(())
     }
 
+    /// Executes a required command against its route until one connector succeeds.
+    ///
+    /// Returns the last causal error when all declared candidates fail.
     pub async fn required<C>(&self, command: &C) -> Result<Sourced<C::Output>>
     where
         C: SourceCommand,
@@ -242,6 +280,10 @@ impl SourceChain {
         )
     }
 
+    /// Executes an optional command against its route until one connector succeeds.
+    ///
+    /// Every failed attempt remains observable, but route exhaustion returns
+    /// `None` rather than failing the polling round.
     pub async fn optional<C>(&self, command: &C) -> Option<Sourced<C::Output>>
     where
         C: SourceCommand,
@@ -272,6 +314,9 @@ impl SourceChain {
         None
     }
 
+    /// Probes the configured WebSocket health route with ordered fallback.
+    ///
+    /// Returns `Ok(None)` when no WebSocket route is configured.
     pub async fn websocket_healthy(&self) -> Result<Option<SourceSelection>> {
         let command = CommandId::WsHealth;
         let mut last_error = None;
