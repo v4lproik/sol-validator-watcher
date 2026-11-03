@@ -1,5 +1,5 @@
 use crate::{
-    collector::{command::SourceCommand, RpcClient},
+    collector::{command::SourceCommand, RpcClient, RpcResponseStats},
     config::{Config, ConnectorConfig},
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
     websocket::WebsocketProbeClient,
@@ -49,7 +49,7 @@ struct Connector {
 }
 
 impl Connector {
-    fn from_config(config: &ConnectorConfig) -> Result<Self> {
+    fn from_config(config: &ConnectorConfig, responses: RpcResponseStats) -> Result<Self> {
         let rpc_client = config
             .rpc_url
             .as_ref()
@@ -58,6 +58,7 @@ impl Connector {
                     url.clone(),
                     Duration::from_secs(config.rpc_timeout_sec),
                     config.commitment_config()?,
+                    responses,
                 )
             })
             .transpose()
@@ -116,11 +117,11 @@ pub struct SourceChain {
 }
 
 impl SourceChain {
-    pub fn from_config(config: &Config) -> Result<Self> {
+    pub fn from_config(config: &Config, responses: RpcResponseStats) -> Result<Self> {
         let connectors = config
             .connectors
             .iter()
-            .map(Connector::from_config)
+            .map(|connector| Connector::from_config(connector, responses.clone()))
             .collect::<Result<Vec<_>>>()?;
         let connector_indices = connectors
             .iter()

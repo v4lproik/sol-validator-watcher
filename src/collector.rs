@@ -11,7 +11,10 @@ use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing::warn;
@@ -21,15 +24,131 @@ const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
 
 const VAT_LAMPORTS_PER_EPOCH: u64 = 800_000_000;
 
+#[derive(Clone, Default)]
+pub(crate) struct RpcResponseStats {
+    inner: Arc<RpcResponseStatsInner>,
+}
+
+#[derive(Default)]
+struct RpcResponseStatsInner {
+    total: AtomicU64,
+    successful_2xx: AtomicU64,
+    redirection_3xx: AtomicU64,
+    client_error_4xx: AtomicU64,
+    server_error_5xx: AtomicU64,
+    other: AtomicU64,
+    status_200: AtomicU64,
+    status_403: AtomicU64,
+    status_429: AtomicU64,
+    status_500: AtomicU64,
+    failed_attempts: AtomicU64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct RpcResponseSnapshot {
+    pub total: u64,
+    pub successful_2xx: u64,
+    pub redirection_3xx: u64,
+    pub client_error_4xx: u64,
+    pub server_error_5xx: u64,
+    pub other: u64,
+    pub status_200: u64,
+    pub status_403: u64,
+    pub status_429: u64,
+    pub status_500: u64,
+    pub failed_attempts: u64,
+}
+
+impl RpcResponseStats {
+    pub fn snapshot(&self) -> RpcResponseSnapshot {
+        RpcResponseSnapshot {
+            total: self.inner.total.load(Ordering::Relaxed),
+            successful_2xx: self.inner.successful_2xx.load(Ordering::Relaxed),
+            redirection_3xx: self.inner.redirection_3xx.load(Ordering::Relaxed),
+            client_error_4xx: self.inner.client_error_4xx.load(Ordering::Relaxed),
+            server_error_5xx: self.inner.server_error_5xx.load(Ordering::Relaxed),
+            other: self.inner.other.load(Ordering::Relaxed),
+            status_200: self.inner.status_200.load(Ordering::Relaxed),
+            status_403: self.inner.status_403.load(Ordering::Relaxed),
+            status_429: self.inner.status_429.load(Ordering::Relaxed),
+            status_500: self.inner.status_500.load(Ordering::Relaxed),
+            failed_attempts: self.inner.failed_attempts.load(Ordering::Relaxed),
+        }
+    }
+
+    fn record(&self, status: reqwest::StatusCode) {
+        self.inner.total.fetch_add(1, Ordering::Relaxed);
+        if status.is_success() {
+            self.inner.successful_2xx.fetch_add(1, Ordering::Relaxed);
+        } else if status.is_redirection() {
+            self.inner.redirection_3xx.fetch_add(1, Ordering::Relaxed);
+        } else if status.is_client_error() {
+            self.inner.client_error_4xx.fetch_add(1, Ordering::Relaxed);
+        } else if status.is_server_error() {
+            self.inner.server_error_5xx.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.inner.other.fetch_add(1, Ordering::Relaxed);
+        }
+
+        match status.as_u16() {
+            200 => &self.inner.status_200,
+            403 => &self.inner.status_403,
+            429 => &self.inner.status_429,
+            500 => &self.inner.status_500,
+            _ => return,
+        }
+        .fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_failure(&self) {
+        self.inner.failed_attempts.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl RpcResponseSnapshot {
+    pub fn delta_since(self, previous: Self) -> Self {
+        Self {
+            total: self.total.saturating_sub(previous.total),
+            successful_2xx: self.successful_2xx.saturating_sub(previous.successful_2xx),
+            redirection_3xx: self
+                .redirection_3xx
+                .saturating_sub(previous.redirection_3xx),
+            client_error_4xx: self
+                .client_error_4xx
+                .saturating_sub(previous.client_error_4xx),
+            server_error_5xx: self
+                .server_error_5xx
+                .saturating_sub(previous.server_error_5xx),
+            other: self.other.saturating_sub(previous.other),
+            status_200: self.status_200.saturating_sub(previous.status_200),
+            status_403: self.status_403.saturating_sub(previous.status_403),
+            status_429: self.status_429.saturating_sub(previous.status_429),
+            status_500: self.status_500.saturating_sub(previous.status_500),
+            failed_attempts: self
+                .failed_attempts
+                .saturating_sub(previous.failed_attempts),
+        }
+    }
+    pub fn non_success_count(self) -> u64 {
+        self.total.saturating_sub(self.successful_2xx)
+    }
+}
+
 #[derive(Clone)]
 pub struct RpcClient {
     http: Client,
     url: String,
     commitment: String,
+    responses: RpcResponseStats,
 }
 
 impl RpcClient {
-    pub fn new(url: String, timeout: Duration, commitment: String) -> Result<Self> {
+    pub fn new(
+        url: String,
+        timeout: Duration,
+        commitment: String,
+        responses: RpcResponseStats,
+    ) -> Result<Self> {
         let http = Client::builder()
             .timeout(timeout)
             .build()
@@ -39,6 +158,7 @@ impl RpcClient {
             http,
             url,
             commitment,
+            responses,
         })
     }
 
@@ -315,6 +435,7 @@ impl RpcClient {
             )
             .await?;
         if response.value.len() != 2 {
+            self.responses.record_failure();
             bail!(
                 "getMultipleAccounts returned {} accounts for 2 addresses",
                 response.value.len()
@@ -382,6 +503,7 @@ impl RpcClient {
                 .await?;
 
             if rewards.len() != addresses_chunk.len() {
+                self.responses.record_failure();
                 bail!(
                     "getInflationReward returned {} rewards for {} addresses",
                     rewards.len(),
@@ -417,6 +539,7 @@ impl RpcClient {
             .context("RPC endpoint failed getHealth")?;
 
         if health != "ok" {
+            self.responses.record_failure();
             bail!("RPC endpoint returned unexpected getHealth result {health:?}");
         }
 
@@ -428,12 +551,32 @@ impl RpcClient {
         T: DeserializeOwned,
         P: Serialize,
     {
-        self.call_optional(method, params)
-            .await?
-            .with_context(|| format!("{} returned no result", method))
+        match self.call_optional(method, params).await? {
+            Some(result) => Ok(result),
+            None => {
+                self.responses.record_failure();
+                bail!("{method} returned no result");
+            }
+        }
     }
 
     async fn call_optional<T, P>(&self, method: &'static str, params: P) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+        P: Serialize,
+    {
+        let result = self.call_optional_request(method, params).await;
+        if result.is_err() {
+            self.responses.record_failure();
+        }
+        result
+    }
+
+    async fn call_optional_request<T, P>(
+        &self,
+        method: &'static str,
+        params: P,
+    ) -> Result<Option<T>>
     where
         T: DeserializeOwned,
         P: Serialize,
@@ -447,6 +590,7 @@ impl RpcClient {
             .map_err(reqwest::Error::without_url)
             .with_context(|| format!("{method} request failed"))?;
         let status = response.status();
+        self.responses.record(status);
         let body = response
             .text()
             .await
@@ -1537,9 +1681,9 @@ mod tests {
         collect_snapshot, ensure_economics_supported, estimated_epoch_end_unixtime_at, ratio,
         resolve_economics_target, reward_epoch_block_range, AccountBalances, BlockProduction,
         EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig, RecordBuildContext,
-        RewardSample, RpcClient, RpcValueResponse, ScopeMetrics, SlotRange, ValidatorRecord,
-        ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
-        MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
+        RewardSample, RpcClient, RpcResponseSnapshot, RpcResponseStats, RpcValueResponse,
+        ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts,
+        WatchedValidatorMetrics, MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
     };
     use crate::{
         config::{
@@ -1584,6 +1728,40 @@ mod tests {
     struct MockRpcState {
         profile: MockRpcProfile,
         methods: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[test]
+    fn rpc_response_stats_classify_bounded_statuses() {
+        let responses = RpcResponseStats::default();
+        for status in [
+            StatusCode::OK,
+            StatusCode::NO_CONTENT,
+            StatusCode::TEMPORARY_REDIRECT,
+            StatusCode::FORBIDDEN,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_GATEWAY,
+        ] {
+            responses.record(status);
+        }
+        responses.record_failure();
+
+        assert_eq!(
+            responses.snapshot(),
+            RpcResponseSnapshot {
+                total: 7,
+                successful_2xx: 2,
+                redirection_3xx: 1,
+                client_error_4xx: 2,
+                server_error_5xx: 2,
+                status_200: 1,
+                status_403: 1,
+                status_429: 1,
+                status_500: 1,
+                failed_attempts: 1,
+                ..RpcResponseSnapshot::default()
+            }
+        );
     }
 
     #[test]
@@ -1770,7 +1948,12 @@ mod tests {
     #[tokio::test]
     async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
         let (rpc_url, server_task) = start_mock_rpc_server().await?;
-        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+        let client = RpcClient::new(
+            rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
 
         let block_production = client.get_block_production_for_range(700, 10_799).await?;
 
@@ -1784,7 +1967,13 @@ mod tests {
     #[tokio::test]
     async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
         let (rpc_url, server_task) = start_mock_rpc_server().await?;
-        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+        let responses = RpcResponseStats::default();
+        let client = RpcClient::new(
+            rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+            responses.clone(),
+        )?;
 
         let err = match client
             .call_optional::<RpcValueResponse<BlockProduction>, _>(
@@ -1808,6 +1997,8 @@ mod tests {
         assert!(err
             .to_string()
             .contains("getBlockProduction failed with JSON-RPC code -32600"));
+        assert_eq!(responses.snapshot().client_error_4xx, 1);
+        assert_eq!(responses.snapshot().failed_attempts, 1);
 
         Ok(())
     }
@@ -1842,10 +2033,12 @@ mod tests {
             rpc_url,
             Duration::from_secs(5),
             config.connectors[0].commitment_config()?,
+            crate::collector::RpcResponseStats::default(),
         )?;
 
         client.ensure_healthy().await?;
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         ensure_economics_supported(&sources, &config).await?;
         let snapshot = collect_snapshot(&sources, &config).await?;
 
@@ -1920,7 +2113,8 @@ mod tests {
             }],
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         let snapshot = collect_snapshot(&sources, &config).await?;
         server_task.abort();
 
@@ -1972,7 +2166,8 @@ mod tests {
             }],
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         let snapshot = collect_snapshot(&sources, &config).await?;
 
         primary_server_task.abort();
@@ -2037,7 +2232,8 @@ mod tests {
             modes: modes_for(&["local-validator", "helius-fallback"], false),
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         let snapshot = collect_snapshot(&sources, &config).await?;
 
         primary_server_task.abort();
@@ -2092,7 +2288,8 @@ mod tests {
             modes,
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         let snapshot = collect_snapshot(&sources, &config).await?;
 
         first_server_task.abort();
@@ -2145,7 +2342,8 @@ mod tests {
             modes: modes_for(&["first", "second"], false),
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
 
         let Err(error) = collect_snapshot(&sources, &config).await else {
             anyhow::bail!("all failed required command routes must fail collection");
@@ -2181,7 +2379,8 @@ mod tests {
             }],
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
 
         ensure_economics_supported(&sources, &config).await?;
         let snapshot = collect_snapshot(&sources, &config).await?;
@@ -2209,7 +2408,12 @@ mod tests {
     #[tokio::test]
     async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
         let (rpc_url, server_task) = start_mock_rpc_server().await?;
-        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+        let client = RpcClient::new(
+            rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
         let addresses = (0..205)
             .map(|index| format!("vote-{index}"))
             .collect::<Vec<_>>();
@@ -2501,7 +2705,12 @@ mod tests {
     async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result<()> {
         let (rpc_url, server_task) =
             start_mock_rpc_server_with_profile(MockRpcProfile::NoAccountSpace).await?;
-        let client = RpcClient::new(rpc_url, Duration::from_secs(5), "confirmed".to_string())?;
+        let client = RpcClient::new(
+            rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+            crate::collector::RpcResponseStats::default(),
+        )?;
 
         let balances = client.get_account_balances("id-1", "vote-1").await?;
         server_task.abort();
@@ -2543,6 +2752,7 @@ mod tests {
             format!("{rpc_url}/?api-key={secret}"),
             Duration::from_secs(5),
             "confirmed".to_string(),
+            crate::collector::RpcResponseStats::default(),
         )?;
 
         let Err(error) = client.ensure_healthy().await else {
@@ -2576,7 +2786,8 @@ mod tests {
             }],
             ..Config::default()
         };
-        let sources = SourceChain::from_config(&config)?;
+        let sources =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?;
         let Err(error) = sources.verify_capabilities().await else {
             anyhow::bail!("extended compatibility without extended methods should fail");
         };
@@ -2592,7 +2803,7 @@ mod tests {
         assert!(!message.contains(secret), "{message}");
 
         config.connectors[0].solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
-        SourceChain::from_config(&config)?
+        SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?
             .verify_capabilities()
             .await?;
         server_task.abort();
@@ -2615,7 +2826,7 @@ mod tests {
             ..Config::default()
         };
 
-        SourceChain::from_config(&config)?
+        SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?
             .verify_capabilities()
             .await?;
         server_task.abort();
@@ -2637,7 +2848,7 @@ mod tests {
             }],
             ..Config::default()
         };
-        SourceChain::from_config(&core_config)?
+        SourceChain::from_config(&core_config, crate::collector::RpcResponseStats::default())?
             .verify_capabilities()
             .await?;
         let mut core_methods = core_methods.lock().await.clone();
@@ -2666,9 +2877,12 @@ mod tests {
             }],
             ..Config::default()
         };
-        SourceChain::from_config(&extended_config)?
-            .verify_capabilities()
-            .await?;
+        SourceChain::from_config(
+            &extended_config,
+            crate::collector::RpcResponseStats::default(),
+        )?
+        .verify_capabilities()
+        .await?;
         let mut extended_methods = extended_methods.lock().await.clone();
         extended_methods.sort();
         assert_eq!(
@@ -2709,7 +2923,7 @@ mod tests {
             ..Config::default()
         };
 
-        SourceChain::from_config(&config)?
+        SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?
             .verify_capabilities()
             .await?;
         server_task.abort();
@@ -2735,9 +2949,10 @@ mod tests {
                 ..Config::default()
             };
 
-            let Err(error) = SourceChain::from_config(&config)?
-                .verify_capabilities()
-                .await
+            let Err(error) =
+                SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?
+                    .verify_capabilities()
+                    .await
             else {
                 anyhow::bail!(
                     "{expected_method} must be required by extended Solana RPC compatibility"
@@ -2777,9 +2992,10 @@ mod tests {
                 ..Config::default()
             };
 
-            let Err(error) = SourceChain::from_config(&config)?
-                .verify_capabilities()
-                .await
+            let Err(error) =
+                SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?
+                    .verify_capabilities()
+                    .await
             else {
                 anyhow::bail!("empty required RPC results must fail capability validation");
             };
@@ -2806,9 +3022,10 @@ mod tests {
             }],
             ..Config::default()
         };
-        let Err(error) = SourceChain::from_config(&config)?
-            .verify_capabilities()
-            .await
+        let Err(error) =
+            SourceChain::from_config(&config, crate::collector::RpcResponseStats::default())?
+                .verify_capabilities()
+                .await
         else {
             anyhow::bail!("missing historical-data RPC method should fail");
         };

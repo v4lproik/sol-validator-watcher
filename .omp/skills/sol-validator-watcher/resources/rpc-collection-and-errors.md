@@ -40,6 +40,10 @@ probes, and economics collection.
   method whose Solana contract permits it.
 - Include the RPC method in boundary context without logging credentials or a
   secret-bearing URL.
+- Count each failed RPC attempt and each received HTTP status before returning
+  from the protocol boundary. Keep failure totals, response classes, and
+  readiness-critical exact codes bounded; never use a URL, error message, or
+  request identifier as a metric label.
 
 ### Keep command routing deterministic
 
