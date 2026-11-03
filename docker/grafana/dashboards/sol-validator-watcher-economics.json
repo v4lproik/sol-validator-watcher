@@ -169,7 +169,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Declared connector fallback order. Available reflects whether the configured transport exists in the running profile.",
+      "description": "Declared connector fallback order and API level versus the command minimum. Available reflects whether the configured transport and capabilities satisfy the route.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -241,14 +241,16 @@
             },
             "indexByName": {
               "available": 0,
-              "provider": 1,
-              "transport": 2,
-              "feature": 3,
-              "connector": 4,
-              "command": 5,
-              "mode": 6,
-              "network": 7,
-              "precedence": 8
+              "rpc_api": 1,
+              "required_rpc_api": 2,
+              "provider": 3,
+              "transport": 4,
+              "feature": 5,
+              "connector": 6,
+              "command": 7,
+              "mode": 8,
+              "network": 9,
+              "precedence": 10
             },
             "renameByName": {
               "network": "Network",
@@ -257,7 +259,9 @@
               "connector": "Connector",
               "provider": "Provider",
               "transport": "Transport",
-              "feature": "Feature",
+              "rpc_api": "Connector RPC API",
+              "required_rpc_api": "Required RPC API",
+              "feature": "Required Feature",
               "precedence": "Order",
               "available": "Available"
             }
@@ -272,7 +276,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Connector that supplied each command's latest successful result.",
+      "description": "Connector that supplied each command's latest successful result. API columns distinguish the connector declaration from the command minimum.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -343,14 +347,16 @@
               "job": true
             },
             "indexByName": {
-              "provider": 0,
-              "transport": 1,
-              "feature": 2,
-              "connector": 3,
-              "command": 4,
-              "mode": 5,
-              "network": 6,
-              "precedence": 7
+              "rpc_api": 0,
+              "required_rpc_api": 1,
+              "provider": 2,
+              "transport": 3,
+              "feature": 4,
+              "connector": 5,
+              "command": 6,
+              "mode": 7,
+              "network": 8,
+              "precedence": 9
             },
             "renameByName": {
               "network": "Network",
@@ -359,7 +365,9 @@
               "connector": "Connector",
               "provider": "Provider",
               "transport": "Transport",
-              "feature": "Feature",
+              "rpc_api": "Connector RPC API",
+              "required_rpc_api": "Required RPC API",
+              "feature": "Required Feature",
               "precedence": "Order"
             }
           }

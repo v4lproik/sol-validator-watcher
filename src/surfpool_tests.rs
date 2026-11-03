@@ -5,6 +5,7 @@ use crate::{
         HealthCommands, HealthModeConfig, LeadershipCommands, LeadershipModeConfig, ModesConfig,
     },
     metrics::Metrics,
+    mode::RpcApiLevel,
     source::SourceChain,
 };
 use anyhow::{bail, Context, Result};
@@ -32,6 +33,7 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
             name: "surfpool".to_string(),
             provider: "surfpool".to_string(),
             features: Vec::new(),
+            rpc_api: Some(RpcApiLevel::Full),
             rpc_url: Some(harness.rpc_url()),
             rpc_timeout_sec: 5,
             ws_url: Some(harness.ws_url()),
@@ -46,6 +48,9 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     let sources = SourceChain::from_config(&config)?;
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
+    runtime
+        .block_on(sources.verify_capabilities())
+        .context("failed to verify declared surfpool RPC capabilities")?;
     runtime
         .block_on(sources.websocket_healthy())
         .context("failed to probe surfpool websocket")?;

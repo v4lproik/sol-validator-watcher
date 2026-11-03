@@ -9,6 +9,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 name = "external-validator"
 provider = "solana-validator"
 features = []
+rpc_api = "${SOL_VALIDATOR_RPC_API:-minimal}"
 rpc_url = "${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}"
 rpc_timeout_sec = ${SOL_WATCHER_RPC_TIMEOUT_SEC:-30}
 ws_url = "${SOL_VALIDATOR_WS_URL:-}"
@@ -22,10 +23,10 @@ ws_health = ["external-validator"]
 [modes.consensus.commands]
 epoch_info = ["external-validator"]
 vote_accounts = ["external-validator"]
-recent_performance_samples = ["external-validator"]
+recent_performance_samples = []
 
 [modes.leadership.commands]
-current_block_production = ["external-validator"]
+current_block_production = []
 current_leader_schedule = ["external-validator"]
 next_leader_schedule = ["external-validator"]
 

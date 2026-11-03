@@ -43,19 +43,21 @@ Run `just` to discover all module commands. Configuration templates live in [`co
 
 ## Command routes
 
-`[[connectors]]` declares a stable provider name, the provider features available through that connector, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
+`[[connectors]]` declares a stable provider name, the RPC API exposed by its endpoint, optional provider features, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
 
 ```toml
 [[connectors]]
 name = "validator"
 provider = "solana-validator"
 features = []
+rpc_api = "minimal"
 rpc_url = "http://validator:8899"
 
 [[connectors]]
 name = "helius-devnet"
 provider = "helius"
 features = ["historical-data"]
+rpc_api = "full"
 rpc_url = "${SOL_DEVNET_RPC_URL}"
 ws_url = "${SOL_DEVNET_WS_URL}"
 
@@ -66,10 +68,10 @@ ws_health = ["helius-devnet"]
 [modes.consensus.commands]
 epoch_info = ["validator", "helius-devnet"]
 vote_accounts = ["validator", "helius-devnet"]
-recent_performance_samples = ["validator", "helius-devnet"]
+recent_performance_samples = ["helius-devnet"]
 
 [modes.leadership.commands]
-current_block_production = ["helius-devnet", "validator"]
+current_block_production = ["helius-devnet"]
 current_leader_schedule = ["validator", "helius-devnet"]
 next_leader_schedule = ["validator", "helius-devnet"]
 
@@ -77,7 +79,7 @@ next_leader_schedule = ["validator", "helius-devnet"]
 enabled = true
 
 [modes.economics.commands]
-account_balances = ["validator", "helius-devnet"]
+account_balances = ["helius-devnet"]
 inflation_rewards = ["helius-devnet"]
 reward_epoch_block_production = ["helius-devnet"]
 
@@ -85,21 +87,22 @@ reward_epoch_block_production = ["helius-devnet"]
 vote_account = "<VOTE_ACCOUNT_PUBKEY>"
 ```
 
-The Helius Devnet profile maps modes to these source requirements:
+RPC command requirements are independent of the provider name:
 
-| Mode | Provider | Transport | Required provider feature |
+| Commands | Transport | Required `rpc_api` | Required provider feature |
 | --- | --- | --- | --- |
-| Health | `helius` | RPC or WebSocket | None |
-| Consensus | `helius` | RPC | None |
-| Leadership | `helius` | RPC | None |
-| Economics account balances | `helius` | RPC | None |
-| Economics prior-epoch rewards | `helius` | RPC | `historical-data` |
+| `rpc-health`, `epoch-info`, `vote-accounts`, `current-leader-schedule`, `next-leader-schedule` | RPC | `minimal` | None |
+| `ws-health` | WebSocket | None | None |
+| `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `full` | None |
+| `inflation-rewards`, `reward-epoch-block-production` | RPC | `full` | `historical-data` |
 
-The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token.
+`minimal` matches the default Agave RPC surface. `full` means the node was started with `--full-rpc-api`, or the hosted provider exposes the equivalent methods; a full endpoint can serve minimal commands. `historical-data` is a separate promise that those methods can read the retained prior-epoch data needed by economics collection. Full-only routes may be empty when a profile intentionally uses only a minimal node.
 
-`rpc_url` and `ws_url` define the available `rpc` and `websocket` transports; they are not provider features. The current watcher-specific provider feature is `historical-data`. Economics account balances use standard RPC, while prior-epoch inflation rewards and block production require `historical-data`. Standard health, consensus, and leadership commands require only the matching transport. Provider names identify the service supplying each command result and are exported with connector, route, and selected-source metrics.
+Route and source metrics expose the connector declaration as `rpc_api` and the command's minimum as `required_rpc_api`; Grafana shows both as `Connector RPC API` and `Required RPC API`.
 
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Startup rejects missing providers or feature arrays, duplicate features, unknown names, duplicate route entries, missing required routes, routes without the command's transport, and routes lacking an optional feature required by that command. An optional WebSocket route may name a connector whose environment-expanded `ws_url` is empty; the route remains visible as unavailable and is skipped at execution.
+The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token. `rpc_url` requires an explicit `rpc_api`; `ws_url` does not. Provider names are provenance labels, not capability inference.
+
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, RPC API, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime.
 
 ## Contributing
 

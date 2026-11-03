@@ -10,3 +10,5 @@
 - Added an end-to-end configuration-loading benchmark for one- and 48-connector profiles, including command-route parsing and validation.
 - Updated runtime configuration guidance to keep transport ownership inside connectors.
 - Documented mode source requirements and secret-safe verification for complete credential-bearing provider URLs.
+- Documented minimal/full Agave RPC method boundaries, valid method-specific capability probes, and transactional reload verification in the repository engineering guidance.
+- Extended the opt-in Surfpool smoke to verify the connector's declared RPC API against the live local endpoint before collecting a snapshot.

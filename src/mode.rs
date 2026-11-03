@@ -18,6 +18,29 @@ impl Transport {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RpcApiLevel {
+    Minimal,
+    Full,
+}
+
+impl RpcApiLevel {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Full => "full",
+        }
+    }
+
+    pub const fn supports(self, required: Self) -> bool {
+        matches!(
+            (self, required),
+            (Self::Minimal, Self::Minimal) | (Self::Full, _)
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderFeature {
@@ -35,33 +58,30 @@ impl ProviderFeature {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ModeSourceRequirement {
     pub transport: Transport,
+    pub rpc_api: Option<RpcApiLevel>,
     pub feature: Option<ProviderFeature>,
 }
 
-const HEALTH_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 2] = [
-    ModeSourceRequirement {
-        transport: Transport::Rpc,
-        feature: None,
-    },
-    ModeSourceRequirement {
-        transport: Transport::Websocket,
-        feature: None,
-    },
-];
-const RPC_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 1] = [ModeSourceRequirement {
+const RPC_MINIMAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
     transport: Transport::Rpc,
+    rpc_api: Some(RpcApiLevel::Minimal),
     feature: None,
-}];
-const ECONOMICS_SOURCE_REQUIREMENTS: [ModeSourceRequirement; 2] = [
-    ModeSourceRequirement {
-        transport: Transport::Rpc,
-        feature: None,
-    },
-    ModeSourceRequirement {
-        transport: Transport::Rpc,
-        feature: Some(ProviderFeature::HistoricalData),
-    },
-];
+};
+const RPC_FULL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+    transport: Transport::Rpc,
+    rpc_api: Some(RpcApiLevel::Full),
+    feature: None,
+};
+const RPC_FULL_HISTORICAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+    transport: Transport::Rpc,
+    rpc_api: Some(RpcApiLevel::Full),
+    feature: Some(ProviderFeature::HistoricalData),
+};
+const WEBSOCKET_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+    transport: Transport::Websocket,
+    rpc_api: None,
+    feature: None,
+};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -86,14 +106,6 @@ impl ModeId {
             Self::Consensus => "consensus",
             Self::Leadership => "leadership",
             Self::Economics => "economics",
-        }
-    }
-
-    pub const fn source_requirements(self) -> &'static [ModeSourceRequirement] {
-        match self {
-            Self::Health => &HEALTH_SOURCE_REQUIREMENTS,
-            Self::Consensus | Self::Leadership => &RPC_SOURCE_REQUIREMENTS,
-            Self::Economics => &ECONOMICS_SOURCE_REQUIREMENTS,
         }
     }
 }
@@ -162,17 +174,17 @@ impl CommandId {
 
     pub const fn source_requirement(self) -> ModeSourceRequirement {
         match self {
-            Self::RpcHealth => ModeId::Health.source_requirements()[0],
-            Self::WsHealth => ModeId::Health.source_requirements()[1],
-            Self::EpochInfo | Self::VoteAccounts | Self::RecentPerformanceSamples => {
-                ModeId::Consensus.source_requirements()[0]
-            }
-            Self::CurrentBlockProduction
+            Self::RpcHealth
+            | Self::EpochInfo
+            | Self::VoteAccounts
             | Self::CurrentLeaderSchedule
-            | Self::NextLeaderSchedule => ModeId::Leadership.source_requirements()[0],
-            Self::AccountBalances => ModeId::Economics.source_requirements()[0],
+            | Self::NextLeaderSchedule => RPC_MINIMAL_SOURCE_REQUIREMENT,
+            Self::WsHealth => WEBSOCKET_SOURCE_REQUIREMENT,
+            Self::RecentPerformanceSamples
+            | Self::CurrentBlockProduction
+            | Self::AccountBalances => RPC_FULL_SOURCE_REQUIREMENT,
             Self::InflationRewards | Self::RewardEpochBlockProduction => {
-                ModeId::Economics.source_requirements()[1]
+                RPC_FULL_HISTORICAL_SOURCE_REQUIREMENT
             }
         }
     }
@@ -196,10 +208,12 @@ impl CommandId {
 
 #[cfg(test)]
 mod tests {
-    use super::{CommandId, ModeId, ModeSourceRequirement, ProviderFeature, Transport};
+    use super::{
+        CommandId, ModeId, ModeSourceRequirement, ProviderFeature, RpcApiLevel, Transport,
+    };
 
     #[test]
-    fn command_indices_and_modes_match_all_order() {
+    fn command_indices_modes_and_capabilities_match_all_order() {
         for (index, command) in CommandId::ALL.into_iter().enumerate() {
             assert_eq!(command.index(), index);
         }
@@ -211,58 +225,56 @@ mod tests {
         );
         assert_eq!(CommandId::CurrentLeaderSchedule.mode(), ModeId::Leadership);
         assert_eq!(CommandId::AccountBalances.mode(), ModeId::Economics);
-        assert_eq!(CommandId::InflationRewards.mode(), ModeId::Economics);
 
-        assert_eq!(
-            ModeId::Health.source_requirements(),
-            [
-                ModeSourceRequirement {
-                    transport: Transport::Rpc,
-                    feature: None,
-                },
-                ModeSourceRequirement {
-                    transport: Transport::Websocket,
-                    feature: None,
-                },
-            ]
-        );
-        assert_eq!(
-            ModeId::Consensus.source_requirements(),
-            [ModeSourceRequirement {
-                transport: Transport::Rpc,
-                feature: None,
-            }]
-        );
-        assert_eq!(
-            ModeId::Leadership.source_requirements(),
-            [ModeSourceRequirement {
-                transport: Transport::Rpc,
-                feature: None,
-            }]
-        );
-        assert_eq!(
-            ModeId::Economics.source_requirements(),
-            [
-                ModeSourceRequirement {
-                    transport: Transport::Rpc,
-                    feature: None,
-                },
-                ModeSourceRequirement {
-                    transport: Transport::Rpc,
-                    feature: Some(ProviderFeature::HistoricalData),
-                },
-            ]
-        );
-        for command in CommandId::ALL {
-            assert!(
-                command
-                    .mode()
-                    .source_requirements()
-                    .contains(&command.source_requirement()),
-                "{} must use a source combination declared by mode {}",
-                command.as_str(),
-                command.mode().as_str()
-            );
+        let minimal_rpc = ModeSourceRequirement {
+            transport: Transport::Rpc,
+            rpc_api: Some(RpcApiLevel::Minimal),
+            feature: None,
+        };
+        let full_rpc = ModeSourceRequirement {
+            transport: Transport::Rpc,
+            rpc_api: Some(RpcApiLevel::Full),
+            feature: None,
+        };
+        let historical_rpc = ModeSourceRequirement {
+            feature: Some(ProviderFeature::HistoricalData),
+            ..full_rpc
+        };
+
+        for command in [
+            CommandId::RpcHealth,
+            CommandId::EpochInfo,
+            CommandId::VoteAccounts,
+            CommandId::CurrentLeaderSchedule,
+            CommandId::NextLeaderSchedule,
+        ] {
+            assert_eq!(command.source_requirement(), minimal_rpc);
         }
+        for command in [
+            CommandId::RecentPerformanceSamples,
+            CommandId::CurrentBlockProduction,
+            CommandId::AccountBalances,
+        ] {
+            assert_eq!(command.source_requirement(), full_rpc);
+        }
+        for command in [
+            CommandId::InflationRewards,
+            CommandId::RewardEpochBlockProduction,
+        ] {
+            assert_eq!(command.source_requirement(), historical_rpc);
+        }
+        assert_eq!(
+            CommandId::WsHealth.source_requirement(),
+            ModeSourceRequirement {
+                transport: Transport::Websocket,
+                rpc_api: None,
+                feature: None,
+            }
+        );
+
+        assert!(RpcApiLevel::Full.supports(RpcApiLevel::Minimal));
+        assert!(RpcApiLevel::Full.supports(RpcApiLevel::Full));
+        assert!(RpcApiLevel::Minimal.supports(RpcApiLevel::Minimal));
+        assert!(!RpcApiLevel::Minimal.supports(RpcApiLevel::Full));
     }
 }
