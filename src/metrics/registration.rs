@@ -65,7 +65,7 @@ impl Metrics {
         let sol_watcher_ready = IntGaugeVec::new(
             Opts::new(
                 "sol_watcher_ready",
-                "Whether five consecutive polling rounds completed without failed RPC attempts",
+                "Whether five consecutive polling rounds completed without failed RPC attempts or non-2xx responses",
             ),
             &["network"],
         )?;
