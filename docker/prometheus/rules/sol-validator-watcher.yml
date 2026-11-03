@@ -1,0 +1,111 @@
+groups:
+  - name: sol-validator-watcher
+    rules:
+      - alert: SolValidatorWatcherTargetDown
+        expr: up{job="sol-validator-watcher"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Solana Validator Watcher target is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for deployment {{ $labels.deployment }}."
+
+      - alert: SolValidatorWatcherNotReady
+        expr: sol_watcher_up == 1 and sol_watcher_ready == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher is not ready for {{ $labels.network }}"
+          description: "The watcher is serving metrics but has not completed five consecutive clean polling rounds."
+
+      - alert: SolValidatorWatcherSnapshotStale
+        expr: |
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            > clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+          or
+          (sol_watcher_up == 1 unless sol_last_successful_snapshot_timestamp_seconds)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher snapshot is stale for {{ $labels.network }}"
+          description: "No complete snapshot has been published within the configured freshness window."
+
+      - alert: SolValidatorWatcherRpcFailureBurst
+        expr: increase(sol_rpc_request_failures_total[5m]) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated {{ $labels.method }} failures on {{ $labels.connector }}"
+          description: "Connector {{ $labels.connector }} recorded at least three {{ $labels.method }} failures in five minutes."
+
+      - alert: SolValidatorWatchedValidatorDelinquent
+        expr: |
+          (sol_watched_validator_info{status="delinquent"} == 1)
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watched validator {{ $labels.identity }} is delinquent"
+          description: "Vote account {{ $labels.vote_account }} is reported delinquent on {{ $labels.network }}."
+
+      - alert: SolValidatorWatchedValidatorVoteLagHigh
+        expr: |
+          (sol_watched_validator_last_vote_slot_lag > 32)
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watched validator {{ $labels.identity }} has high vote lag"
+          description: "Vote account {{ $labels.vote_account }} is more than 32 slots behind on {{ $labels.network }}."
+
+      - alert: SolValidatorUpcomingLeaderUnhealthy
+        expr: |
+          (
+            sol_watched_validator_seconds_until_next_leader > 0
+            and sol_watched_validator_seconds_until_next_leader < 300
+          )
+          and on(job, instance, network, identity, vote_account)
+          (
+            sol_watched_validator_info{status="delinquent"} == 1
+            or sol_watched_validator_last_vote_slot_lag > 32
+          )
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Unhealthy validator {{ $labels.identity }} leads within five minutes"
+          description: "Vote account {{ $labels.vote_account }} has an upcoming leader slot while delinquent or lagging."
+
+      - alert: SolValidatorVatNextEpochUnfunded
+        expr: |
+          (sol_economics_vat_next_epoch_funded == 0)
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Vote account {{ $labels.vote_account }} lacks next-epoch VAT funding"
+          description: "The available reserve is below the 0.8 SOL vote-account charge for the next epoch."

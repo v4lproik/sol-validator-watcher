@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["watcher-surfpool:8000"],
+    "labels": {"deployment": "surfpool"}
+  }
+]

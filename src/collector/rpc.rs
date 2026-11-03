@@ -6,12 +6,15 @@
 use super::model::{AccountBalances, RewardSample};
 use crate::{
     mode::{ProviderFeature, SolanaRpcCompatibility},
-    watcher_state::RpcTelemetry,
+    watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
 };
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 use tracing::warn;
 
 /// Largest inclusive slot range sent in one `getBlockProduction` request.
@@ -23,7 +26,7 @@ pub struct RpcClient {
     http: Client,
     url: String,
     commitment: String,
-    telemetry: RpcTelemetry,
+    telemetry: ConnectorRpcTelemetry,
 }
 
 impl RpcClient {
@@ -32,7 +35,7 @@ impl RpcClient {
         url: String,
         timeout: Duration,
         commitment: String,
-        telemetry: RpcTelemetry,
+        telemetry: ConnectorRpcTelemetry,
     ) -> Result<Self> {
         let http = Client::builder()
             .timeout(timeout)
@@ -339,7 +342,7 @@ impl RpcClient {
             )
             .await?;
         if response.value.len() != 2 {
-            self.telemetry.record_failure()?;
+            self.telemetry.record_failure("getMultipleAccounts")?;
             bail!(
                 "getMultipleAccounts returned {} accounts for 2 addresses",
                 response.value.len()
@@ -411,7 +414,7 @@ impl RpcClient {
                 .await?;
 
             if rewards.len() != addresses_chunk.len() {
-                self.telemetry.record_failure()?;
+                self.telemetry.record_failure("getInflationReward")?;
                 bail!(
                     "getInflationReward returned {} rewards for {} addresses",
                     rewards.len(),
@@ -448,7 +451,7 @@ impl RpcClient {
             .context("RPC endpoint failed getHealth")?;
 
         if health != "ok" {
-            self.telemetry.record_failure()?;
+            self.telemetry.record_failure("getHealth")?;
             bail!("RPC endpoint returned unexpected getHealth result {health:?}");
         }
 
@@ -463,7 +466,7 @@ impl RpcClient {
         match self.call_optional(method, params).await? {
             Some(result) => Ok(result),
             None => {
-                self.telemetry.record_failure()?;
+                self.telemetry.record_failure(method)?;
                 bail!("{method} returned no result");
             }
         }
@@ -482,15 +485,23 @@ impl RpcClient {
         T: DeserializeOwned,
         P: Serialize,
     {
-        match self.call_optional_request(method, params).await {
-            Ok(result) => Ok(result),
-            Err(error) => {
-                if let Err(telemetry_error) = self.telemetry.record_failure() {
-                    return Err(
-                        error.context(format!("failed to record RPC failure: {telemetry_error:#}"))
-                    );
-                }
-                Err(error)
+        let started_at = Instant::now();
+        let result = self.call_optional_request(method, params).await;
+        let outcome = if result.is_ok() {
+            RpcRequestOutcome::Succeeded
+        } else {
+            RpcRequestOutcome::Failed
+        };
+        let telemetry_result = self
+            .telemetry
+            .record_request(method, started_at.elapsed(), outcome);
+
+        match (result, telemetry_result) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Ok(_), Err(error)) => Err(error),
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(telemetry_error)) => {
+                Err(error.context(format!("failed to record RPC request: {telemetry_error:#}")))
             }
         }
     }

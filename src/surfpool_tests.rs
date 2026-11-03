@@ -187,7 +187,7 @@ impl SurfpoolHarness {
             self.rpc_url(),
             Duration::from_secs(2),
             "confirmed".to_string(),
-            crate::watcher_state::RpcTelemetry::unobserved(),
+            crate::watcher_state::RpcTelemetry::unobserved().for_connector("surfpool"),
         )?;
 
         loop {

@@ -34,6 +34,13 @@ pub(crate) struct RpcTelemetry {
     _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
 }
 
+/// Final protocol outcome for one timed JSON-RPC request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RpcRequestOutcome {
+    Succeeded,
+    Failed,
+}
+
 /// Cloneable control and snapshot handle for watcher readiness.
 #[derive(Clone)]
 pub(crate) struct WatcherState {
@@ -55,7 +62,16 @@ enum WatcherStateCommand {
     RecordRpcResponse {
         status: u16,
     },
-    RecordRpcFailure,
+    RecordRpcRequest {
+        connector: Arc<str>,
+        method: &'static str,
+        duration: Duration,
+        outcome: RpcRequestOutcome,
+    },
+    RecordRpcFailure {
+        connector: Arc<str>,
+        method: &'static str,
+    },
     ResetAdmission {
         network: Arc<str>,
         reply: oneshot::Sender<()>,
@@ -117,6 +133,7 @@ impl WatcherStateMailbox {
         metrics: Arc<Metrics>,
     ) -> (WatcherState, WatcherStateActor) {
         let state = WatcherStateSnapshot::new(network);
+        metrics.reset_runtime_observations(network);
         metrics.update_watcher_state(
             state.network.as_ref(),
             state.ready,
@@ -142,18 +159,22 @@ impl WatcherStateMailbox {
 }
 
 impl RpcTelemetry {
+    /// Binds request observations from this handle to one configured connector.
+    pub(crate) fn for_connector(&self, connector: &str) -> ConnectorRpcTelemetry {
+        ConnectorRpcTelemetry {
+            commands: self.commands.clone(),
+            connector: Arc::from(connector),
+            #[cfg(test)]
+            _receiver_guard: self._receiver_guard.clone(),
+        }
+    }
+
+    #[cfg(test)]
     /// Queues one received HTTP response status for classification.
     pub(crate) fn record_response(&self, status: u16) -> Result<()> {
         self.commands
             .send(WatcherStateCommand::RecordRpcResponse { status })
             .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC response"))
-    }
-
-    /// Queues one failed RPC attempt not represented by a usable HTTP response.
-    pub(crate) fn record_failure(&self) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordRpcFailure)
-            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC failure"))
     }
 
     #[cfg(test)]
@@ -163,6 +184,51 @@ impl RpcTelemetry {
             commands,
             _receiver_guard: Some(Arc::new(std::sync::Mutex::new(command_receiver))),
         }
+    }
+}
+
+/// Connector-bound RPC event producer preserving actor command ordering.
+#[derive(Clone)]
+pub(crate) struct ConnectorRpcTelemetry {
+    commands: mpsc::UnboundedSender<WatcherStateCommand>,
+    connector: Arc<str>,
+    #[cfg(test)]
+    _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
+}
+
+impl ConnectorRpcTelemetry {
+    /// Queues one received HTTP response status for readiness classification.
+    pub(crate) fn record_response(&self, status: u16) -> Result<()> {
+        self.commands
+            .send(WatcherStateCommand::RecordRpcResponse { status })
+            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC response"))
+    }
+
+    /// Queues one timed request and its protocol outcome.
+    pub(crate) fn record_request(
+        &self,
+        method: &'static str,
+        duration: Duration,
+        outcome: RpcRequestOutcome,
+    ) -> Result<()> {
+        self.commands
+            .send(WatcherStateCommand::RecordRpcRequest {
+                connector: Arc::clone(&self.connector),
+                method,
+                duration,
+                outcome,
+            })
+            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC request"))
+    }
+
+    /// Queues one semantic failure discovered after a valid response was decoded.
+    pub(crate) fn record_failure(&self, method: &'static str) -> Result<()> {
+        self.commands
+            .send(WatcherStateCommand::RecordRpcFailure {
+                connector: Arc::clone(&self.connector),
+                method,
+            })
+            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC failure"))
     }
 }
 
@@ -253,9 +319,24 @@ impl WatcherStateActor {
                     self.mark_poll_dirty();
                 }
             }
-            WatcherStateCommand::RecordRpcFailure => {
-                self.state.rpc_responses.record_failure();
-                self.mark_poll_dirty();
+            WatcherStateCommand::RecordRpcRequest {
+                connector,
+                method,
+                duration,
+                outcome,
+            } => {
+                self.metrics.record_rpc_request_duration(
+                    self.state.network.as_ref(),
+                    connector.as_ref(),
+                    method,
+                    duration,
+                );
+                if outcome == RpcRequestOutcome::Failed {
+                    self.record_rpc_failure(connector.as_ref(), method);
+                }
+            }
+            WatcherStateCommand::RecordRpcFailure { connector, method } => {
+                self.record_rpc_failure(connector.as_ref(), method);
             }
             WatcherStateCommand::ResetAdmission { network, reply } => {
                 self.state.network = network;
@@ -264,6 +345,8 @@ impl WatcherStateActor {
                 self.state.ready = false;
                 self.poll = PollState::Idle;
                 self.previous_responses = self.state.rpc_responses;
+                self.metrics
+                    .reset_runtime_observations(self.state.network.as_ref());
                 self.publish();
                 // The requester may be cancelled after the state transition commits.
                 let _ = reply.send(());
@@ -291,6 +374,13 @@ impl WatcherStateActor {
         if let PollState::Active { dirty } = &mut self.poll {
             *dirty = true;
         }
+    }
+
+    fn record_rpc_failure(&mut self, connector: &str, method: &str) {
+        self.state.rpc_responses.record_failure();
+        self.metrics
+            .record_rpc_request_failure(self.state.network.as_ref(), connector, method);
+        self.mark_poll_dirty();
     }
 
     fn complete_poll(&mut self) -> Result<PollCompletion, StateTransitionError> {

@@ -14,7 +14,7 @@ use crate::{
     watcher_state::RpcResponseCounts,
 };
 use anyhow::Result;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 #[test]
 fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
@@ -436,6 +436,43 @@ fn watcher_state_metrics_render_bounded_response_counts() -> Result<()> {
 }
 
 #[test]
+fn renders_and_resets_snapshot_freshness_and_rpc_request_metrics() -> Result<()> {
+    let metrics = Metrics::new()?;
+    metrics.reset_runtime_observations("devnet");
+    metrics.record_snapshot_failure("devnet", Duration::from_millis(2_500));
+    metrics.record_snapshot_success("devnet", Duration::from_millis(1_250), 1_800_000_000.5);
+    metrics.record_rpc_request_duration(
+        "devnet",
+        "primary",
+        "getEpochInfo",
+        Duration::from_millis(420),
+    );
+    metrics.record_rpc_request_failure("devnet", "primary", "getEpochInfo");
+
+    let rendered = metrics.render()?;
+    for sample in [
+        "sol_last_successful_snapshot_timestamp_seconds{network=\"devnet\"} 1800000000.5",
+        "sol_snapshot_duration_seconds_count{network=\"devnet\",outcome=\"failure\"} 1",
+        "sol_snapshot_duration_seconds_count{network=\"devnet\",outcome=\"success\"} 1",
+        "sol_snapshot_failures_total{network=\"devnet\"} 1",
+        "sol_rpc_request_duration_seconds_count{connector=\"primary\",method=\"getEpochInfo\",network=\"devnet\"} 1",
+        "sol_rpc_request_failures_total{connector=\"primary\",method=\"getEpochInfo\",network=\"devnet\"} 1",
+    ] {
+        assert!(rendered.contains(sample), "missing metric sample: {sample}");
+    }
+
+    metrics.reset_runtime_observations("mainnet-beta");
+    let rendered = metrics.render()?;
+    assert!(!rendered.contains("network=\"devnet\""));
+    assert!(
+        rendered.contains("sol_snapshot_failures_total{network=\"mainnet-beta\"} 0"),
+        "{rendered}"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() -> Result<()> {
     let metrics = Metrics::new()?;
     let network = "mainnet-beta";
@@ -460,6 +497,7 @@ fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() 
             },
         ],
         modes: modes_for(&["primary", "fallback"], None, false),
+        poll_interval_sec: 47,
         ..Config::default()
     };
     let sources =
@@ -476,6 +514,9 @@ fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() 
     };
 
     metrics.begin_poll(&config, &sources);
+    assert!(metrics
+        .render()?
+        .contains("sol_watcher_poll_interval_seconds{network=\"mainnet-beta\"} 47"));
     metrics.update_snapshot(&Snapshot {
         network: network.to_string(),
         data_sources: vec![source("primary", "solana", 1)],

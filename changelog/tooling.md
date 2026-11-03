@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `just stack check` and a required CI step to validate Prometheus configuration and execute alert rule behavior tests.
 - Updated the public module index and repository engineering guidance for the domain-oriented Rust source tree.
 - Added `just rust doc` to build warning-free documentation for private production modules and APIs, and required the same documentation build in CI.
 - Updated `just rust run`, the Pages container example, and repository guidance to use the self-contained TOML profiles.

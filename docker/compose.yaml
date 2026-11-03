@@ -8,7 +8,8 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus:/etc/prometheus:ro
+      - ./prometheus/targets/${SOL_WATCHER_STACK_TARGET:?SOL_WATCHER_STACK_TARGET must be set by just stack}:/etc/prometheus-targets/active.json:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"

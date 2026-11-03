@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added bounded per-connector, per-method RPC request duration and failure telemetry without exposing endpoint URLs.
 - Split collector ownership into command, RPC transport, domain model, aggregation, snapshot orchestration, and domain-focused test modules without changing collection behavior.
 - Added Rust documentation for command routing, RPC transport and wire models, snapshot provenance, aggregation, labels, and validator metric semantics.
 - Added typed health, consensus, leadership, and economics commands with explicit per-command connector fallback routes and selected-source provenance.

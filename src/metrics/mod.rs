@@ -11,7 +11,9 @@ use crate::{
     watcher_state::RpcResponseCounts,
 };
 use anyhow::{Context, Result};
-use prometheus::{Encoder, GaugeVec, IntGaugeVec, Registry, TextEncoder};
+use prometheus::{
+    Encoder, GaugeVec, HistogramVec, IntCounterVec, IntGaugeVec, Registry, TextEncoder,
+};
 mod registration;
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
@@ -32,9 +34,15 @@ pub struct Metrics {
     sol_watcher_ready: IntGaugeVec,
     sol_watcher_poll_round_count: IntGaugeVec,
     sol_watcher_clean_poll_streak: IntGaugeVec,
+    sol_watcher_poll_interval_seconds: IntGaugeVec,
+    sol_last_successful_snapshot_timestamp_seconds: GaugeVec,
+    sol_snapshot_duration_seconds: HistogramVec,
+    sol_snapshot_failures_total: IntCounterVec,
     sol_rpc_http_response_class_count: IntGaugeVec,
     sol_rpc_http_response_status_count: IntGaugeVec,
     sol_rpc_request_failure_count: IntGaugeVec,
+    sol_rpc_request_duration_seconds: HistogramVec,
+    sol_rpc_request_failures_total: IntCounterVec,
     sol_rpc_up: IntGaugeVec,
     sol_ws_up: IntGaugeVec,
     sol_watcher_config_info: IntGaugeVec,
@@ -97,6 +105,62 @@ impl Metrics {
             .context("failed to encode Prometheus metrics")?;
 
         String::from_utf8(output).context("metrics were not valid UTF-8")
+    }
+    /// Clears request and snapshot observations for a newly accepted configuration.
+    pub fn reset_runtime_observations(&self, network: &str) {
+        self.sol_last_successful_snapshot_timestamp_seconds.reset();
+        self.sol_snapshot_duration_seconds.reset();
+        self.sol_snapshot_failures_total.reset();
+        self.sol_rpc_request_duration_seconds.reset();
+        self.sol_rpc_request_failures_total.reset();
+        self.sol_snapshot_failures_total
+            .with_label_values(&[network])
+            .inc_by(0);
+    }
+
+    /// Records one successfully published snapshot.
+    pub fn record_snapshot_success(
+        &self,
+        network: &str,
+        duration: std::time::Duration,
+        completed_at_unix_seconds: f64,
+    ) {
+        self.sol_last_successful_snapshot_timestamp_seconds
+            .with_label_values(&[network])
+            .set(completed_at_unix_seconds);
+        self.sol_snapshot_duration_seconds
+            .with_label_values(&[network, "success"])
+            .observe(duration.as_secs_f64());
+    }
+
+    /// Records one polling round that failed before publishing a complete snapshot.
+    pub fn record_snapshot_failure(&self, network: &str, duration: std::time::Duration) {
+        self.sol_snapshot_duration_seconds
+            .with_label_values(&[network, "failure"])
+            .observe(duration.as_secs_f64());
+        self.sol_snapshot_failures_total
+            .with_label_values(&[network])
+            .inc();
+    }
+
+    /// Records one bounded RPC request duration.
+    pub fn record_rpc_request_duration(
+        &self,
+        network: &str,
+        connector: &str,
+        method: &str,
+        duration: std::time::Duration,
+    ) {
+        self.sol_rpc_request_duration_seconds
+            .with_label_values(&[network, connector, method])
+            .observe(duration.as_secs_f64());
+    }
+
+    /// Records an RPC failure at any transport, protocol, or semantic boundary.
+    pub fn record_rpc_request_failure(&self, network: &str, connector: &str, method: &str) {
+        self.sol_rpc_request_failures_total
+            .with_label_values(&[network, connector, method])
+            .inc();
     }
 
     /// Replaces the process-liveness series with the current network value.
@@ -204,9 +268,13 @@ impl Metrics {
         self.sol_connector_feature_info.reset();
         self.sol_mode_enabled.reset();
         self.sol_mode_command_route_info.reset();
+        self.sol_watcher_poll_interval_seconds.reset();
         self.sol_watcher_config_info
             .with_label_values(&[&config.network, transport_mode, bool_label(ws_configured)])
             .set(1);
+        self.sol_watcher_poll_interval_seconds
+            .with_label_values(&[&config.network])
+            .set(metric_count(config.poll_interval_sec));
 
         for (index, connector) in connectors.iter().enumerate() {
             let declaration_order = (index + 1).to_string();

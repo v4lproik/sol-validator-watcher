@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["watcher-devnet:8000"],
+    "labels": {"deployment": "devnet"}
+  }
+]

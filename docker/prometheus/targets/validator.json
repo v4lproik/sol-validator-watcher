@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["watcher-validator:8000"],
+    "labels": {"deployment": "validator"}
+  }
+]

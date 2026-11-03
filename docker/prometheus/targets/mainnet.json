@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["watcher-mainnet:8000"],
+    "labels": {"deployment": "mainnet"}
+  }
+]

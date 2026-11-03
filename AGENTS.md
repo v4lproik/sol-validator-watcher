@@ -76,6 +76,7 @@ or site scripts directly.
 | --- | --- |
 | `just container doctor` | Verify Docker and Docker Compose |
 | `just container build [tag]` | Build the watcher image with the Rust version pinned in `mise.toml` |
+| `just stack check` | Validate Prometheus configuration and alert rule behavior |
 | `just stack config <target>` | Render `surfpool`, `validator`, `devnet`, `mainnet`, or `all` without starting it |
 | `just stack up <target>` | Build with the pinned Rust version and start the selected stack |
 | `just stack logs <target>` | Follow logs for the selected stack |

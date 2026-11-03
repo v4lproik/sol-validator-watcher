@@ -29,7 +29,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         rpc_url,
         Duration::from_secs(5),
         config.connectors[0].commitment_config()?,
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     client.ensure_healthy().await?;

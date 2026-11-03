@@ -55,6 +55,13 @@ operator-facing semantics.
   repository Compose stack.
 - No-data, zero, stale, and dependency-down states are different. Panels and
   alerts must not collapse them into one reassuring display.
+- Alert rules under `docker/prometheus/rules/` gate snapshot-dependent
+  conditions on data newer than the greater of 120 seconds or four configured
+  poll intervals. Target-down and snapshot-stale alerts remain independent so
+  missing data cannot look healthy. Do not alert on root lag alone; Solana roots
+  routinely trail the current slot.
+- The repository provisions alert evaluation only. Notification routing remains
+  an external Alertmanager responsibility.
 - Keep overview, consensus, leadership, and economics dashboards separate.
   Mode dashboards consume only their mode's command health, routes, sources,
   and domain metrics.
@@ -87,6 +94,8 @@ operator-facing semantics.
 - Unit conversion and label helpers: focused unit tests.
 - Snapshot update/reset/provenance: render the Prometheus text and assert stable
   series, labels, values, and stale-series removal.
+- Prometheus configuration and alerts: run `just stack check` to parse the
+  loaded configuration and execute the permanent rule tests.
 - Dashboard/provisioning changes: parse the JSON, run the affected
   `just stack config <target>` command, and inspect the real panel against local
   data.

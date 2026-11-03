@@ -53,8 +53,10 @@ These changes do not require new exporter metrics.
 - Vote-credit sample, total, and efficiency series are absent when no
   current-epoch sample is available; missing credits are not reported as zero.
 - `/healthz` is process liveness. `/readyz` and `sol_watcher_ready` require five
-  consecutive required polling rounds to complete without a failed RPC attempt.
-- Use `sol_rpc_request_failure_count` for all failed RPC attempts,
+  consecutive required polling rounds to complete without a failed RPC attempt
+  or non-2xx response.
+- Use `sol_rpc_request_failure_count` for the aggregate process total,
+  `sol_rpc_request_failures_total` for connector/method failures,
   `sol_rpc_http_response_class_count` for received 2xx/3xx/4xx/5xx responses,
   and `sol_rpc_http_response_status_count` for exact 200, 403, 429, and 500
   counts. The structured `watcher state` log reports 30-second deltas.
@@ -80,17 +82,25 @@ rent exemption divided by the current 0.8 SOL epoch charge; it excludes future
 rewards and transfers. If an RPC omits the vote account's data size, account
 balances remain available while rent and VAT series are omitted.
 
+Snapshot reliability is exposed through
+`sol_last_successful_snapshot_timestamp_seconds`,
+`sol_snapshot_duration_seconds`, `sol_snapshot_failures_total`,
+`sol_rpc_request_duration_seconds`, `sol_rpc_request_failures_total`, and
+`sol_watcher_poll_interval_seconds`. The overview dashboard derives snapshot
+age from the last successful timestamp. Prometheus evaluates target, readiness,
+stale-snapshot, RPC-failure, validator-health, upcoming-leader, and VAT-funding
+alerts. Snapshot-dependent conditions require data newer than the greater of
+120 seconds or four configured poll intervals. Alertmanager notification
+routing remains an external deployment responsibility.
+
 ## Metrics the exporter should add
 
 These are the operator signals that would most improve the dashboards.
 
 ### Freshness and reliability
 
-- `sol_snapshot_timestamp_seconds`
-- `sol_last_successful_snapshot_timestamp_seconds`
-- `sol_snapshot_duration_seconds`
-- `sol_rpc_request_duration_seconds`
-- `sol_rpc_request_failures_total{method}`
+- `sol_snapshot_timestamp_seconds` when an upstream observation timestamp is
+  available
 - `sol_ws_probe_failures_total`
 
 ### Node-local operator health

@@ -58,7 +58,9 @@ async fn actor_orders_rpc_events_before_poll_completion_and_shuts_down_supervise
 
         state.begin_poll().await?;
         telemetry.record_response(429)?;
-        telemetry.record_failure()?;
+        telemetry
+            .for_connector("actor-rpc")
+            .record_failure("getHealth")?;
         let completion = state.complete_poll().await?;
         assert!(!completion.admitted);
         assert!(!completion.state.ready);

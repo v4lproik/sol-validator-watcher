@@ -33,6 +33,7 @@ _compose target action:
   set +a
 
   export RUST_VERSION="$(mise config get tools.rust.version)"
+  export SOL_WATCHER_STACK_TARGET="${target}.json"
 
   case "${action}" in
     config) docker compose "${files[@]}" config ;;
@@ -45,6 +46,10 @@ _compose target action:
       exit 2
       ;;
   esac
+
+check:
+  SOL_WATCHER_STACK_TARGET=all.json docker compose -f docker/compose.yaml run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
+  SOL_WATCHER_STACK_TARGET=all.json docker compose -f docker/compose.yaml run --rm --no-deps --entrypoint promtool prometheus test rules /etc/prometheus/tests/sol-validator-watcher.test.yml
 
 config target:
   just stack _compose {{quote(target)}} config
