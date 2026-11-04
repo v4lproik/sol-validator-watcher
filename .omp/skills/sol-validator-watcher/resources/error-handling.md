@@ -24,9 +24,10 @@ task failure.
 - Distinguish transport, HTTP, invalid payload, JSON-RPC error, missing result,
   unsupported capability, valid absence, invalid config, timeout, cancellation,
   and shutdown.
-- Required operations exhaust their documented fallback chain and then fail.
-  Optional operations may return absence only when callers and metrics preserve
-  that meaning.
+- Required operations exhaust their documented fallback chain and then fail
+  with every attempted connector's identity and causal error preserved in
+  fallback order. Optional operations may return absence only when callers and
+  metrics preserve that meaning.
 - A default value is never a generic error handler. Use it only when the domain
   explicitly defines that value for absence and exposes availability elsewhere.
 - Preserve the first causal process/task error while still attempting orderly
@@ -45,12 +46,15 @@ task failure.
 
 - Log failed attempts with bounded connector identity, method/metric, and the
   causal error.
-- Preserve deterministic candidate order and retain enough context to identify
-  the last attempted connector when all candidates fail.
+- Preserve deterministic candidate order. When a required route is exhausted,
+  return every attempted connector's bounded identity and causal error; do not
+  discard earlier failures after logging them.
 - A connector that returns a valid empty result succeeded; a connector that
   failed must not receive source attribution.
 - An unsupported optional method and a transient request failure can both
   advance to another connector, but they are not the same diagnostic state.
+- A required command's prerequisite RPC calls remain required. Do not convert
+  their transport, HTTP, payload, or JSON-RPC failures into absence.
 
 ## Review Gates
 

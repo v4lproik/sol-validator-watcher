@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Documented complete required-route failure aggregation and the prohibition against discarding prerequisite RPC failures.
 - Documented routed node-local status collection, structured Solana behind-state handling, snapshot-owned node metric semantics, and the required dashboard and alert boundaries.
 - Documented connector-attributed WebSocket probe failure reset, fallback, health-mode, and readiness semantics.
 - Gated main-branch, version-tag, and dispatched container publication on the same revision's complete repository CI workflow.

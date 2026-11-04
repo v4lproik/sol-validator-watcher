@@ -327,7 +327,7 @@ async fn collect_snapshot_resolves_each_command_from_its_own_route() -> Result<(
 }
 
 #[tokio::test]
-async fn required_command_reports_the_last_failed_route_connector() -> Result<()> {
+async fn required_command_preserves_every_failed_route_connector() -> Result<()> {
     let (first_rpc_url, first_server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::NoEpochInfo).await?;
     let (second_rpc_url, second_server_task) =
@@ -364,9 +364,43 @@ async fn required_command_reports_the_last_failed_route_connector() -> Result<()
     first_server_task.abort();
     second_server_task.abort();
 
-    assert!(format!("{error:#}").contains(
-        "all connectors failed for required command epoch-info; last connector was second"
-    ));
+    let message = format!("{error:#}");
+    assert!(message.contains("all 2 connectors failed for required command epoch-info"));
+    assert!(message.contains("connector \"first\" (provider \"solana-validator\")"));
+    assert!(message.contains("connector \"second\" (provider \"helius\")"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn reward_history_propagates_minimum_ledger_slot_failure() -> Result<()> {
+    let (rpc_url, server_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::NoMinimumLedgerSlot).await?;
+    let config = Config {
+        network: "devnet".to_string(),
+        connectors: vec![ConnectorConfig {
+            name: "historical-rpc".to_string(),
+            provider: "mock-solana".to_string(),
+            features: vec![ProviderFeature::HistoricalData],
+            rpc_url: Some(rpc_url),
+            rpc_timeout_sec: 5,
+            ..ConnectorConfig::default()
+        }],
+        modes: modes_for(&["historical-rpc"], true),
+        ..Config::default()
+    };
+    let sources =
+        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+
+    let result = collect_snapshot(&sources, &config).await;
+    server_task.abort();
+    let Err(error) = result else {
+        anyhow::bail!("minimumLedgerSlot failure must fail required reward-history collection");
+    };
+
+    let message = format!("{error:#}");
+    assert!(message
+        .contains("all 1 connector failed for required command reward-epoch-block-production"));
+    assert!(message.contains("minimumLedgerSlot failed with JSON-RPC code -32601"));
     Ok(())
 }
 

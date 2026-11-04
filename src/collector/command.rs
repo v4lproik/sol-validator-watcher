@@ -198,7 +198,10 @@ impl SourceCommand for GetRewardEpochBlockProduction {
     type Output = BlockProduction;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
-        let minimum_ledger_slot = client.get_minimum_ledger_slot().await.ok();
+        let minimum_ledger_slot = client
+            .get_minimum_ledger_slot()
+            .await
+            .context("minimumLedgerSlot failed before reward epoch block production")?;
         let range = super::reward_epoch_block_range(
             self.epoch_start_slot,
             self.slots_in_epoch,

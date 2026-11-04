@@ -146,7 +146,7 @@ Route and source metrics expose the connector declaration as `solana_rpc_compati
 
 The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token. `rpc_url` requires an explicit `solana_rpc_compatibility`; `ws_url` does not. Provider names are provenance labels, not capability inference.
 
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime.
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime. When a required command exhausts its route, the returned error preserves every failed connector, provider, and causal error in fallback order.
 
 ## Readiness, freshness, and transport reliability
 
@@ -158,13 +158,15 @@ response reset the streak; an accepted configuration reload also restarts
 admission for the new runtime.
 
 After startup validation succeeds, a required RPC or collection failure fails
-the whole polling round rather than the process. The watcher marks affected
-collection modes down, resets readiness, retains the last successful snapshot,
-does not advance the liveness file, and retries after 1, 2, 4, 8, 16, then at
-most 30 seconds. A successful round resets the backoff; `/readyz` requires five
-new clean rounds before readmission. Startup capability or configuration
-contract failures remain fatal, while an invalid reload candidate continues to
-preserve the last-known-good runtime.
+the whole polling round rather than the process. Required prerequisite calls,
+including `minimumLedgerSlot` for retained reward history, propagate failure
+instead of being converted to absence. The watcher marks affected collection
+modes down, resets readiness, retains the last successful snapshot, does not
+advance the liveness file, and retries after 1, 2, 4, 8, 16, then at most 30
+seconds. A successful round resets the backoff; `/readyz` requires five new
+clean rounds before readmission. Startup capability or configuration contract
+failures remain fatal, while an invalid reload candidate continues to preserve
+the last-known-good runtime.
 
 Every 30 seconds, the watcher logs its readiness, completed and clean polling
 rounds, failed RPC attempts, cumulative response count, response-class counts,
