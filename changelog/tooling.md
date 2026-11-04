@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Documented typed provider-API transport ownership, bounded Jito reward collection and caching, optional polling semantics, metric absence, and local HTTP boundary proof.
 - Documented the node-local dashboard's unconfigured, unavailable, missing-distance, and multi-network display invariants.
 - Clarified that complete required-route error aggregation includes configured WebSocket health fallback.
 - Documented complete required-route failure aggregation and the prohibition against discarding prerequisite RPC failures.

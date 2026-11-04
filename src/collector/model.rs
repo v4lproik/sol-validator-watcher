@@ -136,6 +136,16 @@ pub struct RewardSample {
     /// Reward amount in lamports.
     pub amount_lamports: u64,
 }
+/// Settled Jito MEV reward for one validator and epoch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct JitoMevReward {
+    /// Epoch in which the reward was earned.
+    pub epoch: u64,
+    /// Post-commission MEV lamports paid to the validator and its stakers.
+    pub reward_lamports: u64,
+    /// Validator MEV commission in basis points.
+    pub commission_bps: u16,
+}
 
 /// Balances needed to derive validator economics metrics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -167,6 +177,8 @@ pub struct EconomicsMetrics {
     pub vat_epochs_available: Option<u64>,
     /// Whether the reserve covers the next 0.8 SOL VAT charge.
     pub vat_next_epoch_funded: Option<bool>,
+    /// Settled Jito MEV reward, when a configured Jito route has published the epoch.
+    pub jito_mev_reward: Option<JitoMevReward>,
 }
 
 /// Per-validator values exported for explicitly watched validators.

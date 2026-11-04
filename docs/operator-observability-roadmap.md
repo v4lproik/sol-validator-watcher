@@ -76,8 +76,10 @@ The exporter and mode dashboards now publish:
   `sol_watched_validator_slots_until_next_leader`, and
   `sol_watched_validator_seconds_until_next_leader`
 - economics-target identity and vote-account balances, vote-account rent
-  exemption, VAT reserve, complete funded VAT epochs, and next-epoch VAT
-  funding status
+  exemption, VAT reserve, complete funded VAT epochs, next-epoch VAT funding
+  status, `sol_economics_jito_mev_reward_sol`,
+  `sol_economics_jito_mev_commission_pct`, and
+  `sol_economics_jito_mev_reward_epoch`
 
 Timing and throughput use the latest routed `getRecentPerformanceSamples`
 result. Missing samples produce no rate or estimate series rather than a
@@ -89,6 +91,9 @@ VAT runway is the current vote-account balance above rent exemption divided by
 the current 0.8 SOL epoch charge; it excludes future rewards and transfers. If
 an RPC omits the vote account's data size, account balances remain available
 while rent and VAT series are omitted.
+Configured Jito reward routes use the economics target's vote account. Missing
+settlement data or an exhausted optional route omits the Jito series instead of
+publishing zero; required economics RPC failures remain fail-closed.
 
 Node-local operator health is exposed through `sol_node_info`,
 `sol_node_health`, `sol_node_catchup_distance_slots`, and
@@ -127,7 +132,6 @@ These are the operator signals that would most improve the dashboards.
 
 ### Validator economics and revenue
 
-- Jito tip revenue
 - Harmonic revenue
 - base revenue per block
 - total revenue per produced block

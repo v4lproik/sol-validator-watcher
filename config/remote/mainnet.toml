@@ -19,6 +19,13 @@ ws_url = "${SOL_MAINNET_WS_URL}"
 ws_timeout_sec = 10
 commitment = "confirmed"
 
+[[connectors]]
+name = "jito-api"
+provider = "jito"
+features = ["jito-mev-rewards"]
+provider_api_url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
+provider_api_timeout_sec = 30
+
 [[watched_validators]]
 vote_account = "BeRtYZ7SVQozwTby6ajQzrHtKYkn4qoKyRfb3NDAedtA"
 labels = ["validator:big-berty", "state:delinquent"]
@@ -53,12 +60,15 @@ next_leader_schedule = ["mainnet-rpc"]
 enabled = false
 # Enable economics only on RPC endpoints that can serve getMultipleAccounts,
 # getMinimumBalanceForRentExemption, getInflationReward, and previous-epoch
-# getBlockProduction, then add all command routes and a target:
+# getBlockProduction, then add all required RPC routes and a target. The optional
+# Jito route publishes settled MEV rewards without making them required for each
+# polling round:
 #
 # [modes.economics.commands]
 # account_balances = ["mainnet-rpc"]
 # inflation_rewards = ["mainnet-rpc"]
 # reward_epoch_block_production = ["mainnet-rpc"]
+# jito_mev_rewards = ["jito-api"]
 #
 # [modes.economics.validator]
 # vote_account = "PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp"

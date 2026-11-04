@@ -56,6 +56,11 @@ task failure.
   advance to another connector, but they are not the same diagnostic state.
 - A required command's prerequisite RPC calls remain required. Do not convert
   their transport, HTTP, payload, or JSON-RPC failures into absence.
+- A configured Jito route is required during startup and reload verification but
+  optional during steady-state collection. Provider-API transport, status,
+  size, and payload failures participate in ordered connector fallback without
+  exposing the endpoint URL; exhaustion omits Jito series rather than failing
+  otherwise complete economics metrics.
 
 ## Review Gates
 

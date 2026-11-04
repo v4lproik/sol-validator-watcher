@@ -25,8 +25,9 @@ then complete the repository's required local gates.
 
 - Pure calculation, normalization, precedence, aggregation, range, and state
   decisions: unit tests with direct values.
-- Serde, HTTP status, JSON-RPC envelope, batching, fallback, and connector source
-  behavior: local Axum mock RPC tests using the production client.
+- Serde, HTTP status, JSON-RPC envelope, provider-API payloads, batching,
+  caching, fallback, and connector source behavior: local Axum boundary tests
+  using the production clients.
 - Task supervision: tests that exercise completion, error, panic, cancellation,
   and join behavior through `TaskManager`.
 - Prometheus contracts: render real metrics and assert stable names, labels,

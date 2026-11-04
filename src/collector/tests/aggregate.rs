@@ -433,6 +433,7 @@ fn economics_metrics_preserve_rent_and_vat_boundaries() {
             vote_account_lamports: 2_500_000_000,
             vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
         },
+        None,
     );
 
     assert_eq!(metrics.vat_reserve_lamports, Some(1_600_000_000));

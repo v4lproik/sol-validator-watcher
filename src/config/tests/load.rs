@@ -181,7 +181,13 @@ fn loads_every_committed_profile() -> Result<()> {
             config.metrics_host, expected_metrics_host,
             "profile {relative_path}"
         );
-        assert_eq!(config.connectors.len(), 1, "profile {relative_path}");
+        let expected_connector_count =
+            usize::from(relative_path == "config/remote/mainnet.toml") + 1;
+        assert_eq!(
+            config.connectors.len(),
+            expected_connector_count,
+            "profile {relative_path}"
+        );
         assert_eq!(
             config.connectors[0].name, connector_name,
             "profile {relative_path}"
@@ -228,6 +234,16 @@ fn loads_every_committed_profile() -> Result<()> {
                     solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                     feature: Some(ProviderFeature::HistoricalData),
                 }
+            );
+        }
+        if relative_path == "config/remote/mainnet.toml" {
+            assert_eq!(config.connectors[1].name, "jito-api");
+            assert_eq!(config.connectors[1].provider, "jito");
+            assert!(config.connectors[1].has_provider_api());
+            assert!(config.connectors[1].supports(ProviderFeature::JitoMevRewards));
+            assert_eq!(
+                config.connectors[1].provider_api_url.as_deref(),
+                Some("https://kobe.mainnet.jito.network/api/v1")
             );
         }
     }

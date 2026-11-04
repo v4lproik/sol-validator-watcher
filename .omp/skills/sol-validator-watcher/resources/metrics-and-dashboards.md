@@ -50,6 +50,10 @@ operator-facing semantics.
   catch-up distance, and block height are snapshot-owned dynamic series. Reset
   them together. A healthy node has catch-up distance zero; an unhealthy node
   without structured distance data has no distance series, not zero.
+- Jito MEV reward, commission, and reward-epoch series are snapshot-owned and
+  exist only when economics mode, a valid provider-API route, and a settled
+  target reward all exist. Missing settlement or route failure remains no data,
+  never a zero reward.
 - Help text states operator meaning, not implementation details.
 
 ## Dashboard Invariants

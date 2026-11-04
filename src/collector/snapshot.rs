@@ -12,7 +12,12 @@ use super::{
     model::{ModeStatus, NodeVotingStatus, Snapshot, ValidatorStatus},
     rpc::BlockProduction,
 };
-use crate::{config::Config, labels::LabelMatcher, mode::ModeId, source::SourceChain};
+use crate::{
+    config::Config,
+    labels::LabelMatcher,
+    mode::{CommandId, ModeId},
+    source::SourceChain,
+};
 use anyhow::Result;
 
 /// Exercises every required economics command before economics collection starts.
@@ -59,6 +64,14 @@ pub async fn ensure_economics_supported(sources: &SourceChain, config: &Config) 
             slots_in_epoch: epoch_info.value.slots_in_epoch,
         })
         .await?;
+    if !config.modes.route(CommandId::JitoMevRewards).is_empty() {
+        sources
+            .required(&command::GetJitoMevReward {
+                vote_account: &target.vote_account,
+                epoch: reward_epoch,
+            })
+            .await?;
+    }
 
     Ok(())
 }
@@ -142,7 +155,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         sources.optional(&next_schedule_command),
         async {
             let Some(target) = economics_target.as_ref() else {
-                return Ok::<_, anyhow::Error>((None, None, None));
+                return Ok::<_, anyhow::Error>((None, None, None, None));
             };
             let balances = sources
                 .required(&command::GetAccountBalances {
@@ -153,26 +166,33 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
 
             let (Some(epoch), Some(addresses)) = (reward_epoch, reward_vote_accounts.as_deref())
             else {
-                return Ok((Some(balances), None, None));
+                return Ok((Some(balances), None, None, None));
             };
             let inflation_rewards_command = command::GetInflationRewards { addresses, epoch };
             let block_production_command = command::GetRewardEpochBlockProduction {
                 epoch_start_slot,
                 slots_in_epoch: epoch_info.value.slots_in_epoch,
             };
-            let (inflation_rewards, block_production) = tokio::join!(
+            let jito_mev_reward_command = command::GetJitoMevReward {
+                vote_account: &target.vote_account,
+                epoch,
+            };
+            let (inflation_rewards, block_production, jito_mev_reward) = tokio::join!(
                 sources.required(&inflation_rewards_command),
                 sources.required(&block_production_command),
+                sources.optional(&jito_mev_reward_command),
             );
             Ok((
                 Some(balances),
                 Some(inflation_rewards?),
                 Some(block_production?),
+                jito_mev_reward,
             ))
         },
     );
 
-    let (account_balances, inflation_rewards, reward_epoch_block_production) = economics_outputs?;
+    let (account_balances, inflation_rewards, reward_epoch_block_production, jito_mev_reward) =
+        economics_outputs?;
     let leadership_up =
         current_block_production.is_some() && current_schedule.is_some() && next_schedule.is_some();
 
@@ -191,10 +211,18 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         data_sources.push(resolved.source.into());
         resolved.value
     });
+    let jito_mev_reward = jito_mev_reward.and_then(|resolved| {
+        data_sources.push(resolved.source.into());
+        resolved.value
+    });
     let economics = match (economics_target.as_ref(), account_balances) {
         (Some(target), Some(resolved)) => {
             data_sources.push(resolved.source.into());
-            Some(build_economics_metrics(target, resolved.value))
+            Some(build_economics_metrics(
+                target,
+                resolved.value,
+                jito_mev_reward,
+            ))
         }
         _ => None,
     };

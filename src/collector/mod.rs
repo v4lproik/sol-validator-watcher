@@ -5,6 +5,7 @@
 
 mod aggregate;
 pub mod command;
+mod jito;
 mod model;
 mod rpc;
 mod snapshot;
@@ -17,7 +18,8 @@ pub use rpc::RpcClient;
 pub use snapshot::{collect_snapshot, ensure_economics_supported};
 
 use aggregate::reward_epoch_block_range;
-pub(crate) use model::{AccountBalances, NodeRpcStatus, RewardSample};
+pub(crate) use jito::JitoClient;
+pub(crate) use model::{AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample};
 #[cfg(test)]
 pub(crate) use model::{
     EconomicsMetrics, EpochCreditsSample, NodeMetrics, NodeVotingStatus, ScopeMetrics,

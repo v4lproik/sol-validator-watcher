@@ -10,8 +10,10 @@ probes, and economics collection.
 
 - `collector/rpc.rs` owns JSON-RPC wire types, HTTP status handling, method
   implementations, capability probes, and request batching.
-- `collector/command.rs` maps typed source commands to RPC operations and
-  outputs.
+- `collector/jito.rs` owns bounded Jito validator-reward HTTP decoding and the
+  epoch-stable response cache.
+- `collector/command.rs` maps typed source commands to their compile-time RPC or
+  provider-API client and output.
 - `collector/model.rs`, `collector/aggregate.rs`, and `collector/snapshot.rs`
   own snapshot records, validator aggregation, and collection orchestration.
 - `mode.rs` owns stable mode and command identifiers plus each command's
@@ -19,7 +21,7 @@ probes, and economics collection.
   requirements.
 - `source.rs` owns connector client construction, compiled command routes,
   declared-capability verification, required/optional fallback execution, and
-  source selection.
+  source selection across RPC and provider-API clients.
 - `runtime/state.rs` owns transactional source-chain reload;
   `runtime/poller.rs` owns dependency guards and startup verification.
 - `config/mod.rs` owns connector transport, compatibility, and provider-feature
@@ -68,6 +70,10 @@ probes, and economics collection.
 - `historical-data` is a separate provider feature on an `extended` endpoint.
   Compatibility probes prove method availability; the feature additionally
   promises retained prior-epoch rewards and block production used by economics.
+- `jito-mev-rewards` is independent of Solana RPC compatibility. It requires a
+  provider-API endpoint and is consumed only by the optional economics command.
+  A configured route is checked against the resolved target during startup and
+  reload; polling exhaustion omits only the Jito reward series.
 - Validate every configured route against its declared transport, Solana RPC
   compatibility, and feature before client construction. Then verify each RPC
   connector's declaration with bounded valid method requests before the first
@@ -109,6 +115,10 @@ probes, and economics collection.
   node-local source.
 - Timeouts come from validated connector configuration. Do not add an unbounded
   request or retry loop.
+- Bound provider-API response bytes before decoding. Cache a settled
+  validator/epoch reward for the source-chain lifetime; cache absence only for
+  the upstream cache window so late settlement can appear without per-poll
+  history downloads.
 
 ### Classify fallback deliberately
 
@@ -150,11 +160,13 @@ probes, and economics collection.
 
 ## Boundary Proof
 
-- Pure range, merge, aggregation, and command-capability mapping: unit tests.
+- Pure range, merge, aggregation, command-capability mapping, and provider
+  response selection: unit tests.
 - HTTP status, JSON-RPC envelope, batching, connector fallback, capability
-  verification, and provenance: the local Axum mock RPC boundary. Capability
-  mocks return valid method-specific success envelopes; a generic invalid-params
-  response is not proof that the method exists.
+  verification, provider-API decoding, caching, and provenance: local Axum
+  boundaries using the production clients. Capability mocks return valid
+  method-specific success envelopes; a generic invalid-params response is not
+  proof that the method exists.
 - Real validator compatibility: `just surfpool test`.
 - Runtime source selection: run the watcher against controlled connectors and
   inspect `sol_mode_command_route_info` and `sol_mode_command_source_info`.

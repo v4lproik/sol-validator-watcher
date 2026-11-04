@@ -84,6 +84,9 @@ pub struct Metrics {
     sol_economics_vat_reserve_sol: GaugeVec,
     sol_economics_vat_epochs_available: IntGaugeVec,
     sol_economics_vat_next_epoch_funded: IntGaugeVec,
+    sol_economics_jito_mev_reward_sol: GaugeVec,
+    sol_economics_jito_mev_commission_pct: GaugeVec,
+    sol_economics_jito_mev_reward_epoch: IntGaugeVec,
     sol_watched_validator_info: IntGaugeVec,
     sol_watched_validator_scope_info: IntGaugeVec,
     sol_watched_validator_activated_stake_sol: GaugeVec,
@@ -304,6 +307,7 @@ impl Metrics {
                     solana_rpc_compatibility_label(connector.solana_rpc_compatibility),
                     bool_label(connector.has_rpc()),
                     bool_label(connector.has_ws()),
+                    bool_label(connector.has_provider_api()),
                 ])
                 .set(1);
             if connector.has_ws() {
@@ -497,6 +501,17 @@ impl Metrics {
                     .with_label_values(&labels)
                     .set(i64::from(vat_next_epoch_funded));
             }
+            if let Some(jito_reward) = economics.jito_mev_reward {
+                self.sol_economics_jito_mev_reward_sol
+                    .with_label_values(&labels)
+                    .set(lamports_to_sol(jito_reward.reward_lamports));
+                self.sol_economics_jito_mev_commission_pct
+                    .with_label_values(&labels)
+                    .set(f64::from(jito_reward.commission_bps) / 100.0);
+                self.sol_economics_jito_mev_reward_epoch
+                    .with_label_values(&labels)
+                    .set(metric_count(jito_reward.epoch));
+            }
         }
 
         for (scope, metrics) in &snapshot.scopes {
@@ -595,6 +610,9 @@ impl Metrics {
         self.sol_economics_vat_reserve_sol.reset();
         self.sol_economics_vat_epochs_available.reset();
         self.sol_economics_vat_next_epoch_funded.reset();
+        self.sol_economics_jito_mev_reward_sol.reset();
+        self.sol_economics_jito_mev_commission_pct.reset();
+        self.sol_economics_jito_mev_reward_epoch.reset();
         self.sol_validator_status_count.reset();
         self.sol_validator_status_stake_sol.reset();
         self.sol_activated_stake_sol.reset();

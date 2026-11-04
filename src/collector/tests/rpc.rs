@@ -178,6 +178,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
             vote_account: "vote-1".to_string(),
         },
         balances,
+        None,
     );
     assert_eq!(metrics.vat_reserve_lamports, None);
     assert_eq!(metrics.vat_epochs_available, None);

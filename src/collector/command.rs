@@ -4,22 +4,80 @@
 //! remain the responsibility of the source chain.
 
 use super::{
-    AccountBalances, BlockProduction, ClusterPerformanceMetrics, EpochInfo, NodeHealth,
-    NodeRpcStatus, RewardSample, RpcClient, VoteAccounts,
+    AccountBalances, BlockProduction, ClusterPerformanceMetrics, EpochInfo, JitoClient,
+    JitoMevReward, NodeHealth, NodeRpcStatus, RewardSample, RpcClient, VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
+/// Transport clients constructed once for one configured connector.
+pub(crate) struct CommandClients {
+    rpc: Option<RpcClient>,
+    provider_api: Option<JitoClient>,
+}
 
-/// One typed collector operation executable by an RPC client.
+impl CommandClients {
+    /// Groups the connector's available command clients.
+    pub(crate) fn new(rpc: Option<RpcClient>, provider_api: Option<JitoClient>) -> Self {
+        Self { rpc, provider_api }
+    }
+
+    /// Returns the connector's standard Solana RPC client.
+    pub(crate) fn rpc(&self) -> Option<&RpcClient> {
+        self.rpc.as_ref()
+    }
+
+    /// Returns the connector's provider-specific API client.
+    pub(crate) fn provider_api(&self) -> Option<&JitoClient> {
+        self.provider_api.as_ref()
+    }
+}
+
+/// Compile-time selection of the client type used by a typed command.
+pub(crate) trait CommandTransport {
+    /// Concrete client accepted by commands on this transport.
+    type Client;
+
+    /// Selects the transport client from one configured connector.
+    fn client(clients: &CommandClients) -> Option<&Self::Client>;
+}
+
+/// Standard Solana JSON-RPC command transport.
+pub(crate) enum RpcCommandTransport {}
+
+impl CommandTransport for RpcCommandTransport {
+    type Client = RpcClient;
+
+    fn client(clients: &CommandClients) -> Option<&Self::Client> {
+        clients.rpc.as_ref()
+    }
+}
+
+/// Provider-specific Jito HTTP API command transport.
+pub(crate) enum ProviderApiCommandTransport {}
+
+impl CommandTransport for ProviderApiCommandTransport {
+    type Client = JitoClient;
+
+    fn client(clients: &CommandClients) -> Option<&Self::Client> {
+        clients.provider_api.as_ref()
+    }
+}
+
+/// One typed collector operation executable by its declared transport client.
 pub(crate) trait SourceCommand {
     /// Stable routing identifier for this operation.
     const ID: CommandId;
+    /// Client transport selected at compile time for this command.
+    type Transport: CommandTransport;
     /// Decoded value returned on success.
     type Output;
 
     /// Executes the operation against one already-selected connector.
-    async fn execute(&self, client: &RpcClient) -> Result<Self::Output>;
+    async fn execute(
+        &self,
+        client: &<Self::Transport as CommandTransport>::Client,
+    ) -> Result<Self::Output>;
 }
 
 /// Required Solana RPC health command.
@@ -27,6 +85,7 @@ pub(crate) struct GetHealth;
 
 impl SourceCommand for GetHealth {
     const ID: CommandId = CommandId::RpcHealth;
+    type Transport = RpcCommandTransport;
     type Output = NodeHealth;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -39,6 +98,7 @@ pub(crate) struct GetNodeStatus;
 
 impl SourceCommand for GetNodeStatus {
     const ID: CommandId = CommandId::NodeStatus;
+    type Transport = RpcCommandTransport;
     type Output = NodeRpcStatus;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -54,6 +114,7 @@ pub(crate) struct GetEpochInfo;
 
 impl SourceCommand for GetEpochInfo {
     const ID: CommandId = CommandId::EpochInfo;
+    type Transport = RpcCommandTransport;
     type Output = EpochInfo;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -69,6 +130,7 @@ pub(crate) struct GetVoteAccounts {
 
 impl SourceCommand for GetVoteAccounts {
     const ID: CommandId = CommandId::VoteAccounts;
+    type Transport = RpcCommandTransport;
     type Output = VoteAccounts;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -84,6 +146,7 @@ pub(crate) struct GetRecentPerformanceSamples;
 
 impl SourceCommand for GetRecentPerformanceSamples {
     const ID: CommandId = CommandId::RecentPerformanceSamples;
+    type Transport = RpcCommandTransport;
     type Output = Option<ClusterPerformanceMetrics>;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -99,6 +162,7 @@ pub(crate) struct GetCurrentBlockProduction;
 
 impl SourceCommand for GetCurrentBlockProduction {
     const ID: CommandId = CommandId::CurrentBlockProduction;
+    type Transport = RpcCommandTransport;
     type Output = BlockProduction;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -117,6 +181,7 @@ pub(crate) struct GetLeaderSchedule {
 
 impl SourceCommand for GetLeaderSchedule {
     const ID: CommandId = CommandId::CurrentLeaderSchedule;
+    type Transport = RpcCommandTransport;
     type Output = Option<HashMap<String, Vec<u64>>>;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -135,6 +200,7 @@ pub(crate) struct GetNextLeaderSchedule {
 
 impl SourceCommand for GetNextLeaderSchedule {
     const ID: CommandId = CommandId::NextLeaderSchedule;
+    type Transport = RpcCommandTransport;
     type Output = Option<HashMap<String, Vec<u64>>>;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -155,6 +221,7 @@ pub(crate) struct GetAccountBalances<'a> {
 
 impl SourceCommand for GetAccountBalances<'_> {
     const ID: CommandId = CommandId::AccountBalances;
+    type Transport = RpcCommandTransport;
     type Output = AccountBalances;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -175,6 +242,7 @@ pub(crate) struct GetInflationRewards<'a> {
 
 impl SourceCommand for GetInflationRewards<'_> {
     const ID: CommandId = CommandId::InflationRewards;
+    type Transport = RpcCommandTransport;
     type Output = HashMap<String, RewardSample>;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -195,6 +263,7 @@ pub(crate) struct GetRewardEpochBlockProduction {
 
 impl SourceCommand for GetRewardEpochBlockProduction {
     const ID: CommandId = CommandId::RewardEpochBlockProduction;
+    type Transport = RpcCommandTransport;
     type Output = BlockProduction;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
@@ -213,5 +282,26 @@ impl SourceCommand for GetRewardEpochBlockProduction {
             .get_block_production_for_range(range.first_slot, range.last_slot)
             .await
             .context("getBlockProduction for reward epoch failed")
+    }
+}
+
+/// Optional settled prior-epoch Jito MEV reward command.
+pub(crate) struct GetJitoMevReward<'a> {
+    /// Validator vote account whose rewards are requested.
+    pub vote_account: &'a str,
+    /// Settled reward epoch to query.
+    pub epoch: u64,
+}
+
+impl SourceCommand for GetJitoMevReward<'_> {
+    const ID: CommandId = CommandId::JitoMevRewards;
+    type Transport = ProviderApiCommandTransport;
+    type Output = Option<JitoMevReward>;
+
+    async fn execute(&self, client: &JitoClient) -> Result<Self::Output> {
+        client
+            .get_mev_reward(self.vote_account, self.epoch)
+            .await
+            .context("Jito MEV reward collection failed")
     }
 }
