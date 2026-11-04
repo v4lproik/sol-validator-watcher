@@ -365,7 +365,7 @@ async fn required_command_preserves_every_failed_route_connector() -> Result<()>
     second_server_task.abort();
 
     let message = format!("{error:#}");
-    assert!(message.contains("all 2 connectors failed for required command epoch-info"));
+    assert!(message.contains("connector route exhausted for required command epoch-info"));
     assert!(message.contains("connector \"first\" (provider \"solana-validator\")"));
     assert!(message.contains("connector \"second\" (provider \"helius\")"));
     Ok(())
@@ -399,7 +399,7 @@ async fn reward_history_propagates_minimum_ledger_slot_failure() -> Result<()> {
 
     let message = format!("{error:#}");
     assert!(message
-        .contains("all 1 connector failed for required command reward-epoch-block-production"));
+        .contains("connector route exhausted for required command reward-epoch-block-production"));
     assert!(message.contains("minimumLedgerSlot failed with JSON-RPC code -32601"));
     Ok(())
 }

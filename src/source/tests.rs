@@ -109,7 +109,7 @@ async fn websocket_route_exhaustion_preserves_every_connector_failure() -> Resul
         .context("second rejected websocket server task failed")??;
 
     let message = format!("{error:#}");
-    assert!(message.contains("all 2 connectors failed for websocket health command"));
+    assert!(message.contains("connector route exhausted for websocket health command"));
     assert!(message.contains("connector \"first-ws\" (provider \"first-provider\")"));
     assert!(message.contains("connector \"second-ws\" (provider \"second-provider\")"));
     Ok(())
