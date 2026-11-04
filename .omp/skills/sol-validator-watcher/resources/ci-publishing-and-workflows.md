@@ -57,9 +57,18 @@ checks.
 
 ## Container Publishing
 
+- Container publication must call the repository CI workflow from the same
+  revision and make publishing depend on its success. Keep caller and reusable
+  workflow concurrency groups distinct so they cannot cancel each other.
+- Published image indexes contain `linux/amd64` and `linux/arm64` manifests,
+  explicit BuildKit provenance and SBOM attestations, and a GitHub artifact
+  attestation bound to the pushed digest.
+- Grant `packages: write`, `attestations: write`, and `id-token: write` only to
+  the publish job. Verification remains read-only.
 - `.github/workflows/container.yml` publishes to GHCR only from `main`, version
   tags, or explicit dispatch according to its trigger contract.
-- Preserve branch/tag/SHA metadata and default-branch `latest` behavior.
+- Preserve branch/tag metadata, full-commit SHA tags, and default-branch
+  `latest` behavior.
 - Build context, Dockerfile path, cache, labels, and tags must describe the same
   source revision.
 - `mise.toml` owns the Rust version. `Justfile` and container CI resolve that

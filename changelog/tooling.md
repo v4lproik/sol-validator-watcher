@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Gated main-branch, version-tag, and dispatched container publication on the same revision's complete repository CI workflow.
 - Documented loopback HTTP defaults, private-network container binding, non-root/read-only Compose invariants, and the required container health smoke boundary.
 - Documented the fatal startup boundary, recoverable whole-poll failure policy, bounded backoff sequence, retained-snapshot semantics, shutdown-time state-transition handling, and required failure/recovery smoke proof.
 - Added `just stack check` and a required CI step to validate Prometheus configuration and execute alert rule behavior tests.
