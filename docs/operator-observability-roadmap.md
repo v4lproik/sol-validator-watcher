@@ -105,7 +105,8 @@ Snapshot and transport reliability are exposed through
 overview dashboard derives snapshot age from the last successful timestamp and
 shows cumulative HTTP, RPC, and connector-attributed WebSocket failures.
 Prometheus evaluates target, readiness, stale-snapshot, RPC- and
-WebSocket-failure, validator-health, upcoming-leader, and VAT-funding alerts.
+WebSocket-failure, node-behind, node-not-voting, validator-health,
+upcoming-leader, and VAT-funding alerts.
 Snapshot-dependent conditions require data newer than the greater of 120
 seconds or four configured poll intervals. Alertmanager notification routing
 remains an external deployment responsibility.
