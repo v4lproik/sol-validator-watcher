@@ -61,13 +61,17 @@ These changes do not require new exporter metrics.
   and `sol_rpc_http_response_status_count` for exact 200, 403, 429, and 500
   counts. The structured `watcher state` log reports 30-second deltas.
 
-## Current operator timing and funding signals
+## Current operator timing, throughput, and funding signals
 
-The exporter and economics dashboard now publish:
+The exporter and mode dashboards now publish:
 
 - `sol_epoch_progress_pct`, `sol_epoch_slots_remaining`,
   `sol_average_slot_time_seconds`, and
   `sol_estimated_epoch_end_unixtime`
+- `sol_cluster_transactions_per_second`,
+  `sol_cluster_vote_transactions_per_second`,
+  `sol_cluster_non_vote_transactions_per_second`, and
+  `sol_cluster_slots_per_second`
 - `sol_watched_validator_next_leader_slot`,
   `sol_watched_validator_slots_until_next_leader`, and
   `sol_watched_validator_seconds_until_next_leader`
@@ -75,12 +79,16 @@ The exporter and economics dashboard now publish:
   exemption, VAT reserve, complete funded VAT epochs, and next-epoch VAT
   funding status
 
-Timing estimates use the latest `getRecentPerformanceSamples` result. Missing
-performance samples or leader schedules produce no estimate series rather than
-a healthy-looking zero. VAT runway is the current vote-account balance above
-rent exemption divided by the current 0.8 SOL epoch charge; it excludes future
-rewards and transfers. If an RPC omits the vote account's data size, account
-balances remain available while rent and VAT series are omitted.
+Timing and throughput use the latest routed `getRecentPerformanceSamples`
+result. Missing samples produce no rate or estimate series rather than a
+healthy-looking zero. Vote and non-vote rates remain absent when an endpoint
+omits the transaction split. The consensus dashboard also derives delinquent
+stake ratio and selected-scope share of all network stake; the leadership
+dashboard compares selected-scope skip rate with the all-network baseline.
+VAT runway is the current vote-account balance above rent exemption divided by
+the current 0.8 SOL epoch charge; it excludes future rewards and transfers. If
+an RPC omits the vote account's data size, account balances remain available
+while rent and VAT series are omitted.
 
 Node-local operator health is exposed through `sol_node_info`,
 `sol_node_health`, `sol_node_catchup_distance_slots`, and
@@ -129,7 +137,6 @@ These are the operator signals that would most improve the dashboards.
 ### Stake and topology
 
 - stake activated / deactivated this epoch
-- stake share trend
 - optional datacenter / ISP / region enrichment
 
 ## Recommended order

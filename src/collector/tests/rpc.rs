@@ -17,6 +17,51 @@ async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
 
     Ok(())
 }
+#[tokio::test]
+async fn missing_transaction_breakdown_preserves_total_performance_rates() -> Result<()> {
+    let (rpc_url, server_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::MissingPerformanceTransactionSplit)
+            .await?;
+    let client = RpcClient::new(
+        rpc_url,
+        Duration::from_secs(5),
+        "confirmed".to_string(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+    )?;
+
+    let performance = client
+        .get_cluster_performance_metrics()
+        .await?
+        .ok_or_else(|| anyhow!("missing performance sample"))?;
+    server_task.abort();
+
+    assert_eq!(performance.average_slot_time_seconds, Some(0.4));
+    assert_eq!(performance.transactions_per_second, 25.0);
+    assert_eq!(performance.vote_transactions_per_second, None);
+    assert_eq!(performance.non_vote_transactions_per_second, None);
+    assert_eq!(performance.slots_per_second, 2.5);
+    Ok(())
+}
+
+#[tokio::test]
+async fn malformed_performance_samples_fail_instead_of_exporting_rates() -> Result<()> {
+    for profile in [
+        MockRpcProfile::InvalidPerformanceTransactionSplit,
+        MockRpcProfile::ZeroPerformanceSamplePeriod,
+    ] {
+        let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
+        let client = RpcClient::new(
+            rpc_url,
+            Duration::from_secs(5),
+            "confirmed".to_string(),
+            crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        )?;
+
+        assert!(client.get_cluster_performance_metrics().await.is_err());
+        server_task.abort();
+    }
+    Ok(())
+}
 
 #[tokio::test]
 async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {

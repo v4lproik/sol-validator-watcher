@@ -1,8 +1,9 @@
 use super::{bool_label, Metrics};
 use crate::{
     collector::{
-        EconomicsMetrics, ModeStatus, NodeHealth, NodeMetrics, NodeVotingStatus, ScopeMetrics,
-        Snapshot, SnapshotDataSource, ValidatorStatus, WatchedValidatorMetrics,
+        ClusterPerformanceMetrics, EconomicsMetrics, ModeStatus, NodeHealth, NodeMetrics,
+        NodeVotingStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
+        WatchedValidatorMetrics,
     },
     config::{
         Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -25,7 +26,13 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         slot: 1234,
         epoch_progress_pct: 34.5,
         epoch_slots_remaining: 65,
-        average_slot_time_seconds: Some(0.4),
+        cluster_performance: Some(ClusterPerformanceMetrics {
+            average_slot_time_seconds: Some(0.4),
+            transactions_per_second: 25.0,
+            vote_transactions_per_second: Some(22.5),
+            non_vote_transactions_per_second: Some(2.5),
+            slots_per_second: 2.5,
+        }),
         estimated_epoch_end_unixtime: Some(1_800_000_000.0),
         vote_credits_sample_epoch: Some(41),
         reward_sample_epoch: Some(41),
@@ -199,6 +206,12 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_epoch_progress_pct{network=\"mainnet-beta\"} 34.5"));
     assert!(rendered.contains("sol_epoch_slots_remaining{network=\"mainnet-beta\"} 65"));
     assert!(rendered.contains("sol_average_slot_time_seconds{network=\"mainnet-beta\"} 0.4"));
+    assert!(rendered.contains("sol_cluster_transactions_per_second{network=\"mainnet-beta\"} 25"));
+    assert!(rendered
+        .contains("sol_cluster_vote_transactions_per_second{network=\"mainnet-beta\"} 22.5"));
+    assert!(rendered
+        .contains("sol_cluster_non_vote_transactions_per_second{network=\"mainnet-beta\"} 2.5"));
+    assert!(rendered.contains("sol_cluster_slots_per_second{network=\"mainnet-beta\"} 2.5"));
     assert!(
         rendered.contains("sol_estimated_epoch_end_unixtime{network=\"mainnet-beta\"} 1800000000")
     );
@@ -319,7 +332,13 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         slot: 1,
         epoch_progress_pct: 10.0,
         epoch_slots_remaining: 90,
-        average_slot_time_seconds: Some(0.4),
+        cluster_performance: Some(ClusterPerformanceMetrics {
+            average_slot_time_seconds: Some(0.4),
+            transactions_per_second: 25.0,
+            vote_transactions_per_second: Some(22.5),
+            non_vote_transactions_per_second: Some(2.5),
+            slots_per_second: 2.5,
+        }),
         estimated_epoch_end_unixtime: Some(1_800_000_000.0),
         vote_credits_sample_epoch: Some(1),
         reward_sample_epoch: Some(1),
@@ -384,7 +403,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         slot: 2,
         epoch_progress_pct: 20.0,
         epoch_slots_remaining: 80,
-        average_slot_time_seconds: None,
+        cluster_performance: None,
         estimated_epoch_end_unixtime: None,
         vote_credits_sample_epoch: None,
         reward_sample_epoch: None,
@@ -429,6 +448,10 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_watched_validator_vote_credits_latest_epoch{"));
     assert!(!rendered.contains("sol_watched_validator_vote_efficiency_pct{"));
     assert!(!rendered.contains("sol_average_slot_time_seconds{"));
+    assert!(!rendered.contains("sol_cluster_transactions_per_second{"));
+    assert!(!rendered.contains("sol_cluster_vote_transactions_per_second{"));
+    assert!(!rendered.contains("sol_cluster_non_vote_transactions_per_second{"));
+    assert!(!rendered.contains("sol_cluster_slots_per_second{"));
     assert!(!rendered.contains("sol_estimated_epoch_end_unixtime{"));
     assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
 

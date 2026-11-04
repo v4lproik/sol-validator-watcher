@@ -29,6 +29,10 @@ pub struct Metrics {
     sol_epoch_progress_pct: GaugeVec,
     sol_epoch_slots_remaining: IntGaugeVec,
     sol_average_slot_time_seconds: GaugeVec,
+    sol_cluster_transactions_per_second: GaugeVec,
+    sol_cluster_vote_transactions_per_second: GaugeVec,
+    sol_cluster_non_vote_transactions_per_second: GaugeVec,
+    sol_cluster_slots_per_second: GaugeVec,
     sol_estimated_epoch_end_unixtime: GaugeVec,
     sol_watcher_up: IntGaugeVec,
     sol_watcher_ready: IntGaugeVec,
@@ -378,10 +382,31 @@ impl Metrics {
         self.sol_epoch_slots_remaining
             .with_label_values(&[&snapshot.network])
             .set(snapshot.epoch_slots_remaining as i64);
-        if let Some(slot_time) = snapshot.average_slot_time_seconds {
-            self.sol_average_slot_time_seconds
-                .with_label_values(&[&snapshot.network])
-                .set(slot_time);
+        if let Some(performance) = snapshot.cluster_performance {
+            let network = &[snapshot.network.as_str()];
+            if let Some(slot_time) = performance.average_slot_time_seconds {
+                self.sol_average_slot_time_seconds
+                    .with_label_values(network)
+                    .set(slot_time);
+            }
+            self.sol_cluster_transactions_per_second
+                .with_label_values(network)
+                .set(performance.transactions_per_second);
+            if let Some(vote_transactions_per_second) = performance.vote_transactions_per_second {
+                self.sol_cluster_vote_transactions_per_second
+                    .with_label_values(network)
+                    .set(vote_transactions_per_second);
+            }
+            if let Some(non_vote_transactions_per_second) =
+                performance.non_vote_transactions_per_second
+            {
+                self.sol_cluster_non_vote_transactions_per_second
+                    .with_label_values(network)
+                    .set(non_vote_transactions_per_second);
+            }
+            self.sol_cluster_slots_per_second
+                .with_label_values(network)
+                .set(performance.slots_per_second);
         }
         if let Some(epoch_end) = snapshot.estimated_epoch_end_unixtime {
             self.sol_estimated_epoch_end_unixtime
@@ -554,6 +579,10 @@ impl Metrics {
         self.sol_vote_credits_sample_epoch.reset();
         self.sol_reward_sample_epoch.reset();
         self.sol_average_slot_time_seconds.reset();
+        self.sol_cluster_transactions_per_second.reset();
+        self.sol_cluster_vote_transactions_per_second.reset();
+        self.sol_cluster_non_vote_transactions_per_second.reset();
+        self.sol_cluster_slots_per_second.reset();
         self.sol_estimated_epoch_end_unixtime.reset();
         self.sol_node_info.reset();
         self.sol_node_health.reset();

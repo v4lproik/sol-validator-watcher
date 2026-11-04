@@ -347,6 +347,21 @@ impl ScopeMetrics {
     }
 }
 
+/// Cluster rates derived from the latest Solana performance sample.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClusterPerformanceMetrics {
+    /// Average slot duration when the sample contains at least one slot.
+    pub average_slot_time_seconds: Option<f64>,
+    /// All processed transactions per second, including vote transactions.
+    pub transactions_per_second: f64,
+    /// Vote transactions per second when the endpoint supplies the transaction split.
+    pub vote_transactions_per_second: Option<f64>,
+    /// Non-vote transactions per second when supplied by the endpoint.
+    pub non_vote_transactions_per_second: Option<f64>,
+    /// Slots completed per second during the sample.
+    pub slots_per_second: f64,
+}
+
 /// One complete collection result consumed by metrics rendering.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Snapshot {
@@ -360,8 +375,8 @@ pub struct Snapshot {
     pub epoch_progress_pct: f64,
     /// Slots remaining in the current epoch.
     pub epoch_slots_remaining: u64,
-    /// Average slot duration derived from recent performance samples.
-    pub average_slot_time_seconds: Option<f64>,
+    /// Cluster rates derived from the latest recent-performance sample.
+    pub cluster_performance: Option<ClusterPerformanceMetrics>,
     /// Estimated Unix timestamp at which the current epoch will end.
     pub estimated_epoch_end_unixtime: Option<f64>,
     /// Epoch represented by vote-credit and efficiency values.

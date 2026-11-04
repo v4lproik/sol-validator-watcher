@@ -3,7 +3,9 @@
 //! This module owns protocol decoding and HTTP outcome classification. It does
 //! not choose connectors or apply cross-connector fallback policy.
 
-use super::model::{AccountBalances, NodeHealth, NodeRpcStatus, RewardSample};
+use super::model::{
+    AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus, RewardSample,
+};
 use crate::{
     mode::{ProviderFeature, SolanaRpcCompatibility},
     watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
@@ -304,22 +306,50 @@ impl RpcClient {
         .await
     }
 
-    /// Derives average slot duration from the latest performance sample.
+    /// Derives cluster throughput and slot timing from the latest performance sample.
     ///
-    /// Returns `None` when the endpoint has no usable sample.
-    pub(super) async fn get_average_slot_time_seconds(&self) -> Result<Option<f64>> {
+    /// Returns `None` when the endpoint has no sample. A zero-duration sample or
+    /// an impossible transaction split is rejected so fallback can try another
+    /// configured connector.
+    pub(super) async fn get_cluster_performance_metrics(
+        &self,
+    ) -> Result<Option<ClusterPerformanceMetrics>> {
         let samples: Vec<RecentPerformanceSample> =
             self.call("getRecentPerformanceSamples", [1]).await?;
         let Some(sample) = samples.first() else {
             return Ok(None);
         };
-        if sample.num_slots == 0 || sample.sample_period_secs == 0 {
-            return Ok(None);
+        if sample.sample_period_secs == 0 {
+            bail!("getRecentPerformanceSamples returned a zero-duration sample");
         }
 
-        Ok(Some(
-            f64::from(sample.sample_period_secs) / sample.num_slots as f64,
-        ))
+        let sample_period_seconds = f64::from(sample.sample_period_secs);
+        let (non_vote_transactions_per_second, vote_transactions_per_second) = match sample
+            .num_non_vote_transactions
+        {
+            Some(non_vote_transactions) => {
+                let vote_transactions = sample
+                        .num_transactions
+                        .checked_sub(non_vote_transactions)
+                        .context(
+                            "getRecentPerformanceSamples returned more non-vote than total transactions",
+                        )?;
+                (
+                    Some(non_vote_transactions as f64 / sample_period_seconds),
+                    Some(vote_transactions as f64 / sample_period_seconds),
+                )
+            }
+            None => (None, None),
+        };
+
+        Ok(Some(ClusterPerformanceMetrics {
+            average_slot_time_seconds: (sample.num_slots > 0)
+                .then(|| sample_period_seconds / sample.num_slots as f64),
+            transactions_per_second: sample.num_transactions as f64 / sample_period_seconds,
+            vote_transactions_per_second,
+            non_vote_transactions_per_second,
+            slots_per_second: sample.num_slots as f64 / sample_period_seconds,
+        }))
     }
 
     /// Returns block production for the endpoint's current default range.
@@ -791,6 +821,8 @@ pub(super) struct RpcValueResponse<T> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RecentPerformanceSample {
+    num_transactions: u64,
+    num_non_vote_transactions: Option<u64>,
     num_slots: u64,
     sample_period_secs: u16,
 }

@@ -2,9 +2,9 @@ use super::{
     aggregate_records, build_economics_metrics, build_record, build_watched_validator_metrics,
     collect_snapshot, ensure_economics_supported, estimated_epoch_end_unixtime_at, ratio,
     resolve_economics_target, reward_epoch_block_range, AccountBalances, BlockProduction,
-    EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig, RecordBuildContext,
-    RewardSample, RpcClient, RpcValueResponse, ScopeMetrics, SlotRange, ValidatorRecord,
-    ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
+    ClusterPerformanceMetrics, EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig,
+    RecordBuildContext, RewardSample, RpcClient, RpcValueResponse, ScopeMetrics, SlotRange,
+    ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
     MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
 };
 use crate::{
@@ -46,6 +46,9 @@ enum MockRpcProfile {
     NoLeaderSchedule,
     NoMinimumLedgerSlot,
     NoPerformanceSamples,
+    InvalidPerformanceTransactionSplit,
+    MissingPerformanceTransactionSplit,
+    ZeroPerformanceSamplePeriod,
     NoSlotLeader,
     NullPerformanceSamples,
     MissingPerformanceSamplesResult,
@@ -251,17 +254,30 @@ async fn mock_rpc_handler(
                 )
                     .into_response();
             }
-            (
-                StatusCode::OK,
-                Json(rpc_success(json!([{
-                    "slot": 810,
-                    "numTransactions": 1000,
-                    "numSlots": 100,
-                    "samplePeriodSecs": 40,
-                    "numNonVoteTransactions": 100
-                }]))),
-            )
-                .into_response()
+            let mut sample = json!({
+                "slot": 810,
+                "numTransactions": 1000,
+                "numSlots": 100,
+                "samplePeriodSecs": if matches!(
+                    profile,
+                    MockRpcProfile::ZeroPerformanceSamplePeriod
+                ) {
+                    0
+                } else {
+                    40
+                }
+            });
+            if !matches!(profile, MockRpcProfile::MissingPerformanceTransactionSplit) {
+                sample["numNonVoteTransactions"] = json!(if matches!(
+                    profile,
+                    MockRpcProfile::InvalidPerformanceTransactionSplit
+                ) {
+                    1_001
+                } else {
+                    100
+                });
+            }
+            (StatusCode::OK, Json(rpc_success(json!([sample])))).into_response()
         }
         "getVoteAccounts" => (
             StatusCode::OK,
