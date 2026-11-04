@@ -46,6 +46,10 @@ operator-facing semantics.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.
+- Node-local identity, version, feature set, vote-set classification, health,
+  catch-up distance, and block height are snapshot-owned dynamic series. Reset
+  them together. A healthy node has catch-up distance zero; an unhealthy node
+  without structured distance data has no distance series, not zero.
 - Help text states operator meaning, not implementation details.
 
 ## Dashboard Invariants
@@ -63,6 +67,9 @@ operator-facing semantics.
   poll intervals. Target-down and snapshot-stale alerts remain independent so
   missing data cannot look healthy. Do not alert on root lag alone; Solana roots
   routinely trail the current slot.
+- Node-behind and node-not-voting alerts are snapshot-dependent and use the
+  same freshness gate. The overview's node-local row must distinguish healthy,
+  behind, missing-distance, current-voting, and non-current-voting states.
 - The repository provisions alert evaluation only. Notification routing remains
   an external Alertmanager responsibility.
 - Keep overview, consensus, leadership, and economics dashboards separate.

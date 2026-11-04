@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 11;
+pub const COMMAND_COUNT: usize = 12;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -148,6 +148,8 @@ pub enum CommandId {
     RpcHealth,
     /// WebSocket reachability check.
     WsHealth,
+    /// Node-local identity, software, block height, and health.
+    NodeStatus,
     /// Current epoch and slot information.
     EpochInfo,
     /// Current and delinquent vote accounts.
@@ -173,6 +175,7 @@ impl CommandId {
     pub const ALL: [Self; COMMAND_COUNT] = [
         Self::RpcHealth,
         Self::WsHealth,
+        Self::NodeStatus,
         Self::EpochInfo,
         Self::VoteAccounts,
         Self::RecentPerformanceSamples,
@@ -189,6 +192,7 @@ impl CommandId {
         match self {
             Self::RpcHealth => "rpc-health",
             Self::WsHealth => "ws-health",
+            Self::NodeStatus => "node-status",
             Self::EpochInfo => "epoch-info",
             Self::VoteAccounts => "vote-accounts",
             Self::RecentPerformanceSamples => "recent-performance-samples",
@@ -204,7 +208,7 @@ impl CommandId {
     /// Returns the mode that owns this command.
     pub const fn mode(self) -> ModeId {
         match self {
-            Self::RpcHealth | Self::WsHealth => ModeId::Health,
+            Self::RpcHealth | Self::WsHealth | Self::NodeStatus => ModeId::Health,
             Self::EpochInfo | Self::VoteAccounts | Self::RecentPerformanceSamples => {
                 ModeId::Consensus
             }
@@ -221,6 +225,7 @@ impl CommandId {
     pub const fn source_requirement(self) -> ModeSourceRequirement {
         match self {
             Self::RpcHealth
+            | Self::NodeStatus
             | Self::EpochInfo
             | Self::VoteAccounts
             | Self::CurrentLeaderSchedule
@@ -240,15 +245,16 @@ impl CommandId {
         match self {
             Self::RpcHealth => 0,
             Self::WsHealth => 1,
-            Self::EpochInfo => 2,
-            Self::VoteAccounts => 3,
-            Self::RecentPerformanceSamples => 4,
-            Self::CurrentBlockProduction => 5,
-            Self::CurrentLeaderSchedule => 6,
-            Self::NextLeaderSchedule => 7,
-            Self::AccountBalances => 8,
-            Self::InflationRewards => 9,
-            Self::RewardEpochBlockProduction => 10,
+            Self::NodeStatus => 2,
+            Self::EpochInfo => 3,
+            Self::VoteAccounts => 4,
+            Self::RecentPerformanceSamples => 5,
+            Self::CurrentBlockProduction => 6,
+            Self::CurrentLeaderSchedule => 7,
+            Self::NextLeaderSchedule => 8,
+            Self::AccountBalances => 9,
+            Self::InflationRewards => 10,
+            Self::RewardEpochBlockProduction => 11,
         }
     }
 }
@@ -291,6 +297,7 @@ mod tests {
 
         for command in [
             CommandId::RpcHealth,
+            CommandId::NodeStatus,
             CommandId::EpochInfo,
             CommandId::VoteAccounts,
             CommandId::CurrentLeaderSchedule,

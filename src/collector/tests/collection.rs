@@ -32,7 +32,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
-    client.ensure_healthy().await?;
+    assert!(client.node_health().await?.is_healthy());
     let sources =
         SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
     ensure_economics_supported(&sources, &config).await?;
@@ -43,6 +43,23 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     assert_eq!(snapshot.network, "devnet");
     assert_eq!(snapshot.epoch, 9);
     assert_eq!(snapshot.slot, 810);
+    let node = snapshot
+        .node
+        .as_ref()
+        .ok_or_else(|| anyhow!("missing node-local metrics"))?;
+    assert_eq!(node.identity, "id-1");
+    assert_eq!(node.version, "3.1.8");
+    assert_eq!(node.feature_set, Some(2_891_131_721));
+    assert_eq!(node.block_height, 1_233);
+    assert_eq!(node.health, crate::collector::NodeHealth::Healthy);
+    assert_eq!(
+        node.voting_status,
+        crate::collector::NodeVotingStatus::Current
+    );
+    assert!(snapshot
+        .data_sources
+        .iter()
+        .any(|source| source.command == CommandId::NodeStatus));
     assert_eq!(snapshot.vote_credits_sample_epoch, Some(8));
     assert_eq!(snapshot.reward_sample_epoch, Some(8));
     assert_eq!(snapshot.watched_validators.len(), 1);

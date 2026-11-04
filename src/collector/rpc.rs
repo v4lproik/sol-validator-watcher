@@ -3,14 +3,15 @@
 //! This module owns protocol decoding and HTTP outcome classification. It does
 //! not choose connectors or apply cross-connector fallback policy.
 
-use super::model::{AccountBalances, RewardSample};
+use super::model::{AccountBalances, NodeHealth, NodeRpcStatus, RewardSample};
 use crate::{
     mode::{ProviderFeature, SolanaRpcCompatibility},
     watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
 };
 use anyhow::{bail, Context, Result};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -63,8 +64,12 @@ impl RpcClient {
         let commitment = self.commitment.as_str();
 
         let epoch_info = async {
-            let ((), epoch_info, ()) = tokio::try_join!(
-                self.ensure_healthy(),
+            let (_, epoch_info, (), _, _, _) = tokio::try_join!(
+                async {
+                    self.node_health()
+                        .await
+                        .context("required RPC method getHealth probe failed")
+                },
                 async {
                     self.get_epoch_info()
                         .await
@@ -76,6 +81,18 @@ impl RpcClient {
                         "commitment": commitment,
                         "votePubkey": PROBE_PUBKEY
                     }]),
+                ),
+                self.probe_required_method::<IdentityResponse, _>(
+                    "getIdentity",
+                    serde_json::json!([]),
+                ),
+                self.probe_required_method::<VersionResponse, _>(
+                    "getVersion",
+                    serde_json::json!([]),
+                ),
+                self.probe_required_method::<u64, _>(
+                    "getBlockHeight",
+                    serde_json::json!([{ "commitment": commitment }]),
                 ),
             )?;
             self.get_leader_schedule(epoch_info.absolute_slot)
@@ -196,8 +213,79 @@ impl RpcClient {
         .await
     }
 
-    async fn get_health(&self) -> Result<String> {
-        self.call("getHealth", [(); 0]).await
+    /// Returns node health while preserving Solana's structured behind state.
+    pub(crate) async fn node_health(&self) -> Result<NodeHealth> {
+        let started_at = Instant::now();
+        let result = self.node_health_request().await;
+        let outcome = match result {
+            Ok(NodeHealth::Healthy) => RpcRequestOutcome::Succeeded,
+            Ok(NodeHealth::Behind { .. }) | Err(_) => RpcRequestOutcome::Failed,
+        };
+        let telemetry_result =
+            self.telemetry
+                .record_request("getHealth", started_at.elapsed(), outcome);
+
+        match (result, telemetry_result) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Ok(_), Err(error)) => Err(error),
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(telemetry_error)) => {
+                Err(error.context(format!("failed to record RPC request: {telemetry_error:#}")))
+            }
+        }
+    }
+
+    async fn node_health_request(&self) -> Result<NodeHealth> {
+        let response: JsonRpcResponse<String> = self.send_request("getHealth", [(); 0]).await?;
+        let status = response.status;
+        let envelope = response.envelope;
+
+        if let Some(error) = envelope.error {
+            if error.code == -32005 {
+                let slots = error
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("numSlotsBehind"))
+                    .and_then(Value::as_u64);
+                return Ok(NodeHealth::Behind { slots });
+            }
+            bail!("getHealth failed with JSON-RPC code {}", error.code);
+        }
+        if !status.is_success() {
+            bail!("getHealth returned non-success HTTP status {status}");
+        }
+
+        match envelope.result {
+            JsonRpcResult::Value(result) if result == "ok" => Ok(NodeHealth::Healthy),
+            JsonRpcResult::Value(result) => {
+                bail!("RPC endpoint returned unexpected getHealth result {result:?}")
+            }
+            JsonRpcResult::Null => bail!("getHealth returned no result"),
+            JsonRpcResult::Missing => bail!("getHealth returned no result or error"),
+        }
+    }
+
+    /// Collects coherent identity, software, block-height, and health values.
+    pub(super) async fn node_status(&self) -> Result<NodeRpcStatus> {
+        let (health, identity, version, block_height) = tokio::try_join!(
+            self.node_health(),
+            self.call::<IdentityResponse, _>("getIdentity", [(); 0]),
+            self.call::<VersionResponse, _>("getVersion", [(); 0]),
+            self.call::<u64, _>(
+                "getBlockHeight",
+                [CommitmentOnly {
+                    commitment: &self.commitment,
+                }],
+            ),
+        )?;
+
+        Ok(NodeRpcStatus {
+            identity: identity.identity,
+            version: version.solana_core,
+            feature_set: version.feature_set,
+            block_height,
+            health,
+        })
     }
 
     /// Returns current and delinquent vote accounts.
@@ -443,21 +531,6 @@ impl RpcClient {
         Ok(by_address)
     }
 
-    /// Requires `getHealth` to return exactly `"ok"`.
-    pub(crate) async fn ensure_healthy(&self) -> Result<()> {
-        let health = self
-            .get_health()
-            .await
-            .context("RPC endpoint failed getHealth")?;
-
-        if health != "ok" {
-            self.telemetry.record_failure("getHealth")?;
-            bail!("RPC endpoint returned unexpected getHealth result {health:?}");
-        }
-
-        Ok(())
-    }
-
     async fn call<T, P>(&self, method: &'static str, params: P) -> Result<T>
     where
         T: DeserializeOwned,
@@ -515,6 +588,33 @@ impl RpcClient {
         T: DeserializeOwned,
         P: Serialize,
     {
+        let response = self.send_request(method, params).await?;
+        let status = response.status;
+        let envelope = response.envelope;
+
+        if let Some(error) = envelope.error {
+            bail!("{method} failed with JSON-RPC code {}", error.code);
+        }
+        if !status.is_success() {
+            bail!("{} returned non-success HTTP status {}", method, status);
+        }
+
+        match envelope.result {
+            JsonRpcResult::Missing => bail!("{method} returned no result or error"),
+            JsonRpcResult::Null => Ok(None),
+            JsonRpcResult::Value(result) => Ok(Some(result)),
+        }
+    }
+
+    async fn send_request<T, P>(
+        &self,
+        method: &'static str,
+        params: P,
+    ) -> Result<JsonRpcResponse<T>>
+    where
+        T: DeserializeOwned,
+        P: Serialize,
+    {
         let response = self
             .http
             .post(&self.url)
@@ -530,8 +630,7 @@ impl RpcClient {
             .await
             .map_err(reqwest::Error::without_url)
             .with_context(|| format!("{method} response body read failed"))?;
-
-        let envelope: JsonRpcEnvelope<T> = serde_json::from_str(&body).with_context(|| {
+        let envelope = serde_json::from_str(&body).with_context(|| {
             if status.is_success() {
                 format!("{} returned an invalid JSON-RPC payload", method)
             } else {
@@ -542,19 +641,7 @@ impl RpcClient {
             }
         })?;
 
-        if let Some(error) = envelope.error {
-            bail!("{method} failed with JSON-RPC code {}", error.code);
-        }
-
-        if !status.is_success() {
-            bail!("{} returned non-success HTTP status {}", method, status);
-        }
-
-        match envelope.result {
-            JsonRpcResult::Missing => bail!("{method} returned no result or error"),
-            JsonRpcResult::Null => Ok(None),
-            JsonRpcResult::Value(result) => Ok(Some(result)),
-        }
+        Ok(JsonRpcResponse { status, envelope })
     }
 }
 fn merge_block_production(target: &mut BlockProduction, update: BlockProduction) {
@@ -641,6 +728,11 @@ pub(super) struct SlotRange {
     pub(super) last_slot: u64,
 }
 
+struct JsonRpcResponse<T> {
+    status: StatusCode,
+    envelope: JsonRpcEnvelope<T>,
+}
+
 #[derive(Deserialize)]
 #[serde(bound(deserialize = "T: Deserialize<'de>"))]
 struct JsonRpcEnvelope<T> {
@@ -673,6 +765,19 @@ where
 #[derive(Deserialize)]
 struct JsonRpcError {
     code: i64,
+    data: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct IdentityResponse {
+    identity: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct VersionResponse {
+    solana_core: String,
+    feature_set: Option<u32>,
 }
 
 /// Standard Solana RPC response wrapper containing a `value`.

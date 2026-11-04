@@ -30,6 +30,95 @@ impl ValidatorStatus {
     }
 }
 
+/// Health reported by one node-local RPC endpoint.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NodeHealth {
+    /// The endpoint is within its configured distance of the cluster tip.
+    Healthy,
+    /// The endpoint reports that it is behind the cluster tip.
+    Behind {
+        /// Reported slot distance, when the unstable Solana error payload includes it.
+        slots: Option<u64>,
+    },
+}
+
+impl NodeHealth {
+    /// Reports whether the node considers itself healthy.
+    pub const fn is_healthy(self) -> bool {
+        matches!(self, Self::Healthy)
+    }
+
+    /// Returns zero for a healthy node or the reported lag for an unhealthy node.
+    pub const fn catchup_distance_slots(self) -> Option<u64> {
+        match self {
+            Self::Healthy => Some(0),
+            Self::Behind { slots } => slots,
+        }
+    }
+}
+
+/// Cluster-observed vote-account state for a node identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NodeVotingStatus {
+    /// At least one current vote account names the node identity.
+    Current,
+    /// No current vote account and at least one delinquent vote account names the identity.
+    Delinquent,
+    /// No current or delinquent vote account names the identity.
+    NotFound,
+}
+
+impl NodeVotingStatus {
+    /// Returns the stable Prometheus label value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Current => "current",
+            Self::Delinquent => "delinquent",
+            Self::NotFound => "not-found",
+        }
+    }
+}
+
+/// Node-local health and software values published from one coherent RPC source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NodeMetrics {
+    /// Active node identity returned by `getIdentity`.
+    pub identity: String,
+    /// Validator client version returned by `getVersion`.
+    pub version: String,
+    /// Validator feature-set identifier when reported by the node.
+    pub feature_set: Option<u32>,
+    /// Block height reported by the node.
+    pub block_height: u64,
+    /// Node health relative to the cluster tip.
+    pub health: NodeHealth,
+    /// Vote-account state observed in the same watcher snapshot.
+    pub voting_status: NodeVotingStatus,
+}
+
+/// Node-local values collected before vote-account state is joined into the snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NodeRpcStatus {
+    pub(super) identity: String,
+    pub(super) version: String,
+    pub(super) feature_set: Option<u32>,
+    pub(super) block_height: u64,
+    pub(super) health: NodeHealth,
+}
+
+impl NodeRpcStatus {
+    pub(super) fn with_voting_status(self, voting_status: NodeVotingStatus) -> NodeMetrics {
+        NodeMetrics {
+            identity: self.identity,
+            version: self.version,
+            feature_set: self.feature_set,
+            block_height: self.block_height,
+            health: self.health,
+            voting_status,
+        }
+    }
+}
+
 /// Vote credits earned in one epoch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EpochCreditsSample {
@@ -287,6 +376,8 @@ pub struct Snapshot {
     pub data_sources: Vec<SnapshotDataSource>,
     /// Enabled collection-mode outcomes for this polling round.
     pub mode_statuses: Vec<ModeStatus>,
+    /// Node-local health values when a node-status route succeeds.
+    pub node: Option<NodeMetrics>,
     /// Operator economics values when economics mode is enabled and collected.
     pub economics: Option<EconomicsMetrics>,
 }

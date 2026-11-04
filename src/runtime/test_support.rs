@@ -9,26 +9,36 @@ use std::{
     env,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU8, Ordering},
         Arc,
     },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{net::TcpListener, task::JoinHandle};
 
+const HEALTHY: u8 = 0;
+const FAILED: u8 = 1;
+const BEHIND: u8 = 2;
+
 #[derive(Clone)]
 struct CapabilityProbeState {
     missing_method: Option<&'static str>,
-    fail_health: Arc<AtomicBool>,
+    health_state: Arc<AtomicU8>,
 }
 
 pub(super) struct CapabilityProbeControl {
-    fail_health: Arc<AtomicBool>,
+    health_state: Arc<AtomicU8>,
 }
 
 impl CapabilityProbeControl {
     pub(super) fn set_health_failure(&self, failed: bool) {
-        self.fail_health.store(failed, Ordering::Relaxed);
+        self.health_state
+            .store(if failed { FAILED } else { HEALTHY }, Ordering::Relaxed);
+    }
+
+    pub(super) fn set_health_behind(&self, behind: bool) {
+        self.health_state
+            .store(if behind { BEHIND } else { HEALTHY }, Ordering::Relaxed);
     }
 }
 
@@ -48,10 +58,10 @@ pub(super) async fn start_controlled_capability_probe_server(
     let address = listener
         .local_addr()
         .context("failed to read capability probe listener address")?;
-    let fail_health = Arc::new(AtomicBool::new(false));
+    let health_state = Arc::new(AtomicU8::new(HEALTHY));
     let state = CapabilityProbeState {
         missing_method,
-        fail_health: Arc::clone(&fail_health),
+        health_state: Arc::clone(&health_state),
     };
     let app = Router::new()
         .route("/", post(capability_probe_handler))
@@ -59,7 +69,7 @@ pub(super) async fn start_controlled_capability_probe_server(
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
-    let control = CapabilityProbeControl { fail_health };
+    let control = CapabilityProbeControl { health_state };
 
     Ok((format!("http://{address}"), control, task))
 }
@@ -93,15 +103,29 @@ async fn capability_probe_handler(
             "id": 1
         }));
     }
-    if method == "getHealth" && state.fail_health.load(Ordering::Relaxed) {
-        return Json(json!({
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32005,
-                "message": "temporary upstream failure"
-            },
-            "id": 1
-        }));
+    if method == "getHealth" {
+        let health_state = state.health_state.load(Ordering::Relaxed);
+        if health_state == FAILED {
+            return Json(json!({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32000,
+                    "message": "temporary upstream failure"
+                },
+                "id": 1
+            }));
+        }
+        if health_state == BEHIND {
+            return Json(json!({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32005,
+                    "message": "Node is behind by 42 slots",
+                    "data": { "numSlotsBehind": 42 }
+                },
+                "id": 1
+            }));
+        }
     }
     if state.missing_method == Some(method) {
         return Json(json!({
@@ -116,6 +140,12 @@ async fn capability_probe_handler(
 
     let result = match method {
         "getHealth" => json!("ok"),
+        "getIdentity" => json!({ "identity": "id-1" }),
+        "getVersion" => json!({
+            "solana-core": "3.1.8",
+            "feature-set": 2_891_131_721u32
+        }),
+        "getBlockHeight" => json!(1_233),
         "getEpochInfo" => json!({
             "epoch": 1,
             "slotIndex": 1,

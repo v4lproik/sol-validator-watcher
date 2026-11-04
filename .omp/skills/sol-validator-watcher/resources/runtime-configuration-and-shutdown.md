@@ -45,10 +45,10 @@ liveness files, signals, and shutdown.
   them.
 - The current provider feature is `historical-data`; `rpc` and `websocket` are
   transports, not features. Historical data is independent of compatibility.
-- Core commands are RPC health, epoch info, vote accounts, and current/next
-  leader schedules. Recent performance samples, current block production,
-  account balances, and rent exemption require extended compatibility.
-  Prior-epoch rewards additionally require `historical-data`.
+- Core commands are RPC health, node-local status, epoch info, vote accounts,
+  and current/next leader schedules. Recent performance samples, current block
+  production, account balances, and rent exemption require extended
+  compatibility. Prior-epoch rewards additionally require `historical-data`.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
   Optional extended routes may be empty in a core-only profile.
@@ -84,9 +84,15 @@ liveness files, signals, and shutdown.
 - Shutdown waits for supervised tasks to finish. Cancellation must interrupt
   polling sleeps without waiting for the full interval.
 - Dependency guards run before collection. The `health.rpc_health` route is
-  fail-closed. `health.ws_health` records every failed connector attempt, marks
-  health mode down only when its configured route is exhausted, and remains
-  optional when no named connector has `ws_url`.
+  fail-closed for transport, HTTP, payload, and unexpected JSON-RPC failures.
+  Solana `getHealth` error `-32005` is a structured degraded state: mark RPC
+  and health mode down, but complete and publish the snapshot so node-local
+  catch-up data remains observable. `health.ws_health` records every failed
+  connector attempt, marks health mode down only when its configured route is
+  exhausted, and remains optional when no named connector has `ws_url`.
+  A configured optional `health.node_status` route contributes identity,
+  version, block height, health, and vote-set state; route exhaustion omits
+  those dynamic series and marks health mode down.
 - Verify every declared standard Solana RPC compatibility profile and provider
   feature before dependency health or collection. Startup verification failure
   is fatal; reload verification failure preserves the last-known-good runtime.

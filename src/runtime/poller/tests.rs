@@ -215,7 +215,7 @@ enabled = false
 }
 
 #[tokio::test]
-async fn failed_poll_retains_snapshot_and_reenters_readiness_after_recovery() -> Result<()> {
+async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<()> {
     let (rpc_url, control, server_task) = start_controlled_capability_probe_server(None).await?;
     let test_dir = unique_test_dir("poll-recovery");
     fs::create_dir_all(&test_dir)
@@ -261,9 +261,44 @@ async fn failed_poll_retains_snapshot_and_reenters_readiness_after_recovery() ->
             "sol_last_successful_snapshot_timestamp_seconds{network=\"poll-recovery-test\"}",
         )?;
 
+        control.set_health_behind(true);
+        let degraded = wait_for_state(&observer_state, |state| {
+            state.completed_poll_rounds > admitted.completed_poll_rounds && !state.ready
+        })
+        .await?;
+        assert_eq!(degraded.clean_poll_rounds, 0);
+        let rendered = observer_metrics.render()?;
+        let degraded_timestamp = metric_value(
+            &rendered,
+            "sol_last_successful_snapshot_timestamp_seconds{network=\"poll-recovery-test\"}",
+        )?;
+        assert!(degraded_timestamp > successful_timestamp);
+        assert_eq!(
+            metric_value(
+                &rendered,
+                "sol_snapshot_failures_total{network=\"poll-recovery-test\"}",
+            )?,
+            0.0
+        );
+        assert!(rendered
+            .contains("sol_node_health{identity=\"id-1\",network=\"poll-recovery-test\"} 0"));
+        assert!(rendered.contains(
+            "sol_node_catchup_distance_slots{identity=\"id-1\",network=\"poll-recovery-test\"} 42"
+        ));
+        assert!(rendered.contains("sol_rpc_up{network=\"poll-recovery-test\"} 0"));
+
+        control.set_health_behind(false);
+        let restored = wait_for_state(&observer_state, |state| state.ready).await?;
+        let rendered = observer_metrics.render()?;
+        let restored_timestamp = metric_value(
+            &rendered,
+            "sol_last_successful_snapshot_timestamp_seconds{network=\"poll-recovery-test\"}",
+        )?;
+        assert!(restored_timestamp >= degraded_timestamp);
+
         control.set_health_failure(true);
         let failed = wait_for_state(&observer_state, |state| {
-            state.completed_poll_rounds > admitted.completed_poll_rounds && !state.ready
+            state.completed_poll_rounds > restored.completed_poll_rounds && !state.ready
         })
         .await?;
         assert_eq!(failed.clean_poll_rounds, 0);
@@ -273,7 +308,7 @@ async fn failed_poll_retains_snapshot_and_reenters_readiness_after_recovery() ->
                 &rendered,
                 "sol_last_successful_snapshot_timestamp_seconds{network=\"poll-recovery-test\"}",
             )?,
-            successful_timestamp
+            restored_timestamp
         );
         assert!(
             metric_value(
@@ -290,14 +325,6 @@ async fn failed_poll_retains_snapshot_and_reenters_readiness_after_recovery() ->
             readmitted.completed_poll_rounds
                 >= failed.completed_poll_rounds + u64::from(ADMISSION_CLEAN_POLL_ROUNDS)
         );
-        let rendered = observer_metrics.render()?;
-        assert!(
-            metric_value(
-                &rendered,
-                "sol_last_successful_snapshot_timestamp_seconds{network=\"poll-recovery-test\"}",
-            )? > successful_timestamp
-        );
-        assert!(rendered.contains("sol_watcher_ready{network=\"poll-recovery-test\"} 1"));
 
         Ok(TaskExit::ShutdownRequested)
     });
@@ -513,6 +540,7 @@ rpc_url = "{rpc_url}"
 
 [modes.health.commands]
 rpc_health = ["recovering-rpc"]
+node_status = ["recovering-rpc"]
 
 [modes.consensus.commands]
 epoch_info = ["recovering-rpc"]
@@ -569,6 +597,7 @@ fn modes_for(connector: &str) -> ModesConfig {
             commands: HealthCommands {
                 rpc_health: route(),
                 ws_health: vec![],
+                node_status: route(),
             },
         },
         consensus: ConsensusModeConfig {

@@ -100,6 +100,7 @@ commitment = "confirmed"
         r#"[modes.health.commands]
 rpc_health = [{route}]
 ws_health = [{route}]
+node_status = [{route}]
 
 [modes.consensus.commands]
 epoch_info = [{route}]
