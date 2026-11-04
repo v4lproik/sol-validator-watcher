@@ -14,9 +14,9 @@ use tokio_tungstenite::accept_async;
 async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
     let (rejected_url, rejected_server) = start_websocket_server(WebsocketResponse::Reject).await?;
     let (accepted_url, accepted_server) = start_websocket_server(WebsocketResponse::Accept).await?;
-    let config = Config {
-        network: "websocket-fallback-test".to_string(),
-        connectors: vec![
+    let config = websocket_config(
+        "websocket-fallback-test",
+        vec![
             ConnectorConfig {
                 name: "rejected-ws".to_string(),
                 provider: "mock".to_string(),
@@ -30,18 +30,8 @@ async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
                 ..ConnectorConfig::default()
             },
         ],
-        modes: ModesConfig {
-            health: HealthModeConfig {
-                commands: HealthCommands {
-                    rpc_health: Vec::new(),
-                    ws_health: vec!["rejected-ws".to_string(), "accepted-ws".to_string()],
-                    node_status: Vec::new(),
-                },
-            },
-            ..ModesConfig::default()
-        },
-        ..Config::default()
-    };
+        &["rejected-ws", "accepted-ws"],
+    );
     let mailbox = WatcherStateMailbox::new();
     let sources = SourceChain::from_config(&config, mailbox.rpc_telemetry())?;
     let metrics = Arc::new(Metrics::new()?);
@@ -80,6 +70,67 @@ async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
     });
 
     tasks.run().await
+}
+
+#[tokio::test]
+async fn websocket_route_exhaustion_preserves_every_connector_failure() -> Result<()> {
+    let (first_url, first_server) = start_websocket_server(WebsocketResponse::Reject).await?;
+    let (second_url, second_server) = start_websocket_server(WebsocketResponse::Reject).await?;
+    let config = websocket_config(
+        "websocket-exhaustion-test",
+        vec![
+            ConnectorConfig {
+                name: "first-ws".to_string(),
+                provider: "first-provider".to_string(),
+                ws_url: Some(first_url),
+                ..ConnectorConfig::default()
+            },
+            ConnectorConfig {
+                name: "second-ws".to_string(),
+                provider: "second-provider".to_string(),
+                ws_url: Some(second_url),
+                ..ConnectorConfig::default()
+            },
+        ],
+        &["first-ws", "second-ws"],
+    );
+    let sources =
+        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+
+    let error = match sources.websocket_healthy().await {
+        Ok(_) => anyhow::bail!("all rejected websocket connectors must fail"),
+        Err(error) => error,
+    };
+    first_server
+        .await
+        .context("first rejected websocket server task failed")??;
+    second_server
+        .await
+        .context("second rejected websocket server task failed")??;
+
+    let message = format!("{error:#}");
+    assert!(message.contains("all 2 connectors failed for websocket health command"));
+    assert!(message.contains("connector \"first-ws\" (provider \"first-provider\")"));
+    assert!(message.contains("connector \"second-ws\" (provider \"second-provider\")"));
+    Ok(())
+}
+
+fn websocket_config(network: &str, connectors: Vec<ConnectorConfig>, route: &[&str]) -> Config {
+    Config {
+        network: network.to_string(),
+        connectors,
+        modes: ModesConfig {
+            health: HealthModeConfig {
+                commands: HealthCommands {
+                    rpc_health: Vec::new(),
+                    ws_health: route.iter().map(|name| (*name).to_string()).collect(),
+                    node_status: Vec::new(),
+                },
+            },
+            ..ModesConfig::default()
+        },
+        ..Config::default()
+    }
 }
 
 #[derive(Clone, Copy)]
