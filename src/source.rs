@@ -74,41 +74,48 @@ struct ConnectorAttemptFailure {
     error: anyhow::Error,
 }
 
+impl fmt::Display for ConnectorAttemptFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "connector {:?} (provider {:?}): {:#}",
+            self.connector, self.provider, self.error
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
-enum RouteFailureContext {
+enum RouteOperation {
     RequiredCommand(CommandId),
     WebsocketHealth,
 }
 
+impl fmt::Display for RouteOperation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RequiredCommand(command) => {
+                write!(formatter, "required command {}", command.as_str())
+            }
+            Self::WebsocketHealth => formatter.write_str("websocket health command"),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct RouteExhaustedError {
-    context: RouteFailureContext,
+    operation: RouteOperation,
     failures: Vec<ConnectorAttemptFailure>,
 }
 
 impl fmt::Display for RouteExhaustedError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let connector_suffix = if self.failures.len() == 1 { "" } else { "s" };
         write!(
             formatter,
-            "all {} connector{} failed for ",
-            self.failures.len(),
-            connector_suffix
+            "connector route exhausted for {}",
+            self.operation
         )?;
-        match self.context {
-            RouteFailureContext::RequiredCommand(command) => {
-                write!(formatter, "required command {}", command.as_str())?;
-            }
-            RouteFailureContext::WebsocketHealth => {
-                formatter.write_str("websocket health command")?;
-            }
-        }
         for failure in &self.failures {
-            write!(
-                formatter,
-                "; connector {:?} (provider {:?}): {:#}",
-                failure.connector, failure.provider, failure.error
-            )?;
+            write!(formatter, "; {failure}")?;
         }
         Ok(())
     }
@@ -292,7 +299,7 @@ impl SourceChain {
         C: SourceCommand,
     {
         let route = &self.routes[C::ID.index()];
-        let mut failures = Vec::with_capacity(route.len());
+        let mut failures = Vec::new();
         for (index, connector_index) in route.iter().enumerate() {
             let connector = &self.connectors[*connector_index];
             let Some(client) = connector.rpc_client.as_ref() else {
@@ -325,7 +332,7 @@ impl SourceChain {
 
         if !failures.is_empty() {
             return Err(RouteExhaustedError {
-                context: RouteFailureContext::RequiredCommand(C::ID),
+                operation: RouteOperation::RequiredCommand(C::ID),
                 failures,
             }
             .into());
@@ -378,7 +385,7 @@ impl SourceChain {
     pub async fn websocket_healthy(&self) -> Result<Option<SourceSelection>> {
         let command = CommandId::WsHealth;
         let route = &self.routes[command.index()];
-        let mut failures = Vec::with_capacity(route.len());
+        let mut failures = Vec::new();
         for (index, connector_index) in route.iter().enumerate() {
             let connector = &self.connectors[*connector_index];
             let Some(client) = connector.ws_client.as_ref() else {
@@ -408,7 +415,7 @@ impl SourceChain {
             Ok(None)
         } else {
             Err(RouteExhaustedError {
-                context: RouteFailureContext::WebsocketHealth,
+                operation: RouteOperation::WebsocketHealth,
                 failures,
             }
             .into())

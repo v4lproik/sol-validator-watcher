@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Simplified route-exhaustion diagnostics with composable typed formatting and deferred failure-buffer allocation until a connector actually fails.
 - Preserved every connector and causal error when a configured WebSocket health route is exhausted instead of returning only the final probe failure.
 - Preserved every connector and causal error when a required command exhausts its fallback route, and propagated `minimumLedgerSlot` failures instead of treating failed reward-history prerequisites as absent.
 - Added the optional routed `node-status` command for node identity, validator version and feature set, block height, structured `getHealth` catch-up distance, and current/delinquent vote-set classification.
