@@ -114,15 +114,20 @@ async fn jito_reward_command_falls_back_to_the_next_connector() -> Result<()> {
 }
 
 #[tokio::test]
-async fn jito_route_errors_do_not_expose_secret_query_parameters() -> Result<()> {
+async fn jito_transport_errors_do_not_expose_secret_query_parameters() -> Result<()> {
     let secret = "provider-secret";
-    let (api_url, server, _) =
-        start_mock_jito_server(StatusCode::SERVICE_UNAVAILABLE, "unavailable").await?;
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("failed to bind refused Jito API address")?;
+    let address = listener
+        .local_addr()
+        .context("failed to read refused Jito API address")?;
+    drop(listener);
     let config = Config {
         connectors: vec![jito_connector(
             "jito-api",
             "jito",
-            format!("{api_url}?api-key={secret}"),
+            format!("http://{address}/api/v1?api-key={secret}"),
         )],
         modes: ModesConfig {
             economics: EconomicsModeConfig {
@@ -146,13 +151,13 @@ async fn jito_route_errors_do_not_expose_secret_query_parameters() -> Result<()>
         })
         .await
     {
-        Ok(_) => anyhow::bail!("HTTP 503 must fail the configured Jito route"),
+        Ok(_) => anyhow::bail!("connection refusal must fail the configured Jito route"),
         Err(error) => error,
     };
     let message = format!("{error:#}");
-    assert!(message.contains("HTTP 503 Service Unavailable"));
+    assert!(message.contains("Jito validator rewards request failed"));
+    assert!(message.contains("error sending request"));
     assert!(!message.contains(secret));
-    server.abort();
     Ok(())
 }
 
