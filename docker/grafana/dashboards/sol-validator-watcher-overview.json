@@ -1983,7 +1983,7 @@
       },
       "id": 20,
       "panels": [],
-      "title": "Readiness and RPC Responses",
+      "title": "Readiness and Transport Responses",
       "type": "row"
     },
     {
@@ -2303,9 +2303,21 @@
           "legendFormat": "RPC failures",
           "range": false,
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (connector) (sol_ws_probe_failures_total{network=~\"$network\"})",
+          "instant": true,
+          "legendFormat": "WS {{connector}} failures",
+          "range": false,
+          "refId": "D"
         }
       ],
-      "title": "RPC Responses and Failures",
+      "title": "Transport Responses and Failures",
       "type": "bargauge"
     }
   ],

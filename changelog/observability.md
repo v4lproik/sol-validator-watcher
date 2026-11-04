@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added connector-attributed cumulative WebSocket probe failure metrics, overview dashboard visibility, and a tested repeated-failure alert.
 - Preserved last-successful snapshot data and timestamps across recoverable failed polling rounds while failure, mode-health, readiness, and stale-snapshot signals continue to update.
 - Added snapshot-age, configured poll-interval, and RPC reliability metrics, an overview freshness panel, and poll-aware freshness-gated Prometheus alerts for watcher, validator, leadership, and VAT-funding risks.
 - Split Prometheus registration, state updates, rendering, and tests into an observability module tree without changing the exported metric contract.

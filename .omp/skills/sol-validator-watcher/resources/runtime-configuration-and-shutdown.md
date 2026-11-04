@@ -84,8 +84,9 @@ liveness files, signals, and shutdown.
 - Shutdown waits for supervised tasks to finish. Cancellation must interrupt
   polling sleeps without waiting for the full interval.
 - Dependency guards run before collection. The `health.rpc_health` route is
-  fail-closed; `health.ws_health` is probed only through its explicitly named
-  connectors and remains optional when no named connector has `ws_url`.
+  fail-closed. `health.ws_health` records every failed connector attempt, marks
+  health mode down only when its configured route is exhausted, and remains
+  optional when no named connector has `ws_url`.
 - Verify every declared standard Solana RPC compatibility profile and provider
   feature before dependency health or collection. Startup verification failure
   is fatal; reload verification failure preserves the last-known-good runtime.

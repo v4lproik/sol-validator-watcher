@@ -1,0 +1,114 @@
+use super::SourceChain;
+use crate::{
+    config::{Config, ConnectorConfig, HealthCommands, HealthModeConfig, ModesConfig},
+    metrics::Metrics,
+    tasks::{TaskExit, TaskManager},
+    watcher_state::WatcherStateMailbox,
+};
+use anyhow::{Context, Result};
+use std::sync::Arc;
+use tokio::{net::TcpListener, task::JoinHandle};
+use tokio_tungstenite::accept_async;
+
+#[tokio::test]
+async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
+    let (rejected_url, rejected_server) = start_websocket_server(WebsocketResponse::Reject).await?;
+    let (accepted_url, accepted_server) = start_websocket_server(WebsocketResponse::Accept).await?;
+    let config = Config {
+        network: "websocket-fallback-test".to_string(),
+        connectors: vec![
+            ConnectorConfig {
+                name: "rejected-ws".to_string(),
+                provider: "mock".to_string(),
+                ws_url: Some(rejected_url),
+                ..ConnectorConfig::default()
+            },
+            ConnectorConfig {
+                name: "accepted-ws".to_string(),
+                provider: "mock".to_string(),
+                ws_url: Some(accepted_url),
+                ..ConnectorConfig::default()
+            },
+        ],
+        modes: ModesConfig {
+            health: HealthModeConfig {
+                commands: HealthCommands {
+                    rpc_health: Vec::new(),
+                    ws_health: vec!["rejected-ws".to_string(), "accepted-ws".to_string()],
+                },
+            },
+            ..ModesConfig::default()
+        },
+        ..Config::default()
+    };
+    let mailbox = WatcherStateMailbox::new();
+    let sources = SourceChain::from_config(&config, mailbox.rpc_telemetry())?;
+    let metrics = Arc::new(Metrics::new()?);
+    let (state, actor) = mailbox.start(&config.network, Arc::clone(&metrics));
+    metrics.begin_poll(&config, &sources);
+    let mut tasks = TaskManager::new();
+    tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
+    tasks.spawn("websocket-fallback-scenario", async move {
+        state.begin_poll().await?;
+        let source = sources
+            .websocket_healthy()
+            .await?
+            .context("expected the fallback websocket connector to succeed")?;
+        assert_eq!(source.connector.as_ref(), "accepted-ws");
+        assert_eq!(source.precedence, 2);
+
+        let completion = state.complete_poll().await?;
+        assert_eq!(completion.state.clean_poll_rounds, 1);
+
+        let rendered = metrics.render()?;
+        assert!(rendered.contains(
+            "sol_ws_probe_failures_total{connector=\"rejected-ws\",network=\"websocket-fallback-test\"} 1"
+        ));
+        assert!(rendered.contains(
+            "sol_ws_probe_failures_total{connector=\"accepted-ws\",network=\"websocket-fallback-test\"} 0"
+        ));
+
+        rejected_server
+            .await
+            .context("rejected websocket server task failed")??;
+        accepted_server
+            .await
+            .context("accepted websocket server task failed")??;
+
+        Ok(TaskExit::ShutdownRequested)
+    });
+
+    tasks.run().await
+}
+
+#[derive(Clone, Copy)]
+enum WebsocketResponse {
+    Accept,
+    Reject,
+}
+
+async fn start_websocket_server(
+    response: WebsocketResponse,
+) -> Result<(String, JoinHandle<Result<()>>)> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("failed to bind websocket test server")?;
+    let address = listener
+        .local_addr()
+        .context("failed to read websocket test server address")?;
+    let task = tokio::spawn(async move {
+        let (stream, _) = listener
+            .accept()
+            .await
+            .context("failed to accept websocket test connection")?;
+        if matches!(response, WebsocketResponse::Accept) {
+            let stream = accept_async(stream)
+                .await
+                .context("failed to accept websocket test handshake")?;
+            drop(stream);
+        }
+        Ok(())
+    });
+
+    Ok((format!("ws://{address}"), task))
+}

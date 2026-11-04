@@ -448,6 +448,7 @@ fn renders_and_resets_snapshot_freshness_and_rpc_request_metrics() -> Result<()>
         Duration::from_millis(420),
     );
     metrics.record_rpc_request_failure("devnet", "primary", "getEpochInfo");
+    metrics.record_ws_probe_failure("devnet", "primary-ws");
 
     let rendered = metrics.render()?;
     for sample in [
@@ -457,6 +458,7 @@ fn renders_and_resets_snapshot_freshness_and_rpc_request_metrics() -> Result<()>
         "sol_snapshot_failures_total{network=\"devnet\"} 1",
         "sol_rpc_request_duration_seconds_count{connector=\"primary\",method=\"getEpochInfo\",network=\"devnet\"} 1",
         "sol_rpc_request_failures_total{connector=\"primary\",method=\"getEpochInfo\",network=\"devnet\"} 1",
+        "sol_ws_probe_failures_total{connector=\"primary-ws\",network=\"devnet\"} 1",
     ] {
         assert!(rendered.contains(sample), "missing metric sample: {sample}");
     }

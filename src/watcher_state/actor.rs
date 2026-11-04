@@ -1,6 +1,6 @@
 //! Watcher-state actor, command handles, and periodic state reporting.
 //!
-//! The actor serializes poll transitions with RPC outcomes so readiness and
+//! The actor serializes poll transitions with transport outcomes so readiness and
 //! exported counters describe one coherent event order.
 
 use super::{PollCompletion, RpcResponseCounts, WatcherStateSnapshot};
@@ -34,6 +34,15 @@ pub(crate) struct RpcTelemetry {
     _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
 }
 
+/// Connector-bound WebSocket failure producer preserving actor command ordering.
+#[derive(Clone)]
+pub(crate) struct ConnectorWebsocketTelemetry {
+    commands: mpsc::UnboundedSender<WatcherStateCommand>,
+    connector: Arc<str>,
+    #[cfg(test)]
+    _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
+}
+
 /// Final protocol outcome for one timed JSON-RPC request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RpcRequestOutcome {
@@ -60,7 +69,7 @@ enum WatcherStateErrorKind {
     InvalidTransition(StateTransitionError),
 }
 
-/// Single owner of readiness transitions and RPC response counters.
+/// Single owner of readiness transitions and transport counters.
 pub(crate) struct WatcherStateActor {
     commands: mpsc::UnboundedReceiver<WatcherStateCommand>,
     snapshots: watch::Sender<WatcherStateSnapshot>,
@@ -83,6 +92,9 @@ enum WatcherStateCommand {
     RecordRpcFailure {
         connector: Arc<str>,
         method: &'static str,
+    },
+    RecordWebsocketProbeFailure {
+        connector: Arc<str>,
     },
     ResetAdmission {
         network: Arc<str>,
@@ -225,6 +237,16 @@ impl RpcTelemetry {
         }
     }
 
+    /// Binds WebSocket probe failures from this handle to one configured connector.
+    pub(crate) fn for_websocket_connector(&self, connector: &str) -> ConnectorWebsocketTelemetry {
+        ConnectorWebsocketTelemetry {
+            commands: self.commands.clone(),
+            connector: Arc::from(connector),
+            #[cfg(test)]
+            _receiver_guard: self._receiver_guard.clone(),
+        }
+    }
+
     #[cfg(test)]
     /// Queues one received HTTP response status for classification.
     pub(crate) fn record_response(&self, status: u16) -> Result<()> {
@@ -285,6 +307,19 @@ impl ConnectorRpcTelemetry {
                 method,
             })
             .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC failure"))
+    }
+}
+
+impl ConnectorWebsocketTelemetry {
+    /// Queues one failed WebSocket reachability probe.
+    pub(crate) fn record_failure(&self) -> Result<()> {
+        self.commands
+            .send(WatcherStateCommand::RecordWebsocketProbeFailure {
+                connector: Arc::clone(&self.connector),
+            })
+            .map_err(|_| {
+                anyhow!("watcher state actor stopped before recording a websocket probe failure")
+            })
     }
 }
 
@@ -432,6 +467,10 @@ impl WatcherStateActor {
             }
             WatcherStateCommand::RecordRpcFailure { connector, method } => {
                 self.record_rpc_failure(connector.as_ref(), method);
+            }
+            WatcherStateCommand::RecordWebsocketProbeFailure { connector } => {
+                self.metrics
+                    .record_ws_probe_failure(self.state.network.as_ref(), connector.as_ref());
             }
             WatcherStateCommand::ResetAdmission { network, reply } => {
                 self.state.network = network;

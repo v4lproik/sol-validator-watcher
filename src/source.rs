@@ -94,7 +94,11 @@ impl Connector {
                 format!("failed to build RPC client for connector {:?}", config.name)
             })?;
         let ws_client = config.ws_url.as_ref().map(|url| {
-            WebsocketProbeClient::new(url.clone(), Duration::from_secs(config.ws_timeout_sec))
+            WebsocketProbeClient::new(
+                url.clone(),
+                Duration::from_secs(config.ws_timeout_sec),
+                telemetry.for_websocket_connector(&config.name),
+            )
         });
 
         Ok(Self {
@@ -316,7 +320,8 @@ impl SourceChain {
 
     /// Probes the configured WebSocket health route with ordered fallback.
     ///
-    /// Returns `Ok(None)` when no WebSocket route is configured.
+    /// Every failed connector attempt records telemetry before fallback. Returns
+    /// `Ok(None)` when no WebSocket route is configured.
     pub async fn websocket_healthy(&self) -> Result<Option<SourceSelection>> {
         let command = CommandId::WsHealth;
         let mut last_error = None;
@@ -352,3 +357,6 @@ impl SourceChain {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
