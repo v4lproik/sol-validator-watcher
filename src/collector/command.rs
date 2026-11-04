@@ -3,7 +3,10 @@
 //! Commands describe one operation and output type. Route selection and fallback
 //! remain the responsibility of the source chain.
 
-use super::{AccountBalances, BlockProduction, EpochInfo, RewardSample, RpcClient, VoteAccounts};
+use super::{
+    AccountBalances, BlockProduction, EpochInfo, NodeHealth, NodeRpcStatus, RewardSample,
+    RpcClient, VoteAccounts,
+};
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -24,10 +27,25 @@ pub(crate) struct GetHealth;
 
 impl SourceCommand for GetHealth {
     const ID: CommandId = CommandId::RpcHealth;
-    type Output = ();
+    type Output = NodeHealth;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
-        client.ensure_healthy().await
+        client.node_health().await
+    }
+}
+
+/// Optional node-local identity, software, block-height, and health command.
+pub(crate) struct GetNodeStatus;
+
+impl SourceCommand for GetNodeStatus {
+    const ID: CommandId = CommandId::NodeStatus;
+    type Output = NodeRpcStatus;
+
+    async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
+        client
+            .node_status()
+            .await
+            .context("node-local status collection failed")
     }
 }
 

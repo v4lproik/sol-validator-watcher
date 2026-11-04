@@ -114,6 +114,48 @@ tests:
             exp_annotations:
               summary: "Repeated WebSocket probe failures on primary-ws"
               description: "Connector primary-ws recorded at least three WebSocket reachability failures in five minutes."
+  - name: node-local operator health alerts
+    interval: 1m
+    input_series:
+      - series: 'sol_last_successful_snapshot_timestamp_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '0 60 120 180 240 300'
+      - series: 'sol_watcher_poll_interval_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '15+0x5'
+      - series: 'sol_node_health{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1"}'
+        values: '0+0x5'
+      - series: 'sol_node_info{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",version="3.1.8",feature_set="2891131721",voting_status="not-found"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorNodeBehind
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              identity: validator-1
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: critical
+            exp_annotations:
+              summary: "Validator node validator-1 is behind"
+              description: "The node-local RPC endpoint reports that validator-1 is behind the cluster tip on mainnet-beta."
+      - eval_time: 5m
+        alertname: SolValidatorNodeNotVoting
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              feature_set: "2891131721"
+              identity: validator-1
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+              version: "3.1.8"
+              voting_status: not-found
+            exp_annotations:
+              summary: "Validator node validator-1 is not in the current vote set"
+              description: "The node identity is reported as not-found on mainnet-beta."
+
   - name: fresh validator risk and funding alerts
     interval: 1m
     input_series:
@@ -190,7 +232,7 @@ tests:
               summary: "Vote account vote-1 lacks next-epoch VAT funding"
               description: "The available reserve is below the 0.8 SOL vote-account charge for the next epoch."
 
-  - name: stale snapshot suppresses validator condition alerts
+  - name: stale snapshot suppresses snapshot condition alerts
     interval: 1m
     input_series:
       - series: 'sol_last_successful_snapshot_timestamp_seconds{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
@@ -199,9 +241,19 @@ tests:
         values: '15+0x6'
       - series: 'sol_watched_validator_info{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1",status="delinquent"}'
         values: '1+0x6'
+      - series: 'sol_node_health{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1"}'
+        values: '0+0x6'
+      - series: 'sol_node_info{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",version="3.1.8",feature_set="2891131721",voting_status="not-found"}'
+        values: '1+0x6'
     alert_rule_test:
       - eval_time: 5m
         alertname: SolValidatorWatchedValidatorDelinquent
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: SolValidatorNodeBehind
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: SolValidatorNodeNotVoting
         exp_alerts: []
 
   - name: slow polling interval extends freshness window

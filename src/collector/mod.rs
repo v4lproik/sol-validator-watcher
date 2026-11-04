@@ -9,15 +9,16 @@ mod model;
 mod rpc;
 mod snapshot;
 
-pub use model::{ModeStatus, Snapshot, SnapshotDataSource, WatchedValidatorMetrics};
+pub use model::{ModeStatus, NodeHealth, Snapshot, SnapshotDataSource, WatchedValidatorMetrics};
 pub use rpc::RpcClient;
 pub use snapshot::{collect_snapshot, ensure_economics_supported};
 
 use aggregate::reward_epoch_block_range;
-pub(crate) use model::{AccountBalances, RewardSample};
+pub(crate) use model::{AccountBalances, NodeRpcStatus, RewardSample};
 #[cfg(test)]
 pub(crate) use model::{
-    EconomicsMetrics, EpochCreditsSample, ScopeMetrics, ValidatorRecord, ValidatorStatus,
+    EconomicsMetrics, EpochCreditsSample, NodeMetrics, NodeVotingStatus, ScopeMetrics,
+    ValidatorRecord, ValidatorStatus,
 };
 pub(crate) use rpc::{BlockProduction, EpochInfo, VoteAccounts};
 

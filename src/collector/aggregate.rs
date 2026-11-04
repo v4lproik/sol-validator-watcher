@@ -307,6 +307,7 @@ pub(super) fn aggregate_records(
         watched_validators,
         data_sources: vec![],
         mode_statuses: vec![],
+        node: None,
         economics: None,
     }
 }

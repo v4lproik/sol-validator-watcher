@@ -38,6 +38,8 @@ enum MockRpcProfile {
     StrictCapabilityParams,
     NoAccountSpace,
     NoCurrentBlockProduction,
+    Behind,
+    BehindHttp503,
     Unhealthy,
     NoEpochInfo,
     NoInflationRewards,
@@ -95,7 +97,8 @@ async fn start_recording_mock_rpc_server(
 fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
     let actual = Value::Array(params.to_vec());
     match method {
-        "getHealth" | "minimumLedgerSlot" => actual == json!([]),
+        "getHealth" | "getIdentity" | "getVersion" | "minimumLedgerSlot" => actual == json!([]),
+        "getBlockHeight" => actual == json!([{ "commitment": "confirmed" }]),
         "getEpochInfo" => actual == json!([{ "commitment": "confirmed" }]),
         "getVoteAccounts" => {
             actual
@@ -176,6 +179,29 @@ async fn mock_rpc_handler(
 
     match method {
         "getHealth" => {
+            if matches!(
+                profile,
+                MockRpcProfile::Behind | MockRpcProfile::BehindHttp503
+            ) {
+                let status = if matches!(profile, MockRpcProfile::BehindHttp503) {
+                    StatusCode::SERVICE_UNAVAILABLE
+                } else {
+                    StatusCode::OK
+                };
+                return (
+                    status,
+                    Json(json!({
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32005,
+                            "message": "Node is behind by 42 slots",
+                            "data": { "numSlotsBehind": 42 }
+                        },
+                        "id": 1
+                    })),
+                )
+                    .into_response();
+            }
             let health = if matches!(profile, MockRpcProfile::Unhealthy) {
                 "unhealthy"
             } else {
@@ -183,6 +209,20 @@ async fn mock_rpc_handler(
             };
             (StatusCode::OK, Json(rpc_success(json!(health)))).into_response()
         }
+        "getIdentity" => (
+            StatusCode::OK,
+            Json(rpc_success(json!({ "identity": "id-1" }))),
+        )
+            .into_response(),
+        "getVersion" => (
+            StatusCode::OK,
+            Json(rpc_success(json!({
+                "solana-core": "3.1.8",
+                "feature-set": 2_891_131_721u32
+            }))),
+        )
+            .into_response(),
+        "getBlockHeight" => (StatusCode::OK, Json(rpc_success(json!(1_233)))).into_response(),
         "getEpochInfo" => {
             if matches!(profile, MockRpcProfile::NoEpochInfo) {
                 return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
@@ -394,6 +434,7 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
             commands: HealthCommands {
                 rpc_health: route(),
                 ws_health: vec![],
+                node_status: route(),
             },
         },
         consensus: ConsensusModeConfig {

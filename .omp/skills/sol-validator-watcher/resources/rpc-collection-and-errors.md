@@ -57,10 +57,11 @@ probes, and economics collection.
 - Command source requirements keep three independent axes: transport, standard
   Solana RPC compatibility, and provider feature. Never infer one from
   `provider`.
-- `core` compatibility supplies health, epoch info, vote accounts, and
-  current/next leader schedules. `extended` also supplies recent performance
-  samples, current block production, account reads, rent exemption, inflation
-  rewards, and minimum ledger slot. `extended` satisfies a `core` requirement.
+- `core` compatibility supplies health, identity, validator version, block
+  height, epoch info, vote accounts, and current/next leader schedules.
+  `extended` also supplies recent performance samples, current block
+  production, account reads, rent exemption, inflation rewards, and minimum
+  ledger slot. `extended` satisfies a `core` requirement.
 - These are watcher-defined standard Solana JSON-RPC compatibility profiles,
   not provider product tiers. Agave `--full-rpc-api` maps to `extended`; hosted
   providers may expose the same methods alongside independent proprietary APIs.
@@ -75,6 +76,10 @@ probes, and economics collection.
 - Required and optional execution are separate policies. Required commands
   exhaust their route and return the last causal error. Optional commands may
   exhaust their route and return absence, but every failed attempt is logged.
+- Solana `getHealth` error `-32005` is a structured unhealthy result, not a
+  transport or protocol failure. Preserve `data.numSlotsBehind` when present,
+  publish node health as down, and continue the completed snapshot so operators
+  can observe the degraded node. Other JSON-RPC errors remain failures.
 - Do not depend on hash-map iteration order.
 - Health, collection, provenance, logs, tests, and dashboards must distinguish
   the connector's declared `solana_rpc_compatibility` from each command's
@@ -100,7 +105,8 @@ probes, and economics collection.
 - Merge batches with saturating arithmetic where provider totals can approach
   integer limits.
 - Avoid duplicate prerequisite RPCs inside one collection cycle unless the
-  second read intentionally checks freshness.
+  second read intentionally checks freshness or a separately routed
+  node-local source.
 - Timeouts come from validated connector configuration. Do not add an unbounded
   request or retry loop.
 

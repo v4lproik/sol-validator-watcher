@@ -20,6 +20,7 @@ commitment = "${SOL_WATCHER_COMMITMENT:-confirmed}"
 [modes.health.commands]
 rpc_health = ["external-validator"]
 ws_health = ["external-validator"]
+node_status = ["external-validator"]
 
 [modes.consensus.commands]
 epoch_info = ["external-validator"]

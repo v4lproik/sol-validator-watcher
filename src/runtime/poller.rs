@@ -13,7 +13,7 @@ use crate::{
     },
     config::Config,
     metrics::Metrics,
-    mode::ModeId,
+    mode::{CommandId, ModeId},
     tasks::{Shutdown, TaskExit},
     watcher_state::{WatcherState, WatcherStateError, ADMISSION_CLEAN_POLL_ROUNDS},
 };
@@ -207,10 +207,16 @@ async fn run_watcher_loop_with_retry_policy(
 }
 
 async fn collect_poll_snapshot(runtime: &RuntimeState, metrics: &Metrics) -> Result<Snapshot> {
-    let (health_sources, health_status) = guard_dependencies_healthy(runtime, metrics).await?;
+    let (health_sources, mut health_status) = guard_dependencies_healthy(runtime, metrics).await?;
     let mut snapshot = collect_snapshot(&runtime.sources, &runtime.config)
         .await
         .context("failed to collect snapshot from configured command routes")?;
+    if !runtime.config.modes.route(CommandId::NodeStatus).is_empty() {
+        health_status.up &= snapshot
+            .node
+            .as_ref()
+            .is_some_and(|node| node.health.is_healthy());
+    }
     snapshot.data_sources.extend(health_sources);
     snapshot.mode_statuses.push(health_status);
     if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
@@ -266,10 +272,11 @@ async fn guard_dependencies_healthy(
             return Err(error).context("RPC health command failed for all configured connectors");
         }
     };
-    metrics.set_rpc_up(&runtime.config.network, true);
+    let rpc_up = rpc_health.value.is_healthy();
+    metrics.set_rpc_up(&runtime.config.network, rpc_up);
     let mut sources = vec![rpc_health.source.into()];
 
-    let health_up = match runtime.sources.websocket_healthy().await {
+    let websocket_up = match runtime.sources.websocket_healthy().await {
         Ok(Some(source)) => {
             metrics.set_ws_up(&runtime.config.network, true);
             sources.push(source.into());
@@ -284,6 +291,7 @@ async fn guard_dependencies_healthy(
             false
         }
     };
+    let health_up = rpc_up && websocket_up;
     metrics.set_mode_up(&runtime.config.network, ModeId::Health, health_up);
 
     Ok((

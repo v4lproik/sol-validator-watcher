@@ -140,6 +140,47 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
     Ok(())
 }
 #[tokio::test]
+async fn node_health_preserves_structured_catchup_distance() -> Result<()> {
+    let (rpc_url, server_task) = start_mock_rpc_server_with_profile(MockRpcProfile::Behind).await?;
+    let client = RpcClient::new(
+        rpc_url,
+        Duration::from_secs(5),
+        "confirmed".to_string(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+    )?;
+
+    let health = client.node_health().await?;
+    server_task.abort();
+
+    assert_eq!(
+        health,
+        crate::collector::NodeHealth::Behind { slots: Some(42) }
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn node_health_classifies_behind_error_before_http_status() -> Result<()> {
+    let (rpc_url, server_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::BehindHttp503).await?;
+    let client = RpcClient::new(
+        rpc_url,
+        Duration::from_secs(5),
+        "confirmed".to_string(),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+    )?;
+
+    let health = client.node_health().await?;
+    server_task.abort();
+
+    assert_eq!(
+        health,
+        crate::collector::NodeHealth::Behind { slots: Some(42) }
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()> {
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::Unhealthy).await?;
@@ -151,7 +192,7 @@ async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()>
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
-    let Err(error) = client.ensure_healthy().await else {
+    let Err(error) = client.node_health().await else {
         anyhow::bail!("unhealthy RPC should fail");
     };
     server_task.abort();
@@ -255,9 +296,12 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
     assert_eq!(
         core_methods.iter().map(String::as_str).collect::<Vec<_>>(),
         [
+            "getBlockHeight",
             "getEpochInfo",
             "getHealth",
+            "getIdentity",
             "getLeaderSchedule",
+            "getVersion",
             "getVoteAccounts"
         ]
     );
@@ -290,14 +334,17 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
             .map(String::as_str)
             .collect::<Vec<_>>(),
         [
+            "getBlockHeight",
             "getBlockProduction",
             "getEpochInfo",
             "getHealth",
+            "getIdentity",
             "getInflationReward",
             "getLeaderSchedule",
             "getMinimumBalanceForRentExemption",
             "getMultipleAccounts",
             "getRecentPerformanceSamples",
+            "getVersion",
             "getVoteAccounts",
             "minimumLedgerSlot"
         ]

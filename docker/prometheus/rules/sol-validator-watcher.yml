@@ -50,6 +50,36 @@ groups:
           summary: "Repeated WebSocket probe failures on {{ $labels.connector }}"
           description: "Connector {{ $labels.connector }} recorded at least three WebSocket reachability failures in five minutes."
 
+      - alert: SolValidatorNodeBehind
+        expr: |
+          (sol_node_health == 0)
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Validator node {{ $labels.identity }} is behind"
+          description: "The node-local RPC endpoint reports that {{ $labels.identity }} is behind the cluster tip on {{ $labels.network }}."
+
+      - alert: SolValidatorNodeNotVoting
+        expr: |
+          (sol_node_info{voting_status!="current"} == 1)
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validator node {{ $labels.identity }} is not in the current vote set"
+          description: "The node identity is reported as {{ $labels.voting_status }} on {{ $labels.network }}."
+
       - alert: SolValidatorWatchedValidatorDelinquent
         expr: |
           (sol_watched_validator_info{status="delinquent"} == 1)

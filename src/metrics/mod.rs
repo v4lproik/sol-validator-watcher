@@ -53,6 +53,10 @@ pub struct Metrics {
     sol_mode_up: IntGaugeVec,
     sol_mode_command_route_info: IntGaugeVec,
     sol_mode_command_source_info: IntGaugeVec,
+    sol_node_info: IntGaugeVec,
+    sol_node_health: IntGaugeVec,
+    sol_node_catchup_distance_slots: IntGaugeVec,
+    sol_node_block_height: IntGaugeVec,
     sol_validator_status_count: GaugeVec,
     sol_validator_status_stake_sol: GaugeVec,
     sol_activated_stake_sol: GaugeVec,
@@ -408,6 +412,32 @@ impl Metrics {
                 ])
                 .set(1);
         }
+        if let Some(node) = &snapshot.node {
+            let feature_set = node
+                .feature_set
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            self.sol_node_info
+                .with_label_values(&[
+                    &snapshot.network,
+                    &node.identity,
+                    &node.version,
+                    feature_set.as_str(),
+                    node.voting_status.as_str(),
+                ])
+                .set(1);
+            self.sol_node_health
+                .with_label_values(&[&snapshot.network, &node.identity])
+                .set(i64::from(node.health.is_healthy()));
+            self.sol_node_block_height
+                .with_label_values(&[&snapshot.network, &node.identity])
+                .set(metric_count(node.block_height));
+            if let Some(distance) = node.health.catchup_distance_slots() {
+                self.sol_node_catchup_distance_slots
+                    .with_label_values(&[&snapshot.network, &node.identity])
+                    .set(metric_count(distance));
+            }
+        }
         if let Some(economics) = &snapshot.economics {
             let labels = [
                 snapshot.network.as_str(),
@@ -525,6 +555,10 @@ impl Metrics {
         self.sol_reward_sample_epoch.reset();
         self.sol_average_slot_time_seconds.reset();
         self.sol_estimated_epoch_end_unixtime.reset();
+        self.sol_node_info.reset();
+        self.sol_node_health.reset();
+        self.sol_node_catchup_distance_slots.reset();
+        self.sol_node_block_height.reset();
         self.sol_economics_identity_balance_sol.reset();
         self.sol_economics_vote_account_balance_sol.reset();
         self.sol_economics_vote_account_rent_exempt_minimum_sol

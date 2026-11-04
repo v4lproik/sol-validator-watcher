@@ -54,6 +54,7 @@ fn modes_for(rpc: &str, ws: Option<&str>, economics_enabled: bool) -> ModesConfi
             commands: HealthCommands {
                 rpc_health: rpc_route(),
                 ws_health: ws.into_iter().map(str::to_string).collect(),
+                node_status: rpc_route(),
             },
         },
         consensus: ConsensusModeConfig {
