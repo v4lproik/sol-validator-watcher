@@ -47,6 +47,7 @@ task failure.
 - Log failed attempts with bounded connector identity, method/metric, and the
   causal error.
 - Preserve deterministic candidate order. When a required route is exhausted,
+  including a configured WebSocket health route whose caller degrades health,
   return every attempted connector's bounded identity and causal error; do not
   discard earlier failures after logging them.
 - A connector that returns a valid empty result succeeded; a connector that

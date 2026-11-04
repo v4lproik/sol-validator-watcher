@@ -74,22 +74,35 @@ struct ConnectorAttemptFailure {
     error: anyhow::Error,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum RouteFailureContext {
+    RequiredCommand(CommandId),
+    WebsocketHealth,
+}
+
 #[derive(Debug)]
-struct RequiredRouteError {
-    command: CommandId,
+struct RouteExhaustedError {
+    context: RouteFailureContext,
     failures: Vec<ConnectorAttemptFailure>,
 }
 
-impl fmt::Display for RequiredRouteError {
+impl fmt::Display for RouteExhaustedError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let connector_suffix = if self.failures.len() == 1 { "" } else { "s" };
         write!(
             formatter,
-            "all {} connector{} failed for required command {}",
+            "all {} connector{} failed for ",
             self.failures.len(),
-            connector_suffix,
-            self.command.as_str()
+            connector_suffix
         )?;
+        match self.context {
+            RouteFailureContext::RequiredCommand(command) => {
+                write!(formatter, "required command {}", command.as_str())?;
+            }
+            RouteFailureContext::WebsocketHealth => {
+                formatter.write_str("websocket health command")?;
+            }
+        }
         for failure in &self.failures {
             write!(
                 formatter,
@@ -101,7 +114,7 @@ impl fmt::Display for RequiredRouteError {
     }
 }
 
-impl std::error::Error for RequiredRouteError {}
+impl std::error::Error for RouteExhaustedError {}
 
 struct Connector {
     name: Arc<str>,
@@ -311,8 +324,8 @@ impl SourceChain {
         }
 
         if !failures.is_empty() {
-            return Err(RequiredRouteError {
-                command: C::ID,
+            return Err(RouteExhaustedError {
+                context: RouteFailureContext::RequiredCommand(C::ID),
                 failures,
             }
             .into());
@@ -359,12 +372,14 @@ impl SourceChain {
 
     /// Probes the configured WebSocket health route with ordered fallback.
     ///
-    /// Every failed connector attempt records telemetry before fallback. Returns
-    /// `Ok(None)` when no WebSocket route is configured.
+    /// Every failed connector attempt records telemetry and remains in the returned
+    /// error when the route is exhausted. Returns `Ok(None)` when no WebSocket route
+    /// is configured.
     pub async fn websocket_healthy(&self) -> Result<Option<SourceSelection>> {
         let command = CommandId::WsHealth;
-        let mut last_error = None;
-        for (index, connector_index) in self.routes[command.index()].iter().enumerate() {
+        let route = &self.routes[command.index()];
+        let mut failures = Vec::with_capacity(route.len());
+        for (index, connector_index) in route.iter().enumerate() {
             let connector = &self.connectors[*connector_index];
             let Some(client) = connector.ws_client.as_ref() else {
                 continue;
@@ -380,19 +395,23 @@ impl SourceChain {
                         error = ?error,
                         "connector failed for websocket health command; trying next connector"
                     );
-                    last_error = Some((connector.name.as_ref(), error));
+                    failures.push(ConnectorAttemptFailure {
+                        connector: Arc::clone(&connector.name),
+                        provider: Arc::clone(&connector.provider),
+                        error,
+                    });
                 }
             }
         }
 
-        match last_error {
-            Some((connector, error)) => Err(error).with_context(|| {
-                format!(
-                    "all connectors failed for websocket health command; last connector was {}",
-                    connector
-                )
-            }),
-            None => Ok(None),
+        if failures.is_empty() {
+            Ok(None)
+        } else {
+            Err(RouteExhaustedError {
+                context: RouteFailureContext::WebsocketHealth,
+                failures,
+            }
+            .into())
         }
     }
 }
