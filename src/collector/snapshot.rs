@@ -106,10 +106,13 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         };
         resolved.value.with_voting_status(voting_status)
     });
-    let average_slot_time_seconds = recent_performance.and_then(|resolved| {
+    let cluster_performance = recent_performance.and_then(|resolved| {
         data_sources.push(resolved.source.into());
         resolved.value
     });
+    let average_slot_time_seconds = cluster_performance
+        .as_ref()
+        .and_then(|performance| performance.average_slot_time_seconds);
 
     let current_slot = epoch_info.value.absolute_slot;
     let epoch_start_slot = current_slot.saturating_sub(epoch_info.value.slot_index);
@@ -249,7 +252,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         .value
         .slots_in_epoch
         .saturating_sub(epoch_info.value.slot_index);
-    snapshot.average_slot_time_seconds = average_slot_time_seconds;
+    snapshot.cluster_performance = cluster_performance;
     snapshot.estimated_epoch_end_unixtime =
         estimated_epoch_end_unixtime(snapshot.epoch_slots_remaining, average_slot_time_seconds);
     snapshot.data_sources = data_sources;

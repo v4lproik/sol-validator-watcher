@@ -4,8 +4,8 @@
 //! remain the responsibility of the source chain.
 
 use super::{
-    AccountBalances, BlockProduction, EpochInfo, NodeHealth, NodeRpcStatus, RewardSample,
-    RpcClient, VoteAccounts,
+    AccountBalances, BlockProduction, ClusterPerformanceMetrics, EpochInfo, NodeHealth,
+    NodeRpcStatus, RewardSample, RpcClient, VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
@@ -79,16 +79,16 @@ impl SourceCommand for GetVoteAccounts {
     }
 }
 
-/// Optional recent-performance command that derives average slot duration.
+/// Optional recent-performance command that derives cluster rates and slot duration.
 pub(crate) struct GetRecentPerformanceSamples;
 
 impl SourceCommand for GetRecentPerformanceSamples {
     const ID: CommandId = CommandId::RecentPerformanceSamples;
-    type Output = Option<f64>;
+    type Output = Option<ClusterPerformanceMetrics>;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
         client
-            .get_average_slot_time_seconds()
+            .get_cluster_performance_metrics()
             .await
             .context("getRecentPerformanceSamples failed")
     }

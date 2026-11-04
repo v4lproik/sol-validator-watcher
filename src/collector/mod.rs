@@ -9,7 +9,10 @@ mod model;
 mod rpc;
 mod snapshot;
 
-pub use model::{ModeStatus, NodeHealth, Snapshot, SnapshotDataSource, WatchedValidatorMetrics};
+pub use model::{
+    ClusterPerformanceMetrics, ModeStatus, NodeHealth, Snapshot, SnapshotDataSource,
+    WatchedValidatorMetrics,
+};
 pub use rpc::RpcClient;
 pub use snapshot::{collect_snapshot, ensure_economics_supported};
 

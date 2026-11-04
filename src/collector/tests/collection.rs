@@ -76,7 +76,16 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
 
     assert_eq!(snapshot.epoch_progress_pct, 10.0);
     assert_eq!(snapshot.epoch_slots_remaining, 90);
-    assert_eq!(snapshot.average_slot_time_seconds, Some(0.4));
+    assert_eq!(
+        snapshot.cluster_performance,
+        Some(ClusterPerformanceMetrics {
+            average_slot_time_seconds: Some(0.4),
+            transactions_per_second: 25.0,
+            vote_transactions_per_second: Some(22.5),
+            non_vote_transactions_per_second: Some(2.5),
+            slots_per_second: 2.5,
+        })
+    );
     assert!(snapshot.estimated_epoch_end_unixtime.is_some());
     assert_eq!(snapshot.watched_validators[0].next_leader_slot, Some(810));
     assert_eq!(
@@ -131,7 +140,7 @@ async fn missing_performance_samples_omit_time_estimates_without_failing_collect
     let snapshot = collect_snapshot(&sources, &config).await?;
     server_task.abort();
 
-    assert_eq!(snapshot.average_slot_time_seconds, None);
+    assert_eq!(snapshot.cluster_performance, None);
     assert_eq!(snapshot.estimated_epoch_end_unixtime, None);
     assert_eq!(snapshot.watched_validators[0].next_leader_slot, Some(810));
     assert_eq!(
@@ -142,6 +151,58 @@ async fn missing_performance_samples_omit_time_estimates_without_failing_collect
         .data_sources
         .iter()
         .any(|source| source.command == CommandId::RecentPerformanceSamples));
+    Ok(())
+}
+
+#[tokio::test]
+async fn malformed_performance_sample_falls_back_to_the_next_connector() -> Result<()> {
+    let (primary_rpc_url, primary_server_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::InvalidPerformanceTransactionSplit)
+            .await?;
+    let (fallback_rpc_url, fallback_server_task) = start_mock_rpc_server().await?;
+    let config = Config {
+        network: "devnet".to_string(),
+        connectors: vec![
+            ConnectorConfig {
+                name: "primary".to_string(),
+                provider: "primary-provider".to_string(),
+                features: Vec::new(),
+                rpc_url: Some(primary_rpc_url),
+                rpc_timeout_sec: 5,
+                ..ConnectorConfig::default()
+            },
+            ConnectorConfig {
+                name: "fallback".to_string(),
+                provider: "fallback-provider".to_string(),
+                features: Vec::new(),
+                rpc_url: Some(fallback_rpc_url),
+                rpc_timeout_sec: 5,
+                ..ConnectorConfig::default()
+            },
+        ],
+        modes: modes_for(&["primary", "fallback"], false),
+        ..Config::default()
+    };
+    let sources =
+        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let snapshot = collect_snapshot(&sources, &config).await?;
+    primary_server_task.abort();
+    fallback_server_task.abort();
+
+    let source = snapshot
+        .data_sources
+        .iter()
+        .find(|source| source.command == CommandId::RecentPerformanceSamples)
+        .ok_or_else(|| anyhow!("missing recent-performance source"))?;
+    assert_eq!(source.connector.as_ref(), "fallback");
+    assert_eq!(source.provider.as_ref(), "fallback-provider");
+    assert_eq!(source.precedence, 2);
+    assert_eq!(
+        snapshot
+            .cluster_performance
+            .map(|performance| performance.transactions_per_second),
+        Some(25.0)
+    );
     Ok(())
 }
 

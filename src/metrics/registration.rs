@@ -58,6 +58,34 @@ impl Metrics {
             ),
             &["network"],
         )?;
+        let sol_cluster_transactions_per_second = GaugeVec::new(
+            Opts::new(
+                "sol_cluster_transactions_per_second",
+                "All transactions processed per second in the latest Solana performance sample, including votes",
+            ),
+            &["network"],
+        )?;
+        let sol_cluster_vote_transactions_per_second = GaugeVec::new(
+            Opts::new(
+                "sol_cluster_vote_transactions_per_second",
+                "Vote transactions processed per second in the latest Solana performance sample",
+            ),
+            &["network"],
+        )?;
+        let sol_cluster_non_vote_transactions_per_second = GaugeVec::new(
+            Opts::new(
+                "sol_cluster_non_vote_transactions_per_second",
+                "Non-vote transactions processed per second in the latest Solana performance sample",
+            ),
+            &["network"],
+        )?;
+        let sol_cluster_slots_per_second = GaugeVec::new(
+            Opts::new(
+                "sol_cluster_slots_per_second",
+                "Slots completed per second in the latest Solana performance sample",
+            ),
+            &["network"],
+        )?;
         let sol_estimated_epoch_end_unixtime = GaugeVec::new(
             Opts::new(
                 "sol_estimated_epoch_end_unixtime",
@@ -581,6 +609,10 @@ impl Metrics {
         register(&registry, &sol_epoch_progress_pct)?;
         register(&registry, &sol_epoch_slots_remaining)?;
         register(&registry, &sol_average_slot_time_seconds)?;
+        register(&registry, &sol_cluster_transactions_per_second)?;
+        register(&registry, &sol_cluster_vote_transactions_per_second)?;
+        register(&registry, &sol_cluster_non_vote_transactions_per_second)?;
+        register(&registry, &sol_cluster_slots_per_second)?;
         register(&registry, &sol_estimated_epoch_end_unixtime)?;
         register(&registry, &sol_watcher_up)?;
         register(&registry, &sol_rpc_up)?;
@@ -666,6 +698,10 @@ impl Metrics {
             sol_epoch_progress_pct,
             sol_epoch_slots_remaining,
             sol_average_slot_time_seconds,
+            sol_cluster_transactions_per_second,
+            sol_cluster_vote_transactions_per_second,
+            sol_cluster_non_vote_transactions_per_second,
+            sol_cluster_slots_per_second,
             sol_estimated_epoch_end_unixtime,
             sol_watcher_up,
             sol_rpc_up,

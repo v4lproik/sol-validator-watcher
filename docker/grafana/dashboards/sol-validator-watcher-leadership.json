@@ -561,6 +561,60 @@
       ],
       "title": "Skip Rate",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 10,
+      "panels": [],
+      "title": "Relative Performance",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Selected scope skip rate minus the all-network skip rate. Positive values are worse than the cluster; negative values are better.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(100 * sum by (network, scope) (sol_blocks_missed{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}) / clamp_min(sum by (network, scope) (sol_blocks_missed{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}) + sum by (network, scope) (sol_blocks_produced{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}), 1e-9)) - on (network) group_left() (100 * sum by (network) (sol_blocks_missed{scope=\"scope:all-network\",network=~\"$network\"}) / clamp_min(sum by (network) (sol_blocks_missed{scope=\"scope:all-network\",network=~\"$network\"}) + sum by (network) (sol_blocks_produced{scope=\"scope:all-network\",network=~\"$network\"}), 1e-9))",
+          "legendFormat": "{{network}} · {{scope}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Skip Rate Gap vs Network",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",

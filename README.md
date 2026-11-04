@@ -182,8 +182,16 @@ the timestamp remains absent until the first complete snapshot.
 `sol_snapshot_failures_total`, `sol_rpc_request_duration_seconds`,
 `sol_rpc_request_failures_total`, and `sol_ws_probe_failures_total` expose
 failed rounds, per-connector/per-method RPC latency and failures, and every
-failed WebSocket reachability probe by connector. When `node_status` is
-configured, `sol_node_info`, `sol_node_health`,
+failed WebSocket reachability probe by connector. The routed
+`recent-performance-samples` command publishes
+`sol_cluster_transactions_per_second`,
+`sol_cluster_vote_transactions_per_second`,
+`sol_cluster_non_vote_transactions_per_second`, and
+`sol_cluster_slots_per_second`; the vote split remains absent when the selected
+endpoint omits it. The consensus dashboard pairs these cluster rates with
+delinquent-stake and network-stake-share trends, while the leadership dashboard
+compares each selected scope's skip rate with the all-network baseline. When
+`node_status` is configured, `sol_node_info`, `sol_node_health`,
 `sol_node_catchup_distance_slots`, and `sol_node_block_height` expose the
 operator-owned node's identity, software, voting classification, cluster
 health, and height. The overview dashboard shows snapshot freshness and these

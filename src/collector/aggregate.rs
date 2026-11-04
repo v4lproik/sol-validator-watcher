@@ -296,7 +296,7 @@ pub(super) fn aggregate_records(
         slot,
         epoch_progress_pct: 0.0,
         epoch_slots_remaining: 0,
-        average_slot_time_seconds: None,
+        cluster_performance: None,
         estimated_epoch_end_unixtime: None,
         vote_credits_sample_epoch: sample_epoch,
         reward_sample_epoch,

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Expanded the routed recent-performance command with total, vote, and non-vote transaction rates plus slot throughput, preserving omitted transaction splits as absent and falling back when a sample is internally inconsistent.
 - Simplified route-exhaustion diagnostics with composable typed formatting and deferred failure-buffer allocation until a connector actually fails.
 - Preserved every connector and causal error when a configured WebSocket health route is exhausted instead of returning only the final probe failure.
 - Preserved every connector and causal error when a required command exhausts its fallback route, and propagated `minimumLedgerSlot` failures instead of treating failed reward-history prerequisites as absent.
