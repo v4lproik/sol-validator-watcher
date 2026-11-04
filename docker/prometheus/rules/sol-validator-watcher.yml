@@ -42,6 +42,14 @@ groups:
           summary: "Repeated {{ $labels.method }} failures on {{ $labels.connector }}"
           description: "Connector {{ $labels.connector }} recorded at least three {{ $labels.method }} failures in five minutes."
 
+      - alert: SolValidatorWatcherWebsocketFailureBurst
+        expr: increase(sol_ws_probe_failures_total[5m]) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated WebSocket probe failures on {{ $labels.connector }}"
+          description: "Connector {{ $labels.connector }} recorded at least three WebSocket reachability failures in five minutes."
+
       - alert: SolValidatorWatchedValidatorDelinquent
         expr: |
           (sol_watched_validator_info{status="delinquent"} == 1)

@@ -45,6 +45,7 @@ pub struct Metrics {
     sol_rpc_request_failures_total: IntCounterVec,
     sol_rpc_up: IntGaugeVec,
     sol_ws_up: IntGaugeVec,
+    sol_ws_probe_failures_total: IntCounterVec,
     sol_watcher_config_info: IntGaugeVec,
     sol_connector_info: IntGaugeVec,
     sol_connector_feature_info: IntGaugeVec,
@@ -106,13 +107,14 @@ impl Metrics {
 
         String::from_utf8(output).context("metrics were not valid UTF-8")
     }
-    /// Clears request and snapshot observations for a newly accepted configuration.
+    /// Clears transport and snapshot observations for a newly accepted configuration.
     pub fn reset_runtime_observations(&self, network: &str) {
         self.sol_last_successful_snapshot_timestamp_seconds.reset();
         self.sol_snapshot_duration_seconds.reset();
         self.sol_snapshot_failures_total.reset();
         self.sol_rpc_request_duration_seconds.reset();
         self.sol_rpc_request_failures_total.reset();
+        self.sol_ws_probe_failures_total.reset();
         self.sol_snapshot_failures_total
             .with_label_values(&[network])
             .inc_by(0);
@@ -242,6 +244,13 @@ impl Metrics {
             .set(i64::from(is_up));
     }
 
+    /// Records one failed WebSocket reachability probe.
+    pub fn record_ws_probe_failure(&self, network: &str, connector: &str) {
+        self.sol_ws_probe_failures_total
+            .with_label_values(&[network, connector])
+            .inc();
+    }
+
     /// Sets collection health for one mode.
     pub fn set_mode_up(&self, network: &str, mode: ModeId, is_up: bool) {
         self.sol_mode_up
@@ -289,6 +298,11 @@ impl Metrics {
                     bool_label(connector.has_ws()),
                 ])
                 .set(1);
+            if connector.has_ws() {
+                self.sol_ws_probe_failures_total
+                    .with_label_values(&[&config.network, connector.name.as_str()])
+                    .inc_by(0);
+            }
             for feature in &connector.features {
                 self.sol_connector_feature_info
                     .with_label_values(&[

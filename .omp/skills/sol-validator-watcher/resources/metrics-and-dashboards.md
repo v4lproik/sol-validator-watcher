@@ -40,6 +40,9 @@ operator-facing semantics.
   RPC attempts, HTTP response classes, and exact 200/403/429/500 counts are
   separate metrics. Readiness is zero until five failure-free completed rounds
   and must not be inferred from process liveness or a configured route.
+- Reset connector-attributed WebSocket probe failure counters when a new
+  configuration is accepted, initialize configured connectors at zero, and
+  increment every failed fallback attempt rather than only route exhaustion.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.

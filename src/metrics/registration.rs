@@ -169,6 +169,13 @@ impl Metrics {
             ),
             &["network"],
         )?;
+        let sol_ws_probe_failures_total = IntCounterVec::new(
+            Opts::new(
+                "sol_ws_probe_failures_total",
+                "Failed WebSocket reachability probes by connector for the current accepted configuration",
+            ),
+            &["network", "connector"],
+        )?;
         let sol_watcher_config_info = IntGaugeVec::new(
             Opts::new("sol_watcher_config_info", "Watcher transport configuration"),
             &["network", "transport_mode", "ws_configured"],
@@ -544,6 +551,7 @@ impl Metrics {
         register(&registry, &sol_watcher_up)?;
         register(&registry, &sol_rpc_up)?;
         register(&registry, &sol_ws_up)?;
+        register(&registry, &sol_ws_probe_failures_total)?;
         register(&registry, &sol_watcher_config_info)?;
         register(&registry, &sol_connector_info)?;
         register(&registry, &sol_connector_feature_info)?;
@@ -624,6 +632,7 @@ impl Metrics {
             sol_watcher_up,
             sol_rpc_up,
             sol_ws_up,
+            sol_ws_probe_failures_total,
             sol_watcher_config_info,
             sol_connector_info,
             sol_connector_feature_info,

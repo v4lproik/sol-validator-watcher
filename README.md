@@ -145,7 +145,7 @@ The URL variables contain the complete provider endpoints, including any provide
 
 Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime.
 
-## Readiness, freshness, and RPC reliability
+## Readiness, freshness, and transport reliability
 
 `/healthz` reports only that the HTTP process is serving. `/readyz` returns
 `503 Service Unavailable` until five consecutive required polling rounds
@@ -174,16 +174,18 @@ state through `sol_watcher_ready`, `sol_watcher_poll_round_count`,
 `sol_last_successful_snapshot_timestamp_seconds` and
 `sol_snapshot_duration_seconds` distinguish fresh data from a running process;
 the timestamp remains absent until the first complete snapshot.
-`sol_snapshot_failures_total`, `sol_rpc_request_duration_seconds`, and
-`sol_rpc_request_failures_total` expose failed rounds and per-connector,
-per-method RPC latency and failures with bounded labels. The overview dashboard
-shows snapshot age with warning and critical thresholds at 60 and 120 seconds.
+`sol_snapshot_failures_total`, `sol_rpc_request_duration_seconds`,
+`sol_rpc_request_failures_total`, and `sol_ws_probe_failures_total` expose
+failed rounds, per-connector/per-method RPC latency and failures, and every
+failed WebSocket reachability probe by connector. The overview dashboard shows
+snapshot age with warning and critical thresholds at 60 and 120 seconds.
 
 The local Prometheus scrapes only the watcher profiles selected by
 `just stack up <target>` and evaluates baseline target-down, readiness,
-freshness, RPC, validator delinquency/vote-lag, upcoming-leader, and VAT-funding
-alerts. Snapshot freshness uses the greater of 120 seconds or four configured
-poll intervals. Notification routing requires an external Alertmanager. Run
+freshness, RPC- and WebSocket-failure, validator delinquency/vote-lag,
+upcoming-leader, and VAT-funding alerts. Snapshot freshness uses the greater of
+120 seconds or four configured poll intervals. Notification routing requires an
+external Alertmanager. Run
 `just stack check` to validate the Prometheus configuration and execute its
 alert rule tests.
 

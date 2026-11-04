@@ -94,6 +94,26 @@ tests:
               summary: "Repeated getEpochInfo failures on primary"
               description: "Connector primary recorded at least three getEpochInfo failures in five minutes."
 
+
+  - name: websocket probe failure burst alert
+    interval: 1m
+    input_series:
+      - series: 'sol_ws_probe_failures_total{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",connector="primary-ws"}'
+        values: '0 1 2 3 4 5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatcherWebsocketFailureBurst
+        exp_alerts:
+          - exp_labels:
+              connector: primary-ws
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "Repeated WebSocket probe failures on primary-ws"
+              description: "Connector primary-ws recorded at least three WebSocket reachability failures in five minutes."
   - name: fresh validator risk and funding alerts
     interval: 1m
     input_series:
