@@ -2338,7 +2338,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Health reported by the configured node-local RPC endpoint relative to the cluster tip.",
+      "description": "Health reported by the configured node-local RPC endpoint relative to the cluster tip. NOT CONFIGURED means this profile has no node-status route; UNAVAILABLE means the route exists but supplied no current node series.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2347,14 +2347,24 @@
           "mappings": [
             {
               "options": {
-                "0": {
+                "-2": {
                   "color": "red",
                   "index": 0,
+                  "text": "UNAVAILABLE"
+                },
+                "-1": {
+                  "color": "blue",
+                  "index": 1,
+                  "text": "NOT CONFIGURED"
+                },
+                "0": {
+                  "color": "red",
+                  "index": 2,
                   "text": "BEHIND"
                 },
                 "1": {
                   "color": "green",
-                  "index": 1,
+                  "index": 3,
                   "text": "HEALTHY"
                 }
               },
@@ -2397,7 +2407,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value",
+        "textMode": "value_and_name",
         "wideLayout": true
       },
       "pluginVersion": "12.3.1",
@@ -2408,9 +2418,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "min(sol_node_health{network=~\"$network\"})",
+          "expr": "min by (network) (sol_node_health{network=~\"$network\"}) or ((max by (network) (sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_health{network=~\"$network\"}) or ((max by (network) (sol_watcher_up{network=~\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"})",
           "instant": true,
-          "legendFormat": "node health",
+          "legendFormat": "{{network}} · node health",
           "range": false,
           "refId": "A"
         }
@@ -2429,7 +2439,23 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "-2": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "UNAVAILABLE"
+                },
+                "-1": {
+                  "color": "blue",
+                  "index": 1,
+                  "text": "NOT CONFIGURED"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -2471,7 +2497,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "auto",
+        "textMode": "value_and_name",
         "wideLayout": true
       },
       "pluginVersion": "12.3.1",
@@ -2482,9 +2508,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(sol_node_catchup_distance_slots{network=~\"$network\"})",
+          "expr": "max by (network) (sol_node_catchup_distance_slots{network=~\"$network\"}) or ((max by (network) (sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_health{network=~\"$network\"}) or ((max by (network) (sol_watcher_up{network=~\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"})",
           "instant": true,
-          "legendFormat": "slots behind",
+          "legendFormat": "{{network}} · slots behind",
           "range": false,
           "refId": "A"
         }
@@ -2503,7 +2529,23 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "-2": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "UNAVAILABLE"
+                },
+                "-1": {
+                  "color": "blue",
+                  "index": 1,
+                  "text": "NOT CONFIGURED"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -2548,7 +2590,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (network, identity) (sol_node_block_height{network=~\"$network\"})",
+          "expr": "max by (network, identity) (sol_node_block_height{network=~\"$network\"}) or on (network) label_replace(((max by (network) (sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_block_height{network=~\"$network\"}), \"identity\", \"unavailable\", \"\", \"\") or on (network) label_replace(((max by (network) (sol_watcher_up{network=~\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}), \"identity\", \"not configured\", \"\", \"\")",
           "instant": true,
           "legendFormat": "{{network}} · {{identity}}",
           "range": false,
@@ -2572,14 +2614,24 @@
           "mappings": [
             {
               "options": {
-                "0": {
+                "-2": {
                   "color": "red",
                   "index": 0,
+                  "text": "UNAVAILABLE"
+                },
+                "-1": {
+                  "color": "blue",
+                  "index": 1,
+                  "text": "NOT CONFIGURED"
+                },
+                "0": {
+                  "color": "red",
+                  "index": 2,
                   "text": "NOT CURRENT"
                 },
                 "1": {
                   "color": "green",
-                  "index": 1,
+                  "index": 3,
                   "text": "CURRENT"
                 }
               },
@@ -2622,7 +2674,7 @@
           "values": false
         },
         "showPercentChange": false,
-        "textMode": "value",
+        "textMode": "value_and_name",
         "wideLayout": true
       },
       "pluginVersion": "12.3.1",
@@ -2633,9 +2685,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "min(max by (network, identity) (sol_node_info{network=~\"$network\",voting_status=\"current\"}) or (max by (network, identity) (sol_node_info{network=~\"$network\",voting_status=~\"delinquent|not-found\"}) * 0))",
+          "expr": "min by (network) (max by (network, identity) (sol_node_info{network=~\"$network\",voting_status=\"current\"}) or (max by (network, identity) (sol_node_info{network=~\"$network\",voting_status=~\"delinquent|not-found\"}) * 0)) or ((max by (network) (sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_info{network=~\"$network\"}) or ((max by (network) (sol_watcher_up{network=~\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"})",
           "instant": true,
-          "legendFormat": "voting",
+          "legendFormat": "{{network}} · voting",
           "range": false,
           "refId": "A"
         }
@@ -2703,6 +2755,30 @@
           "legendFormat": "{{network}} · {{identity}} · v{{version}} · feature {{feature_set}} · {{voting_status}}",
           "range": false,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max by (network) (sol_watcher_up{network=~\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}",
+          "instant": true,
+          "legendFormat": "{{network}} · NOT CONFIGURED",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(max by (network) (sol_mode_command_route_info{network=~\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_info{network=~\"$network\"}",
+          "instant": true,
+          "legendFormat": "{{network}} · UNAVAILABLE",
+          "range": false,
+          "refId": "C"
         }
       ],
       "title": "Node Identity and Version",

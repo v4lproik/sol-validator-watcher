@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Documented the node-local dashboard's unconfigured, unavailable, missing-distance, and multi-network display invariants.
 - Clarified that complete required-route error aggregation includes configured WebSocket health fallback.
 - Documented complete required-route failure aggregation and the prohibition against discarding prerequisite RPC failures.
 - Documented routed node-local status collection, structured Solana behind-state handling, snapshot-owned node metric semantics, and the required dashboard and alert boundaries.

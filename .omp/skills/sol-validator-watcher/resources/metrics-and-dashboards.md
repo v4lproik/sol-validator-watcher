@@ -68,8 +68,12 @@ operator-facing semantics.
   missing data cannot look healthy. Do not alert on root lag alone; Solana roots
   routinely trail the current slot.
 - Node-behind and node-not-voting alerts are snapshot-dependent and use the
-  same freshness gate. The overview's node-local row must distinguish healthy,
-  behind, missing-distance, current-voting, and non-current-voting states.
+  same freshness gate. In the overview's node-local row, `NOT CONFIGURED`
+  means no `node_status` route is declared; `UNAVAILABLE` means a declared
+  route supplied no node-health series. When node health exists without a
+  structured catch-up distance, that panel remains `No data`. Healthy, behind,
+  current-voting, and non-current-voting states remain distinct, and every
+  multi-network result identifies its network.
 - The repository provisions alert evaluation only. Notification routing remains
   an external Alertmanager responsibility.
 - Keep overview, consensus, leadership, and economics dashboards separate.

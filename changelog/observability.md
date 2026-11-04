@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Made every overview node-local panel distinguish an unconfigured `node_status` route from unavailable node series, preserve missing structured catch-up distance as no data, and identify each network in multi-network selections.
 - Added bounded node identity, validator software, block height, health, catch-up distance, and vote-set metrics, an overview dashboard row, and freshness-gated node-behind and node-not-voting alerts.
 - Added connector-attributed cumulative WebSocket probe failure metrics, overview dashboard visibility, and a tested repeated-failure alert.
 - Preserved last-successful snapshot data and timestamps across recoverable failed polling rounds while failure, mode-health, readiness, and stale-snapshot signals continue to update.
