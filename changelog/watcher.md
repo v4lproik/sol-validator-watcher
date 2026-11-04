@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserved every connector and causal error when a required command exhausts its fallback route, and propagated `minimumLedgerSlot` failures instead of treating failed reward-history prerequisites as absent.
 - Added the optional routed `node-status` command for node identity, validator version and feature set, block height, structured `getHealth` catch-up distance, and current/delinquent vote-set classification.
 - Counted every failed WebSocket reachability probe by connector, including fallback attempts before a later connector succeeds, without exposing endpoint URLs.
 - Added bounded per-connector, per-method RPC request duration and failure telemetry without exposing endpoint URLs.

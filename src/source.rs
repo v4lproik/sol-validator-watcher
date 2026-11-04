@@ -11,7 +11,7 @@ use crate::{
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 use tracing::warn;
 
 /// Provenance for the connector that successfully supplied one command result.
@@ -66,6 +66,42 @@ pub struct SourceRoute<'a> {
     /// Whether the connector satisfies the command's declared requirements.
     pub available: bool,
 }
+
+#[derive(Debug)]
+struct ConnectorAttemptFailure {
+    connector: Arc<str>,
+    provider: Arc<str>,
+    error: anyhow::Error,
+}
+
+#[derive(Debug)]
+struct RequiredRouteError {
+    command: CommandId,
+    failures: Vec<ConnectorAttemptFailure>,
+}
+
+impl fmt::Display for RequiredRouteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let connector_suffix = if self.failures.len() == 1 { "" } else { "s" };
+        write!(
+            formatter,
+            "all {} connector{} failed for required command {}",
+            self.failures.len(),
+            connector_suffix,
+            self.command.as_str()
+        )?;
+        for failure in &self.failures {
+            write!(
+                formatter,
+                "; connector {:?} (provider {:?}): {:#}",
+                failure.connector, failure.provider, failure.error
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for RequiredRouteError {}
 
 struct Connector {
     name: Arc<str>,
@@ -237,13 +273,14 @@ impl SourceChain {
 
     /// Executes a required command against its route until one connector succeeds.
     ///
-    /// Returns the last causal error when all declared candidates fail.
+    /// Returns every causal connector error when all declared candidates fail.
     pub async fn required<C>(&self, command: &C) -> Result<Sourced<C::Output>>
     where
         C: SourceCommand,
     {
-        let mut last_error = None;
-        for (index, connector_index) in self.routes[C::ID.index()].iter().enumerate() {
+        let route = &self.routes[C::ID.index()];
+        let mut failures = Vec::with_capacity(route.len());
+        for (index, connector_index) in route.iter().enumerate() {
             let connector = &self.connectors[*connector_index];
             let Some(client) = connector.rpc_client.as_ref() else {
                 continue;
@@ -264,19 +301,21 @@ impl SourceChain {
                         error = ?error,
                         "connector failed for required command; trying next connector"
                     );
-                    last_error = Some((connector.name.as_ref(), error));
+                    failures.push(ConnectorAttemptFailure {
+                        connector: Arc::clone(&connector.name),
+                        provider: Arc::clone(&connector.provider),
+                        error,
+                    });
                 }
             }
         }
 
-        if let Some((connector, error)) = last_error {
-            return Err(error).with_context(|| {
-                format!(
-                    "all connectors failed for required command {}; last connector was {}",
-                    C::ID.as_str(),
-                    connector
-                )
-            });
+        if !failures.is_empty() {
+            return Err(RequiredRouteError {
+                command: C::ID,
+                failures,
+            }
+            .into());
         }
         bail!(
             "no available connector for required command {}",

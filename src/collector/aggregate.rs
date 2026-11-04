@@ -360,7 +360,7 @@ pub(super) fn build_watched_validator_metrics(
 pub(super) fn reward_epoch_block_range(
     epoch_start_slot: u64,
     slots_in_epoch: u64,
-    minimum_ledger_slot: Option<u64>,
+    minimum_ledger_slot: u64,
 ) -> Option<SlotRange> {
     if epoch_start_slot == 0 || slots_in_epoch == 0 {
         return None;
@@ -369,10 +369,8 @@ pub(super) fn reward_epoch_block_range(
     let first_slot = epoch_start_slot.checked_sub(slots_in_epoch)?;
     let last_slot = epoch_start_slot.checked_sub(1)?;
 
-    if let Some(minimum_ledger_slot) = minimum_ledger_slot {
-        if first_slot < minimum_ledger_slot {
-            return None;
-        }
+    if first_slot < minimum_ledger_slot {
+        return None;
     }
 
     Some(SlotRange {

@@ -331,15 +331,15 @@ fn build_record_defaults_missing_block_data_to_zero() {
 
 #[test]
 fn reward_epoch_block_range_skips_pruned_history() {
-    assert!(reward_epoch_block_range(100, 20, Some(81)).is_none());
+    assert!(reward_epoch_block_range(100, 20, 81).is_none());
     assert!(matches!(
-        reward_epoch_block_range(100, 20, Some(80)),
+        reward_epoch_block_range(100, 20, 80),
         Some(SlotRange {
             first_slot: 80,
             last_slot: 99,
         })
     ));
-    assert!(reward_epoch_block_range(0, 20, Some(0)).is_none());
+    assert!(reward_epoch_block_range(0, 20, 0).is_none());
 }
 
 #[test]
