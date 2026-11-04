@@ -103,6 +103,7 @@ ws_url = "${SOL_DEVNET_WS_URL}"
 [modes.health.commands]
 rpc_health = ["validator", "helius-devnet"]
 ws_health = ["helius-devnet"]
+node_status = ["validator"]
 
 [modes.consensus.commands]
 epoch_info = ["validator", "helius-devnet"]
@@ -130,12 +131,14 @@ Command requirements are independent of the provider name:
 
 | Commands | Transport | Required Solana RPC compatibility | Required provider feature |
 | --- | --- | --- | --- |
-| `rpc-health`, `epoch-info`, `vote-accounts`, `current-leader-schedule`, `next-leader-schedule` | RPC | `core` | None |
+| `rpc-health`, `node-status`, `epoch-info`, `vote-accounts`, `current-leader-schedule`, `next-leader-schedule` | RPC | `core` | None |
 | `ws-health` | WebSocket | None | None |
 | `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `extended` | None |
 | `inflation-rewards`, `reward-epoch-block-production` | RPC | `extended` | `historical-data` |
 
-`core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available.
+`core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, identity, version, block-height, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available.
+
+`node_status` is an optional health-mode route intended for an operator-owned validator endpoint. When configured, it collects the active identity, validator client version and feature set, block height, structured catch-up distance, and vote-set classification from that routed connector. Route exhaustion omits the node-local series and marks health mode down without fabricating values.
 
 A Helius connector may be `extended` for the standard Solana methods while also offering DAS, Enhanced Transactions, Sender, WebSocket extensions, or LaserStream. Those are independent provider APIs and transports; `solana_rpc_compatibility = "extended"` does not claim or verify them. A provider-specific API belongs in the capability and endpoint model only when a typed watcher command consumes it.
 
@@ -177,15 +180,19 @@ the timestamp remains absent until the first complete snapshot.
 `sol_snapshot_failures_total`, `sol_rpc_request_duration_seconds`,
 `sol_rpc_request_failures_total`, and `sol_ws_probe_failures_total` expose
 failed rounds, per-connector/per-method RPC latency and failures, and every
-failed WebSocket reachability probe by connector. The overview dashboard shows
-snapshot age with warning and critical thresholds at 60 and 120 seconds.
+failed WebSocket reachability probe by connector. When `node_status` is
+configured, `sol_node_info`, `sol_node_health`,
+`sol_node_catchup_distance_slots`, and `sol_node_block_height` expose the
+operator-owned node's identity, software, voting classification, cluster
+health, and height. The overview dashboard shows snapshot freshness and these
+node-local signals with warning and critical thresholds.
 
 The local Prometheus scrapes only the watcher profiles selected by
 `just stack up <target>` and evaluates baseline target-down, readiness,
-freshness, RPC- and WebSocket-failure, validator delinquency/vote-lag,
-upcoming-leader, and VAT-funding alerts. Snapshot freshness uses the greater of
-120 seconds or four configured poll intervals. Notification routing requires an
-external Alertmanager. Run
+freshness, RPC- and WebSocket-failure, node-behind, node-not-voting, validator
+delinquency/vote-lag, upcoming-leader, and VAT-funding alerts. Snapshot
+freshness uses the greater of 120 seconds or four configured poll intervals.
+Notification routing requires an external Alertmanager. Run
 `just stack check` to validate the Prometheus configuration and execute its
 alert rule tests.
 

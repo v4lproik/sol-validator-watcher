@@ -9,7 +9,7 @@ use super::{
         ratio, resolve_economics_target, RecordBuildContext,
     },
     command,
-    model::{ModeStatus, Snapshot, ValidatorStatus},
+    model::{ModeStatus, NodeVotingStatus, Snapshot, ValidatorStatus},
     rpc::BlockProduction,
 };
 use crate::{config::Config, labels::LabelMatcher, mode::ModeId, source::SourceChain};
@@ -73,10 +73,11 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     let vote_accounts_command = command::GetVoteAccounts {
         delinquent_slot_distance: config.delinquent_slot_distance,
     };
-    let (epoch_info, vote_accounts, recent_performance) = tokio::join!(
+    let (epoch_info, vote_accounts, recent_performance, node_status) = tokio::join!(
         sources.required(&epoch_command),
         sources.required(&vote_accounts_command),
         sources.optional(&command::GetRecentPerformanceSamples),
+        sources.optional(&command::GetNodeStatus),
     );
     let epoch_info = epoch_info?;
     let vote_accounts = vote_accounts?;
@@ -84,6 +85,27 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         epoch_info.source.clone().into(),
         vote_accounts.source.clone().into(),
     ];
+    let node = node_status.map(|resolved| {
+        data_sources.push(resolved.source.into());
+        let voting_status = if vote_accounts
+            .value
+            .current
+            .iter()
+            .any(|account| account.node_pubkey == resolved.value.identity)
+        {
+            NodeVotingStatus::Current
+        } else if vote_accounts
+            .value
+            .delinquent
+            .iter()
+            .any(|account| account.node_pubkey == resolved.value.identity)
+        {
+            NodeVotingStatus::Delinquent
+        } else {
+            NodeVotingStatus::NotFound
+        };
+        resolved.value.with_voting_status(voting_status)
+    });
     let average_slot_time_seconds = recent_performance.and_then(|resolved| {
         data_sources.push(resolved.source.into());
         resolved.value
@@ -232,6 +254,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         estimated_epoch_end_unixtime(snapshot.epoch_slots_remaining, average_slot_time_seconds);
     snapshot.data_sources = data_sources;
     snapshot.economics = economics;
+    snapshot.node = node;
     snapshot.mode_statuses = vec![
         ModeStatus {
             mode: ModeId::Consensus,

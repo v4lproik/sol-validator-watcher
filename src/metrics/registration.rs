@@ -250,6 +250,40 @@ impl Metrics {
                 "precedence",
             ],
         )?;
+        let sol_node_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_node_info",
+                "Node-local identity, validator client version, feature set, and cluster-observed vote-account state",
+            ),
+            &[
+                "network",
+                "identity",
+                "version",
+                "feature_set",
+                "voting_status",
+            ],
+        )?;
+        let sol_node_health = IntGaugeVec::new(
+            Opts::new(
+                "sol_node_health",
+                "Whether the node-local RPC endpoint reports healthy relative to the cluster tip",
+            ),
+            &["network", "identity"],
+        )?;
+        let sol_node_catchup_distance_slots = IntGaugeVec::new(
+            Opts::new(
+                "sol_node_catchup_distance_slots",
+                "Slots the node-local RPC endpoint reports behind the cluster tip",
+            ),
+            &["network", "identity"],
+        )?;
+        let sol_node_block_height = IntGaugeVec::new(
+            Opts::new(
+                "sol_node_block_height",
+                "Block height reported by the node-local RPC endpoint",
+            ),
+            &["network", "identity"],
+        )?;
 
         let sol_validator_status_count = GaugeVec::new(
             Opts::new(
@@ -571,6 +605,10 @@ impl Metrics {
         register(&registry, &sol_mode_up)?;
         register(&registry, &sol_mode_command_route_info)?;
         register(&registry, &sol_mode_command_source_info)?;
+        register(&registry, &sol_node_info)?;
+        register(&registry, &sol_node_health)?;
+        register(&registry, &sol_node_catchup_distance_slots)?;
+        register(&registry, &sol_node_block_height)?;
         register(&registry, &sol_validator_status_count)?;
         register(&registry, &sol_validator_status_stake_sol)?;
         register(&registry, &sol_activated_stake_sol)?;
@@ -652,6 +690,10 @@ impl Metrics {
             sol_rpc_request_failures_total,
             sol_mode_command_route_info,
             sol_mode_command_source_info,
+            sol_node_info,
+            sol_node_health,
+            sol_node_catchup_distance_slots,
+            sol_node_block_height,
             sol_validator_status_count,
             sol_validator_status_stake_sol,
             sol_activated_stake_sol,

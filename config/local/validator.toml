@@ -20,6 +20,7 @@ labels = ["vc:validator-1", "region:sbg"]
 
 [modes.health.commands]
 rpc_health = ["local-validator"]
+node_status = ["local-validator"]
 
 [modes.consensus.commands]
 epoch_info = ["local-validator"]

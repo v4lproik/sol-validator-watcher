@@ -88,6 +88,7 @@ fn surfpool_modes() -> ModesConfig {
             commands: HealthCommands {
                 rpc_health: route(),
                 ws_health: route(),
+                node_status: route(),
             },
         },
         consensus: ConsensusModeConfig {
@@ -203,7 +204,10 @@ impl SurfpoolHarness {
                 );
             }
 
-            if runtime.block_on(client.ensure_healthy()).is_ok() {
+            if runtime
+                .block_on(client.node_health())
+                .is_ok_and(crate::collector::NodeHealth::is_healthy)
+            {
                 return Ok(());
             }
 

@@ -35,6 +35,7 @@ async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
                 commands: HealthCommands {
                     rpc_health: Vec::new(),
                     ws_health: vec!["rejected-ws".to_string(), "accepted-ws".to_string()],
+                    node_status: Vec::new(),
                 },
             },
             ..ModesConfig::default()

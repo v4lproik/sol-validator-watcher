@@ -1,8 +1,8 @@
 use super::{bool_label, Metrics};
 use crate::{
     collector::{
-        EconomicsMetrics, ModeStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
-        WatchedValidatorMetrics,
+        EconomicsMetrics, ModeStatus, NodeHealth, NodeMetrics, NodeVotingStatus, ScopeMetrics,
+        Snapshot, SnapshotDataSource, ValidatorStatus, WatchedValidatorMetrics,
     },
     config::{
         Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -110,6 +110,14 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 up: true,
             },
         ],
+        node: Some(NodeMetrics {
+            identity: "id-1".to_string(),
+            version: "3.1.8".to_string(),
+            feature_set: Some(2_891_131_721),
+            block_height: 1_233,
+            health: NodeHealth::Healthy,
+            voting_status: NodeVotingStatus::Current,
+        }),
         economics: Some(EconomicsMetrics {
             identity: "id-1".to_string(),
             vote_account: "vote-1".to_string(),
@@ -222,6 +230,13 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_watched_validator_next_leader_slot{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1300"));
     assert!(rendered.contains("sol_watched_validator_slots_until_next_leader{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 66"));
     assert!(rendered.contains("sol_watched_validator_seconds_until_next_leader{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 26.4"));
+    assert!(rendered.contains("sol_node_info{feature_set=\"2891131721\",identity=\"id-1\",network=\"mainnet-beta\",version=\"3.1.8\",voting_status=\"current\"} 1"));
+    assert!(rendered.contains("sol_node_health{identity=\"id-1\",network=\"mainnet-beta\"} 1"));
+    assert!(rendered
+        .contains("sol_node_catchup_distance_slots{identity=\"id-1\",network=\"mainnet-beta\"} 0"));
+    assert!(
+        rendered.contains("sol_node_block_height{identity=\"id-1\",network=\"mainnet-beta\"} 1233")
+    );
 
     Ok(())
 }
@@ -251,6 +266,28 @@ fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
     assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
     assert!(!rendered.contains("sol_economics_vat_epochs_available{"));
     assert!(!rendered.contains("sol_economics_vat_next_epoch_funded{"));
+    Ok(())
+}
+
+#[test]
+fn node_behind_without_distance_omits_catchup_series() -> Result<()> {
+    let metrics = Metrics::new()?;
+    metrics.update_snapshot(&Snapshot {
+        network: "mainnet-beta".to_string(),
+        node: Some(NodeMetrics {
+            identity: "id-1".to_string(),
+            version: "3.1.8".to_string(),
+            feature_set: None,
+            block_height: 1_233,
+            health: NodeHealth::Behind { slots: None },
+            voting_status: NodeVotingStatus::Current,
+        }),
+        ..Snapshot::default()
+    });
+
+    let rendered = metrics.render()?;
+    assert!(rendered.contains("sol_node_health{identity=\"id-1\",network=\"mainnet-beta\"} 0"));
+    assert!(!rendered.contains("sol_node_catchup_distance_slots{"));
     Ok(())
 }
 
@@ -322,6 +359,14 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             mode: ModeId::Consensus,
             up: true,
         }],
+        node: Some(NodeMetrics {
+            identity: "old-node-id".to_string(),
+            version: "old-version".to_string(),
+            feature_set: None,
+            block_height: 1,
+            health: NodeHealth::Behind { slots: Some(42) },
+            voting_status: NodeVotingStatus::Delinquent,
+        }),
         economics: Some(EconomicsMetrics {
             identity: "old-id".to_string(),
             vote_account: "old-vote".to_string(),
@@ -367,12 +412,17 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         }],
         data_sources: vec![],
         mode_statuses: vec![],
+        node: None,
         economics: None,
     });
 
     let rendered = metrics.render()?;
     assert!(!rendered.contains("old-id"));
     assert!(!rendered.contains("old-vote"));
+    assert!(!rendered.contains("old-node-id"));
+    assert!(!rendered.contains("old-version"));
+    assert!(!rendered.contains("sol_node_health{"));
+    assert!(!rendered.contains("sol_node_catchup_distance_slots{"));
     assert!(rendered.contains("sol_watched_validator_info{identity=\"current-id\""));
     assert!(!rendered.contains("sol_vote_credits_sample_epoch{"));
     assert!(!rendered.contains("sol_reward_sample_epoch{"));
@@ -566,6 +616,7 @@ fn modes_for(
                     .into_iter()
                     .map(str::to_string)
                     .collect(),
+                node_status: rpc_route(),
             },
         },
         consensus: ConsensusModeConfig {

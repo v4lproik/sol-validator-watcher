@@ -82,6 +82,13 @@ rent exemption divided by the current 0.8 SOL epoch charge; it excludes future
 rewards and transfers. If an RPC omits the vote account's data size, account
 balances remain available while rent and VAT series are omitted.
 
+Node-local operator health is exposed through `sol_node_info`,
+`sol_node_health`, `sol_node_catchup_distance_slots`, and
+`sol_node_block_height`. A configured `node_status` command route resolves one
+operator-owned RPC connector, preserves structured `getHealth` catch-up
+distance, and joins its active identity to the current and delinquent vote
+account sets. Missing route data remains absent instead of rendering as zero.
+
 Snapshot and transport reliability are exposed through
 `sol_last_successful_snapshot_timestamp_seconds`,
 `sol_snapshot_duration_seconds`, `sol_snapshot_failures_total`,
@@ -103,15 +110,6 @@ These are the operator signals that would most improve the dashboards.
 
 - `sol_snapshot_timestamp_seconds` when an upstream observation timestamp is
   available
-
-### Node-local operator health
-
-- node block height
-- catch-up distance
-- active identity
-- voting enabled / disabled
-- validator client version
-- node health summary
 
 ### Remaining rewards and balances
 
@@ -136,6 +134,5 @@ These are the operator signals that would most improve the dashboards.
 
 ## Recommended order
 
-1. Add node-local operator health metrics.
-2. Add finalized revenue components and configurable operating costs.
-3. Add stake and topology history.
+1. Add finalized revenue components and configurable operating costs.
+2. Add stake and topology history.

@@ -24,6 +24,8 @@ pub struct HealthCommands {
     pub rpc_health: Vec<String>,
     /// Connector names used for WebSocket health, in fallback order.
     pub ws_health: Vec<String>,
+    /// Connector names used for node-local status, in fallback order.
+    pub node_status: Vec<String>,
 }
 
 /// Ordered connector routes for consensus commands.
@@ -129,6 +131,7 @@ impl ModesConfig {
         match command {
             CommandId::RpcHealth => &self.health.commands.rpc_health,
             CommandId::WsHealth => &self.health.commands.ws_health,
+            CommandId::NodeStatus => &self.health.commands.node_status,
             CommandId::EpochInfo => &self.consensus.commands.epoch_info,
             CommandId::VoteAccounts => &self.consensus.commands.vote_accounts,
             CommandId::RecentPerformanceSamples => {
@@ -479,6 +482,7 @@ impl Config {
             let required = match command {
                 CommandId::RpcHealth | CommandId::EpochInfo | CommandId::VoteAccounts => true,
                 CommandId::WsHealth
+                | CommandId::NodeStatus
                 | CommandId::RecentPerformanceSamples
                 | CommandId::CurrentBlockProduction
                 | CommandId::CurrentLeaderSchedule

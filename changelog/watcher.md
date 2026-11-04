@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the optional routed `node-status` command for node identity, validator version and feature set, block height, structured `getHealth` catch-up distance, and current/delinquent vote-set classification.
 - Counted every failed WebSocket reachability probe by connector, including fallback attempts before a later connector succeeds, without exposing endpoint URLs.
 - Added bounded per-connector, per-method RPC request duration and failure telemetry without exposing endpoint URLs.
 - Split collector ownership into command, RPC transport, domain model, aggregation, snapshot orchestration, and domain-focused test modules without changing collection behavior.

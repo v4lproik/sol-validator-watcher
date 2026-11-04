@@ -20,6 +20,7 @@ commitment = "confirmed"
 [modes.health.commands]
 rpc_health = ["surfpool"]
 ws_health = ["surfpool"]
+node_status = ["surfpool"]
 
 [modes.consensus.commands]
 epoch_info = ["surfpool"]
