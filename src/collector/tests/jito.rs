@@ -40,7 +40,10 @@ fn jito_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result
             format!("ftp://jito.example/?api-key={secret}"),
             "Jito API URL must use http:// or https:// with a host",
         ),
-        (format!("http:///?api-key={secret}"), "invalid Jito API URL"),
+        (
+            format!("http:///api?api-key={secret}"),
+            "Jito API URL must use http:// or https:// with a host",
+        ),
     ] {
         let Err(error) = JitoClient::try_new(&url, Duration::from_secs(1)) else {
             anyhow::bail!("invalid Jito API URL should fail during client construction");
