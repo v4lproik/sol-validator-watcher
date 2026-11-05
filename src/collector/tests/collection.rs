@@ -25,8 +25,8 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         vote_account: Some("vote-1".to_string()),
         labels: vec!["focus:economics".to_string()],
     });
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         config.connectors[0].commitment_config()?,
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),

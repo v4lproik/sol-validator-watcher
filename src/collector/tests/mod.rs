@@ -62,6 +62,7 @@ struct MockRpcState {
 
 mod aggregate;
 mod collection;
+mod jito;
 mod rpc;
 
 async fn start_mock_rpc_server() -> Result<(String, JoinHandle<()>)> {
@@ -478,6 +479,7 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
                 account_balances: economics_enabled.then(route).unwrap_or_default(),
                 inflation_rewards: economics_enabled.then(route).unwrap_or_default(),
                 reward_epoch_block_production: economics_enabled.then(route).unwrap_or_default(),
+                jito_mev_rewards: vec![],
             },
         },
     }

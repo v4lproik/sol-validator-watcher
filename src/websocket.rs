@@ -4,27 +4,35 @@
 //! connector-bound telemetry without exposing endpoint URLs.
 
 use crate::watcher_state::ConnectorWebsocketTelemetry;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::time::Duration;
 use tokio::time::timeout;
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::{connect_async, tungstenite::http::Uri};
 
 /// Connector-local client for bounded WebSocket connection probes.
 #[derive(Clone)]
 pub struct WebsocketProbeClient {
-    url: String,
+    url: Uri,
     timeout: Duration,
     telemetry: ConnectorWebsocketTelemetry,
 }
 
 impl WebsocketProbeClient {
-    /// Creates a probe client for one URL, connection timeout, and telemetry sink.
-    pub fn new(url: String, timeout: Duration, telemetry: ConnectorWebsocketTelemetry) -> Self {
-        Self {
+    /// Creates a probe client for one validated URL, timeout, and telemetry sink.
+    pub fn try_new(
+        url: &str,
+        timeout: Duration,
+        telemetry: ConnectorWebsocketTelemetry,
+    ) -> Result<Self> {
+        let url = url.parse::<Uri>().context("invalid WebSocket URL")?;
+        if !matches!(url.scheme_str(), Some("ws" | "wss")) || url.host().is_none() {
+            bail!("WebSocket URL must use ws:// or wss:// with a host");
+        }
+        Ok(Self {
             url,
             timeout,
             telemetry,
-        }
+        })
     }
 
     /// Opens and immediately closes a WebSocket connection.
@@ -47,7 +55,7 @@ impl WebsocketProbeClient {
     }
 
     async fn connect(&self) -> Result<()> {
-        let connect_future = connect_async(self.url.as_str());
+        let connect_future = connect_async(&self.url);
         let (stream, _) = timeout(self.timeout, connect_future)
             .await
             .context("websocket probe timed out")?
@@ -70,41 +78,46 @@ mod tests {
     }
 
     #[test]
-    fn constructor_stores_url_and_timeout() {
-        let client = WebsocketProbeClient::new(
-            "ws://127.0.0.1:8900".to_string(),
-            Duration::from_secs(3),
-            telemetry(),
-        );
-        assert_eq!(client.url, "ws://127.0.0.1:8900");
-        assert_eq!(client.timeout, Duration::from_secs(3));
-    }
-
-    #[tokio::test]
-    async fn probe_rejects_invalid_url() -> Result<()> {
-        let client = WebsocketProbeClient::new(
-            "not-a-websocket-url".to_string(),
-            Duration::from_secs(1),
-            telemetry(),
-        );
-        let err = match client.probe().await {
-            Ok(()) => anyhow::bail!("probe should fail"),
-            Err(err) => err,
-        };
-        assert!(err.to_string().contains("failed to connect websocket"));
+    fn constructor_rejects_invalid_urls_without_exposing_queries() -> Result<()> {
+        let secret = "websocket-constructor-secret";
+        for (url, expected) in [
+            (
+                format!("ftp://websocket.example/?api-key={secret}"),
+                "WebSocket URL must use ws:// or wss:// with a host",
+            ),
+            (
+                format!("ws:///socket?api-key={secret}"),
+                "invalid WebSocket URL",
+            ),
+        ] {
+            let Err(error) =
+                WebsocketProbeClient::try_new(&url, Duration::from_secs(1), telemetry())
+            else {
+                anyhow::bail!("invalid WebSocket URL should fail during construction");
+            };
+            let message = format!("{error:#}");
+            assert!(message.contains(expected), "{message}");
+            assert!(
+                !message.contains(secret),
+                "WebSocket constructor errors must redact secret URL query parameters"
+            );
+        }
         Ok(())
     }
 
     #[tokio::test]
     async fn probe_errors_do_not_expose_secret_query_parameters() -> Result<()> {
         let secret = "do-not-expose-this-api-key";
-        let client = WebsocketProbeClient::new(
-            format!("not-a-websocket-url?api-key={secret}"),
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        drop(listener);
+        let client = WebsocketProbeClient::try_new(
+            &format!("ws://{address}/?api-key={secret}"),
             Duration::from_secs(1),
             telemetry(),
-        );
+        )?;
         let Err(error) = client.probe().await else {
-            anyhow::bail!("invalid websocket URL should fail");
+            anyhow::bail!("connection refusal should fail the WebSocket probe");
         };
 
         assert!(

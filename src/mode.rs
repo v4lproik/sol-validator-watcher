@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 12;
+pub const COMMAND_COUNT: usize = 13;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -17,6 +17,8 @@ pub enum Transport {
     Rpc,
     /// Solana WebSocket connectivity.
     Websocket,
+    /// Provider-specific HTTP API.
+    ProviderApi,
 }
 
 impl Transport {
@@ -25,6 +27,7 @@ impl Transport {
         match self {
             Self::Rpc => "rpc",
             Self::Websocket => "websocket",
+            Self::ProviderApi => "provider-api",
         }
     }
 }
@@ -63,6 +66,8 @@ impl SolanaRpcCompatibility {
 pub enum ProviderFeature {
     /// Retained prior-epoch data needed for historical rewards and production.
     HistoricalData,
+    /// Settled per-validator rewards served by the Jito validator API.
+    JitoMevRewards,
 }
 
 impl ProviderFeature {
@@ -70,6 +75,7 @@ impl ProviderFeature {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::HistoricalData => "historical-data",
+            Self::JitoMevRewards => "jito-mev-rewards",
         }
     }
 }
@@ -104,6 +110,11 @@ const WEBSOCKET_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequiremen
     transport: Transport::Websocket,
     solana_rpc_compatibility: None,
     feature: None,
+};
+const PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+    transport: Transport::ProviderApi,
+    solana_rpc_compatibility: None,
+    feature: Some(ProviderFeature::JitoMevRewards),
 };
 
 /// Stable identifier for an independently reported watcher mode.
@@ -168,6 +179,8 @@ pub enum CommandId {
     InflationRewards,
     /// Block production retained for the prior reward epoch.
     RewardEpochBlockProduction,
+    /// Settled prior-epoch Jito MEV reward for the economics validator.
+    JitoMevRewards,
 }
 
 impl CommandId {
@@ -185,6 +198,7 @@ impl CommandId {
         Self::AccountBalances,
         Self::InflationRewards,
         Self::RewardEpochBlockProduction,
+        Self::JitoMevRewards,
     ];
 
     /// Returns the stable metric and configuration label.
@@ -202,6 +216,7 @@ impl CommandId {
             Self::AccountBalances => "account-balances",
             Self::InflationRewards => "inflation-rewards",
             Self::RewardEpochBlockProduction => "reward-epoch-block-production",
+            Self::JitoMevRewards => "jito-mev-rewards",
         }
     }
 
@@ -215,9 +230,10 @@ impl CommandId {
             Self::CurrentBlockProduction
             | Self::CurrentLeaderSchedule
             | Self::NextLeaderSchedule => ModeId::Leadership,
-            Self::AccountBalances | Self::InflationRewards | Self::RewardEpochBlockProduction => {
-                ModeId::Economics
-            }
+            Self::AccountBalances
+            | Self::InflationRewards
+            | Self::RewardEpochBlockProduction
+            | Self::JitoMevRewards => ModeId::Economics,
         }
     }
 
@@ -237,6 +253,7 @@ impl CommandId {
             Self::InflationRewards | Self::RewardEpochBlockProduction => {
                 RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT
             }
+            Self::JitoMevRewards => PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT,
         }
     }
 
@@ -255,6 +272,7 @@ impl CommandId {
             Self::AccountBalances => 9,
             Self::InflationRewards => 10,
             Self::RewardEpochBlockProduction => 11,
+            Self::JitoMevRewards => 12,
         }
     }
 }
@@ -318,6 +336,14 @@ mod tests {
         ] {
             assert_eq!(command.source_requirement(), historical_rpc);
         }
+        assert_eq!(
+            CommandId::JitoMevRewards.source_requirement(),
+            ModeSourceRequirement {
+                transport: Transport::ProviderApi,
+                solana_rpc_compatibility: None,
+                feature: Some(ProviderFeature::JitoMevRewards),
+            }
+        );
         assert_eq!(
             CommandId::WsHealth.source_requirement(),
             ModeSourceRequirement {

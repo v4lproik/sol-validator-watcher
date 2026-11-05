@@ -100,6 +100,13 @@ solana_rpc_compatibility = "extended"
 rpc_url = "${SOL_DEVNET_RPC_URL}"
 ws_url = "${SOL_DEVNET_WS_URL}"
 
+[[connectors]]
+name = "jito-api"
+provider = "jito"
+features = ["jito-mev-rewards"]
+provider_api_url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
+provider_api_timeout_sec = 30
+
 [modes.health.commands]
 rpc_health = ["validator", "helius-devnet"]
 ws_health = ["helius-devnet"]
@@ -122,6 +129,7 @@ enabled = true
 account_balances = ["helius-devnet"]
 inflation_rewards = ["helius-devnet"]
 reward_epoch_block_production = ["helius-devnet"]
+jito_mev_rewards = ["jito-api"]
 
 [modes.economics.validator]
 vote_account = "<VOTE_ACCOUNT_PUBKEY>"
@@ -135,8 +143,18 @@ Command requirements are independent of the provider name:
 | `ws-health` | WebSocket | None | None |
 | `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `extended` | None |
 | `inflation-rewards`, `reward-epoch-block-production` | RPC | `extended` | `historical-data` |
+| `jito-mev-rewards` | Provider API | None | `jito-mev-rewards` |
 
 `core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, identity, version, block-height, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available.
+
+`jito-mev-rewards` is optional within enabled economics mode. It reads the
+configured target vote account from Jito's validator API and exports the latest
+settled prior-epoch MEV reward plus validator commission. A configured route is
+checked during startup and transactional reload. During polling, route
+exhaustion omits only the Jito series; required balance, inflation-reward, and
+block-production failures still fail the economics round. Settled rewards are
+cached for the active source chain; an absent epoch is retried after Jito's
+documented 60-second API cache.
 
 `node_status` is an optional health-mode route intended for an operator-owned validator endpoint. When configured, it collects the active identity, validator client version and feature set, block height, structured catch-up distance, and vote-set classification from that routed connector. Route exhaustion omits the node-local series and marks health mode down without fabricating values.
 
@@ -144,9 +162,9 @@ A Helius connector may be `extended` for the standard Solana methods while also 
 
 Route and source metrics expose the connector declaration as `solana_rpc_compatibility` and the command requirement as `required_solana_rpc_compatibility`; Grafana labels both as standard Solana RPC compatibility.
 
-The URL variables contain the complete provider endpoints, including any provider-specific host, path, and authentication query. The watcher does not reconstruct them from an API token. `rpc_url` requires an explicit `solana_rpc_compatibility`; `ws_url` does not. Provider names are provenance labels, not capability inference.
+The complete endpoint and timeout settings are connector-local, including any provider-specific host, path, and authentication query. The watcher does not reconstruct endpoints from an API token. `rpc_url` and `provider_api_url` must be HTTP(S) URLs with a host; `ws_url` must be a WS(S) URL with a host. `rpc_url` also requires an explicit `solana_rpc_compatibility`, while a `provider_api_url` route must satisfy the command's declared provider feature. Provider names are provenance labels, not capability inference. The watcher has no gRPC transport or gRPC configuration because no typed command currently consumes one.
 
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime. When a required RPC command or configured WebSocket health command exhausts its route, the returned error preserves every failed connector, provider, and causal error in fallback order.
+Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration and checks configured Jito reward routes against the economics target. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime. When a required RPC command or configured WebSocket health command exhausts its route, the returned error preserves every failed connector, provider, and causal error in fallback order.
 
 ## Readiness, freshness, and transport reliability
 
@@ -196,6 +214,12 @@ compares each selected scope's skip rate with the all-network baseline. When
 operator-owned node's identity, software, voting classification, cluster
 health, and height. The overview dashboard shows snapshot freshness and these
 node-local signals with warning and critical thresholds.
+When a Jito reward route succeeds, the economics dashboard publishes
+`sol_economics_jito_mev_reward_sol`,
+`sol_economics_jito_mev_commission_pct`, and
+`sol_economics_jito_mev_reward_epoch`. These series remain absent when
+economics mode is disabled, no route is configured, the epoch is not settled,
+or every configured provider-API connector fails.
 
 The local Prometheus scrapes only the watcher profiles selected by
 `just stack up <target>` and evaluates baseline target-down, readiness,

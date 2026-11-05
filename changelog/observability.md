@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added economics-target Jito MEV reward, commission, and settled-epoch metrics plus mode-gated economics dashboard panels and provider-API connector inventory metadata.
 - Added bounded cluster transaction and slot throughput metrics, consensus throughput and stake-distribution panels, and a leadership skip-rate gap against the all-network baseline.
 - Made every overview node-local panel distinguish an unconfigured `node_status` route from unavailable node series, preserve missing structured catch-up distance as no data, and identify each network in multi-network selections.
 - Added bounded node identity, validator software, block height, health, catch-up distance, and vote-set metrics, an overview dashboard row, and freshness-gated node-behind and node-not-voting alerts.

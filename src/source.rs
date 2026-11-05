@@ -4,7 +4,10 @@
 //! routes and returns the connector that supplied each successful value.
 
 use crate::{
-    collector::{command::SourceCommand, RpcClient},
+    collector::{
+        command::{CommandClients, CommandTransport, SourceCommand},
+        JitoClient, RpcClient,
+    },
     config::{Config, ConnectorConfig},
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
     watcher_state::RpcTelemetry,
@@ -128,7 +131,7 @@ struct Connector {
     provider: Arc<str>,
     solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     features: Vec<ProviderFeature>,
-    rpc_client: Option<RpcClient>,
+    command_clients: CommandClients,
     ws_client: Option<WebsocketProbeClient>,
 }
 
@@ -136,10 +139,10 @@ impl Connector {
     fn from_config(config: &ConnectorConfig, telemetry: RpcTelemetry) -> Result<Self> {
         let rpc_client = config
             .rpc_url
-            .as_ref()
+            .as_deref()
             .map(|url| {
-                RpcClient::new(
-                    url.clone(),
+                RpcClient::try_new(
+                    url,
                     Duration::from_secs(config.rpc_timeout_sec),
                     config.commitment_config()?,
                     telemetry.for_connector(&config.name),
@@ -149,20 +152,43 @@ impl Connector {
             .with_context(|| {
                 format!("failed to build RPC client for connector {:?}", config.name)
             })?;
-        let ws_client = config.ws_url.as_ref().map(|url| {
-            WebsocketProbeClient::new(
-                url.clone(),
-                Duration::from_secs(config.ws_timeout_sec),
-                telemetry.for_websocket_connector(&config.name),
-            )
-        });
+        let jito_client = config
+            .provider_api_url
+            .as_deref()
+            .map(|url| {
+                JitoClient::try_new(url, Duration::from_secs(config.provider_api_timeout_sec))
+            })
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "failed to build provider API client for connector {:?}",
+                    config.name
+                )
+            })?;
+        let ws_client = config
+            .ws_url
+            .as_deref()
+            .map(|url| {
+                WebsocketProbeClient::try_new(
+                    url,
+                    Duration::from_secs(config.ws_timeout_sec),
+                    telemetry.for_websocket_connector(&config.name),
+                )
+            })
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "failed to build WebSocket client for connector {:?}",
+                    config.name
+                )
+            })?;
 
         Ok(Self {
             name: Arc::from(config.name.as_str()),
             provider: Arc::from(config.provider.as_str()),
             solana_rpc_compatibility: config.solana_rpc_compatibility,
             features: config.features.clone(),
-            rpc_client,
+            command_clients: CommandClients::new(rpc_client, jito_client),
             ws_client,
         })
     }
@@ -184,8 +210,9 @@ impl Connector {
     fn supports_requirement(&self, command: CommandId) -> bool {
         let requirement = command.source_requirement();
         let transport_available = match requirement.transport {
-            Transport::Rpc => self.rpc_client.is_some(),
+            Transport::Rpc => self.command_clients.rpc().is_some(),
             Transport::Websocket => self.ws_client.is_some(),
+            Transport::ProviderApi => self.command_clients.jito_api().is_some(),
         };
         let solana_rpc_compatible = requirement.solana_rpc_compatibility.is_none_or(|required| {
             self.solana_rpc_compatibility
@@ -272,7 +299,7 @@ impl SourceChain {
     pub async fn verify_capabilities(&self) -> Result<()> {
         for connector in &self.connectors {
             let (Some(client), Some(solana_rpc_compatibility)) = (
-                connector.rpc_client.as_ref(),
+                connector.command_clients.rpc(),
                 connector.solana_rpc_compatibility,
             ) else {
                 continue;
@@ -302,7 +329,7 @@ impl SourceChain {
         let mut failures = Vec::new();
         for (index, connector_index) in route.iter().enumerate() {
             let connector = &self.connectors[*connector_index];
-            let Some(client) = connector.rpc_client.as_ref() else {
+            let Some(client) = C::Transport::client(&connector.command_clients) else {
                 continue;
             };
             match command.execute(client).await {
@@ -353,7 +380,7 @@ impl SourceChain {
     {
         for (index, connector_index) in self.routes[C::ID.index()].iter().enumerate() {
             let connector = &self.connectors[*connector_index];
-            let Some(client) = connector.rpc_client.as_ref() else {
+            let Some(client) = C::Transport::client(&connector.command_clients) else {
                 continue;
             };
             match command.execute(client).await {

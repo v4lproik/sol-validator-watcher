@@ -62,6 +62,8 @@ pub struct EconomicsCommands {
     pub inflation_rewards: Vec<String>,
     /// Connector names used for prior-epoch block production.
     pub reward_epoch_block_production: Vec<String>,
+    /// Connector names used for settled Jito MEV rewards.
+    pub jito_mev_rewards: Vec<String>,
 }
 
 /// Health-mode command routes.
@@ -145,6 +147,7 @@ impl ModesConfig {
             CommandId::RewardEpochBlockProduction => {
                 &self.economics.commands.reward_epoch_block_production
             }
+            CommandId::JitoMevRewards => &self.economics.commands.jito_mev_rewards,
         }
     }
 
@@ -170,7 +173,7 @@ pub struct WatchedValidatorConfig {
     pub labels: Vec<String>,
 }
 
-/// One RPC and/or WebSocket connector declaration.
+/// One connector-local RPC, WebSocket, and/or provider-API declaration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectorConfig {
@@ -187,8 +190,14 @@ pub struct ConnectorConfig {
     /// HTTP JSON-RPC endpoint.
     pub rpc_url: Option<String>,
     #[serde(default = "default_rpc_timeout_sec")]
-    /// HTTP request timeout in seconds.
+    /// HTTP JSON-RPC request timeout in seconds.
     pub rpc_timeout_sec: u64,
+    #[serde(default)]
+    /// Base URL for provider-specific HTTP API commands.
+    pub provider_api_url: Option<String>,
+    #[serde(default = "default_provider_api_timeout_sec")]
+    /// Provider-specific HTTP API request timeout in seconds.
+    pub provider_api_timeout_sec: u64,
     #[serde(default)]
     /// WebSocket endpoint used only for connectivity probes.
     pub ws_url: Option<String>,
@@ -209,6 +218,8 @@ impl Default for ConnectorConfig {
             solana_rpc_compatibility: None,
             rpc_url: None,
             rpc_timeout_sec: default_rpc_timeout_sec(),
+            provider_api_url: None,
+            provider_api_timeout_sec: default_provider_api_timeout_sec(),
             ws_url: None,
             ws_timeout_sec: default_ws_timeout_sec(),
             commitment: default_commitment(),
@@ -220,6 +231,11 @@ impl ConnectorConfig {
     /// Reports whether this connector has an HTTP RPC endpoint.
     pub fn has_rpc(&self) -> bool {
         self.rpc_url.is_some()
+    }
+
+    /// Reports whether this connector has a provider-specific HTTP API endpoint.
+    pub fn has_provider_api(&self) -> bool {
+        self.provider_api_url.is_some()
     }
 
     /// Reports whether this connector has a WebSocket endpoint.
@@ -248,6 +264,11 @@ impl ConnectorConfig {
         self.provider = self.provider.trim().to_string();
         self.rpc_url = self
             .rpc_url
+            .as_ref()
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty());
+        self.provider_api_url = self
+            .provider_api_url
             .as_ref()
             .map(|url| url.trim().to_string())
             .filter(|url| !url.is_empty());
@@ -296,19 +317,34 @@ impl ConnectorConfig {
                     .map(SolanaRpcCompatibility::as_str)
             );
         }
-        if self.rpc_url.is_none() && self.ws_url.is_none() {
-            bail!("connectors[{index}] must define rpc_url and/or ws_url");
+        if self.supports(ProviderFeature::JitoMevRewards) && !self.has_provider_api() {
+            bail!(
+                "connectors[{index}].features entry {:?} requires provider_api_url",
+                ProviderFeature::JitoMevRewards.as_str()
+            );
+        }
+        if self.rpc_url.is_none() && self.ws_url.is_none() && self.provider_api_url.is_none() {
+            bail!("connectors[{index}] must define rpc_url, ws_url, and/or provider_api_url");
         }
         if self.rpc_timeout_sec == 0 {
             bail!("connectors[{index}].rpc_timeout_sec must be greater than 0");
+        }
+        if self.provider_api_timeout_sec == 0 {
+            bail!("connectors[{index}].provider_api_timeout_sec must be greater than 0");
         }
         if self.ws_timeout_sec == 0 {
             bail!("connectors[{index}].ws_timeout_sec must be greater than 0");
         }
 
         self.commitment_config()?;
+        if let Some(rpc_url) = self.rpc_url.as_deref() {
+            validate_http_url("rpc_url", rpc_url)?;
+        }
         if let Some(ws_url) = self.ws_url.as_deref() {
             validate_ws_url(ws_url)?;
+        }
+        if let Some(provider_api_url) = self.provider_api_url.as_deref() {
+            validate_http_url("provider_api_url", provider_api_url)?;
         }
 
         Ok(())
@@ -360,6 +396,10 @@ fn default_network() -> String {
 }
 
 fn default_rpc_timeout_sec() -> u64 {
+    30
+}
+
+fn default_provider_api_timeout_sec() -> u64 {
     30
 }
 
@@ -486,7 +526,8 @@ impl Config {
                 | CommandId::RecentPerformanceSamples
                 | CommandId::CurrentBlockProduction
                 | CommandId::CurrentLeaderSchedule
-                | CommandId::NextLeaderSchedule => false,
+                | CommandId::NextLeaderSchedule
+                | CommandId::JitoMevRewards => false,
                 CommandId::AccountBalances
                 | CommandId::InflationRewards
                 | CommandId::RewardEpochBlockProduction => self.modes.economics.enabled,
@@ -515,11 +556,16 @@ impl Config {
                     .with_context(|| {
                         format!("{path} references unknown connector {connector_name:?}")
                     })?;
-                if requirement.transport == Transport::Rpc && !connector.has_rpc() {
-                    bail!(
+                match requirement.transport {
+                    Transport::Rpc if !connector.has_rpc() => bail!(
                         "{path} references connector {:?}, which has no configured RPC endpoint",
                         connector.name
-                    );
+                    ),
+                    Transport::ProviderApi if !connector.has_provider_api() => bail!(
+                        "{path} references connector {:?}, which has no configured provider API endpoint",
+                        connector.name
+                    ),
+                    _ => {}
                 }
                 if let Some(required_compatibility) = requirement.solana_rpc_compatibility {
                     let declared_compatibility =
@@ -699,12 +745,32 @@ fn validate_label(label: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_ws_url(url: &str) -> Result<()> {
-    if url.starts_with("ws://") || url.starts_with("wss://") {
-        return Ok(());
-    }
+fn has_explicit_authority(url: &str) -> bool {
+    url.split_once("://")
+        .is_some_and(|(_, authority)| !authority.is_empty() && !authority.starts_with('/'))
+}
 
-    bail!("ws_url must start with ws:// or wss://");
+fn validate_http_url(field: &str, url: &str) -> Result<()> {
+    let parsed =
+        reqwest::Url::parse(url).with_context(|| format!("{field} must be a valid URL"))?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().filter(|host| !host.is_empty()).is_none()
+        || !has_explicit_authority(url)
+    {
+        bail!("{field} must use http:// or https:// with a host");
+    }
+    Ok(())
+}
+
+fn validate_ws_url(url: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(url).context("ws_url must be a valid URL")?;
+    if !matches!(parsed.scheme(), "ws" | "wss")
+        || parsed.host_str().filter(|host| !host.is_empty()).is_none()
+        || !has_explicit_authority(url)
+    {
+        bail!("ws_url must use ws:// or wss:// with a host");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

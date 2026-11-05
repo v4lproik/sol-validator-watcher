@@ -1,8 +1,8 @@
 use super::{bool_label, Metrics};
 use crate::{
     collector::{
-        ClusterPerformanceMetrics, EconomicsMetrics, ModeStatus, NodeHealth, NodeMetrics,
-        NodeVotingStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
+        ClusterPerformanceMetrics, EconomicsMetrics, JitoMevReward, ModeStatus, NodeHealth,
+        NodeMetrics, NodeVotingStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
         WatchedValidatorMetrics,
     },
     config::{
@@ -102,6 +102,16 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 feature: Some(ProviderFeature::HistoricalData),
                 precedence: 2,
             },
+            SnapshotDataSource {
+                mode: ModeId::Economics,
+                command: CommandId::JitoMevRewards,
+                connector: Arc::from("jito-api"),
+                provider: Arc::from("jito"),
+                transport: Transport::ProviderApi,
+                solana_rpc_compatibility: None,
+                feature: Some(ProviderFeature::JitoMevRewards),
+                precedence: 1,
+            },
         ],
         mode_statuses: vec![
             ModeStatus {
@@ -134,6 +144,11 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
             vat_reserve_lamports: Some(1_600_000_000),
             vat_epochs_available: Some(2),
             vat_next_epoch_funded: Some(true),
+            jito_mev_reward: Some(JitoMevReward {
+                epoch: 41,
+                reward_lamports: 123_456_789,
+                commission_bps: 800,
+            }),
         }),
     };
     metrics.set_watcher_up("mainnet-beta", true);
@@ -173,6 +188,13 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 rpc_url: Some("https://extended-rpc.example".to_string()),
                 ..ConnectorConfig::default()
             },
+            ConnectorConfig {
+                name: "jito-api".to_string(),
+                provider: "jito".to_string(),
+                features: vec![ProviderFeature::JitoMevRewards],
+                provider_api_url: Some("https://kobe.mainnet.jito.network/api/v1".to_string()),
+                ..ConnectorConfig::default()
+            },
         ],
         modes: modes_for(
             &["local-validator", "helius-rpc", "extended-rpc"],
@@ -183,6 +205,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     };
     config.modes.health.commands.ws_health =
         vec!["local-validator".to_string(), "helius-ws".to_string()];
+    config.modes.economics.commands.jito_mev_rewards = vec!["jito-api".to_string()];
     let sources =
         SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
     metrics.begin_poll(&config, &sources);
@@ -190,14 +213,18 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     let rendered = metrics.render()?;
 
     assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
-    assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_rpc=\"true\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"solana-validator\",solana_rpc_compatibility=\"core\"} 1"));
-    assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_rpc=\"false\",has_ws=\"true\",network=\"mainnet-beta\",provider=\"helius\",solana_rpc_compatibility=\"\"} 1"));
+    assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_provider_api=\"false\",has_rpc=\"true\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"solana-validator\",solana_rpc_compatibility=\"core\"} 1"));
+    assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_provider_api=\"false\",has_rpc=\"false\",has_ws=\"true\",network=\"mainnet-beta\",provider=\"helius\",solana_rpc_compatibility=\"\"} 1"));
     assert!(rendered.contains("sol_connector_feature_info{connector=\"helius-rpc\",feature=\"historical-data\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
+    assert!(rendered.contains("sol_connector_info{connector=\"jito-api\",declaration_order=\"5\",has_provider_api=\"true\",has_rpc=\"false\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"jito\",solana_rpc_compatibility=\"\"} 1"));
+    assert!(rendered.contains("sol_connector_feature_info{connector=\"jito-api\",feature=\"jito-mev-rewards\",network=\"mainnet-beta\",provider=\"jito\"} 1"));
+    assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"core\",transport=\"websocket\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"websocket\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-data\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
+    assert!(rendered.contains("sol_mode_command_source_info{command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1"));
     assert!(rendered.contains("sol_mode_up{mode=\"leadership\",network=\"mainnet-beta\"} 1"));
     assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
@@ -221,6 +248,9 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_economics_vat_reserve_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.6"));
     assert!(rendered.contains("sol_economics_vat_epochs_available{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2"));
     assert!(rendered.contains("sol_economics_vat_next_epoch_funded{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1"));
+    assert!(rendered.contains("sol_economics_jito_mev_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.123456789"));
+    assert!(rendered.contains("sol_economics_jito_mev_commission_pct{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 8"));
+    assert!(rendered.contains("sol_economics_jito_mev_reward_epoch{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 41"));
     assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));
     assert!(rendered
         .contains("sol_epoch_reward_sol{network=\"mainnet-beta\",scope=\"scope:watched\"} 6"));
@@ -268,6 +298,7 @@ fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
             vat_reserve_lamports: None,
             vat_epochs_available: None,
             vat_next_epoch_funded: None,
+            jito_mev_reward: None,
         }),
         ..Snapshot::default()
     });
@@ -395,6 +426,11 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             vat_reserve_lamports: Some(500_000_000),
             vat_epochs_available: Some(0),
             vat_next_epoch_funded: Some(false),
+            jito_mev_reward: Some(JitoMevReward {
+                epoch: 0,
+                reward_lamports: 1,
+                commission_bps: 0,
+            }),
         }),
     });
     metrics.update_snapshot(&Snapshot {
@@ -665,6 +701,7 @@ fn modes_for(
                 reward_epoch_block_production: economics_enabled
                     .then(rpc_route)
                     .unwrap_or_default(),
+                jito_mev_rewards: vec![],
             },
         },
     }

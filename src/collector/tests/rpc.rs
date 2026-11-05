@@ -1,9 +1,41 @@
 use super::*;
+
+#[test]
+fn rpc_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<()> {
+    let secret = "rpc-constructor-secret";
+    for (url, expected) in [
+        (
+            format!("ftp://rpc.example/?api-key={secret}"),
+            "Solana RPC URL must use http:// or https:// with a host",
+        ),
+        (
+            format!("http:///?api-key={secret}"),
+            "invalid Solana RPC URL",
+        ),
+    ] {
+        let Err(error) = RpcClient::try_new(
+            &url,
+            Duration::from_secs(1),
+            "confirmed".to_string(),
+            crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        ) else {
+            anyhow::bail!("invalid RPC URL should fail during client construction");
+        };
+        let message = format!("{error:#}");
+        assert!(message.contains(expected), "{message}");
+        assert!(
+            !message.contains(secret),
+            "RPC constructor errors must redact secret URL query parameters"
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -22,8 +54,8 @@ async fn missing_transaction_breakdown_preserves_total_performance_rates() -> Re
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::MissingPerformanceTransactionSplit)
             .await?;
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -50,8 +82,8 @@ async fn malformed_performance_samples_fail_instead_of_exporting_rates() -> Resu
         MockRpcProfile::ZeroPerformanceSamplePeriod,
     ] {
         let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
-        let client = RpcClient::new(
-            rpc_url,
+        let client = RpcClient::try_new(
+            &rpc_url,
             Duration::from_secs(5),
             "confirmed".to_string(),
             crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -70,8 +102,8 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
     let telemetry = mailbox.rpc_telemetry();
     let metrics = Arc::new(Metrics::new()?);
     let (state, actor) = mailbox.start("rpc-telemetry-test", Arc::clone(&metrics));
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         telemetry.for_connector("mock-rpc"),
@@ -122,8 +154,8 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
 #[tokio::test]
 async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -159,8 +191,8 @@ async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
 async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result<()> {
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::NoAccountSpace).await?;
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -178,6 +210,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
             vote_account: "vote-1".to_string(),
         },
         balances,
+        None,
     );
     assert_eq!(metrics.vat_reserve_lamports, None);
     assert_eq!(metrics.vat_epochs_available, None);
@@ -187,8 +220,8 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
 #[tokio::test]
 async fn node_health_preserves_structured_catchup_distance() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server_with_profile(MockRpcProfile::Behind).await?;
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -208,8 +241,8 @@ async fn node_health_preserves_structured_catchup_distance() -> Result<()> {
 async fn node_health_classifies_behind_error_before_http_status() -> Result<()> {
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::BehindHttp503).await?;
-    let client = RpcClient::new(
-        rpc_url,
+    let client = RpcClient::try_new(
+        &rpc_url,
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -230,8 +263,8 @@ async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()>
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::Unhealthy).await?;
     let secret = "do-not-expose-this-api-key";
-    let client = RpcClient::new(
-        format!("{rpc_url}/?api-key={secret}"),
+    let client = RpcClient::try_new(
+        &format!("{rpc_url}/?api-key={secret}"),
         Duration::from_secs(5),
         "confirmed".to_string(),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),

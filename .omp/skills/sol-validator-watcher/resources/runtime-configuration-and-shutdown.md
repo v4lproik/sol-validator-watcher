@@ -11,8 +11,9 @@ liveness files, signals, and shutdown.
 - `config/mod.rs` parses each self-contained TOML profile, expands environment
   placeholders, normalizes values, and validates connectors plus every built-in
   mode's command routes. No other module reads raw environment-backed policy.
-- `source.rs` constructs RPC and WebSocket clients once, compiles command routes
-  into immutable connector index chains, and verifies declared RPC capabilities.
+- `source.rs` constructs RPC, provider-API, and WebSocket clients once, compiles
+  command routes into immutable connector index chains, and verifies declared
+  capabilities at their owning startup boundary.
 - `runtime/state.rs` owns transactional reload; `runtime/poller.rs` owns startup
   capability verification, polling, dependency guards, and liveness updates;
   `runtime/http.rs` owns `/metrics`, `/healthz`, and `/readyz`.
@@ -36,32 +37,40 @@ liveness files, signals, and shutdown.
 - A connector with `rpc_url` must declare
   `solana_rpc_compatibility = "core"` or
   `solana_rpc_compatibility = "extended"`. A connector without `rpc_url` must
-  not declare standard Solana RPC compatibility. `extended` satisfies `core`;
-  provider features currently require `extended`.
+  not declare standard Solana RPC compatibility. `extended` satisfies `core`.
+  The `historical-data` feature requires `extended`; provider-API features do
+  not imply standard Solana RPC compatibility.
 - The compatibility profile describes only standard Solana JSON-RPC methods
   consumed by this watcher. It is not the provider's complete API catalog.
   Provider-specific APIs and transports require their own typed command,
   capability, endpoint, and verification when the watcher starts consuming
   them.
-- The current provider feature is `historical-data`; `rpc` and `websocket` are
-  transports, not features. Historical data is independent of compatibility.
+- Provider features are `historical-data` and `jito-mev-rewards`; `rpc`,
+  `websocket`, and `provider-api` are transports, not features.
 - Core commands are RPC health, node-local status, epoch info, vote accounts,
   and current/next leader schedules. Recent performance samples, current block
   production, account balances, and rent exemption require extended
-  compatibility. Prior-epoch rewards additionally require `historical-data`.
+  compatibility. Prior-epoch inflation rewards and block production additionally
+  require `historical-data`; Jito rewards use provider API independently.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
   Optional extended routes may be empty in a core-only profile.
-- Treat each connector's `rpc_url` and `ws_url` as its transport configuration.
-  Do not duplicate those transports in `features` or add transport toggles.
+- Treat each connector's `rpc_url`, `ws_url`, and `provider_api_url` plus their
+  timeouts as its transport configuration. Do not duplicate transports in
+  `features` or add transport toggles.
+- Do not add an endpoint or client configuration for a transport without a
+  typed command that consumes it and a startup verification boundary. In
+  particular, no gRPC configuration exists until the watcher consumes a
+  concrete gRPC service.
 - Normalize names, URLs, commitments, labels, and public keys once, then validate
   the normalized value.
 - Reject unknown fields, missing providers or feature arrays, missing or
   misplaced Solana RPC compatibility declarations, duplicate features, zero
   ports/timeouts/intervals, duplicate connector names, unsupported commitments,
-  invalid websocket schemes, missing required routes, unknown or duplicate route
-  entries, and routes whose connector lacks the required transport, Solana RPC
-  compatibility, or provider feature before client construction.
+  malformed or hostless transport URLs, unsupported URL schemes, missing
+  required routes, unknown or duplicate route entries, and routes whose
+  connector lacks the required transport, Solana RPC compatibility, or provider
+  feature before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
   `ws_url` is empty; expose them as unavailable and skip them at execution.
 - Removed split-config and single-connection fields stay unsupported. Do not
@@ -93,9 +102,11 @@ liveness files, signals, and shutdown.
   A configured optional `health.node_status` route contributes identity,
   version, block height, health, and vote-set state; route exhaustion omits
   those dynamic series and marks health mode down.
-- Verify every declared standard Solana RPC compatibility profile and provider
-  feature before dependency health or collection. Startup verification failure
-  is fatal; reload verification failure preserves the last-known-good runtime.
+- Verify every declared standard Solana RPC compatibility profile before
+  dependency health or collection. When economics enables a configured Jito
+  route, verify that provider API against the resolved target and reward epoch.
+  Startup verification failure is fatal; reload verification failure preserves
+  the last-known-good runtime.
 - After startup verification, treat required RPC and collection failures as
   failed whole polling rounds. Mark affected modes down, reset readiness through
   the watcher-state actor, retain the last successful snapshot, and retry after

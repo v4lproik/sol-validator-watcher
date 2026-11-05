@@ -139,20 +139,73 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
 }
 
 #[test]
+fn rejects_invalid_connector_transport_urls() -> Result<()> {
+    let cases = [
+        (
+            ConnectorConfig {
+                name: "rpc".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some("ftp://rpc.example".to_string()),
+                ..ConnectorConfig::default()
+            },
+            "rpc_url must use http:// or https:// with a host",
+        ),
+        (
+            ConnectorConfig {
+                name: "rpc".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some("http:///rpc".to_string()),
+                ..ConnectorConfig::default()
+            },
+            "rpc_url must use http:// or https:// with a host",
+        ),
+        (
+            ConnectorConfig {
+                name: "websocket".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                ws_url: Some("ws:///socket".to_string()),
+                ..ConnectorConfig::default()
+            },
+            "ws_url must use ws:// or wss:// with a host",
+        ),
+    ];
+
+    for (mut connector, expected) in cases {
+        let Err(error) = connector.validate(0) else {
+            anyhow::bail!("invalid connector transport URL should fail");
+        };
+        assert!(error.to_string().contains(expected), "{error:#}");
+    }
+    Ok(())
+}
+
+#[test]
 fn provider_features_deserialize_and_export_stable_labels() -> Result<()> {
     let connector: ConnectorConfig = toml::from_str(
         r#"
 name = "test"
-provider = "helius"
-features = ["historical-data"]
+provider = "jito"
+features = ["historical-data", "jito-mev-rewards"]
 solana_rpc_compatibility = "extended"
 rpc_url = "https://rpc.example"
 ws_url = "wss://rpc.example"
+provider_api_url = "https://kobe.mainnet.jito.network/api/v1"
 "#,
     )?;
 
-    assert_eq!(connector.provider, "helius");
-    assert_eq!(connector.features, [ProviderFeature::HistoricalData]);
+    assert_eq!(connector.provider, "jito");
+    assert_eq!(
+        connector.features,
+        [
+            ProviderFeature::HistoricalData,
+            ProviderFeature::JitoMevRewards
+        ]
+    );
     assert_eq!(
         connector.solana_rpc_compatibility,
         Some(SolanaRpcCompatibility::Extended)
@@ -163,7 +216,7 @@ ws_url = "wss://rpc.example"
             .iter()
             .map(|feature| feature.as_str())
             .collect::<Vec<_>>(),
-        ["historical-data"]
+        ["historical-data", "jito-mev-rewards"]
     );
     Ok(())
 }
@@ -285,7 +338,7 @@ fn rejects_invalid_ws_scheme() -> Result<()> {
         Ok(()) => anyhow::bail!("invalid websocket URL should be rejected"),
         Err(error) => assert!(error
             .to_string()
-            .contains("ws_url must start with ws:// or wss://")),
+            .contains("ws_url must use ws:// or wss:// with a host")),
     }
     Ok(())
 }
@@ -543,6 +596,7 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
                     account_balances: vec!["primary".to_string()],
                     inflation_rewards: vec!["primary".to_string()],
                     reward_epoch_block_production: vec!["primary".to_string()],
+                    jito_mev_rewards: vec![],
                 },
             },
             ..modes_for("primary", None, false)
@@ -556,5 +610,67 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
             .to_string()
             .contains("modes.economics.enabled requires modes.economics.validator")),
     }
+    Ok(())
+}
+
+#[test]
+fn validates_jito_provider_api_feature_and_route() -> Result<()> {
+    let mut missing_endpoint = ConnectorConfig {
+        name: "jito".to_string(),
+        provider: "jito".to_string(),
+        features: vec![ProviderFeature::JitoMevRewards],
+        ws_url: Some("wss://example.invalid".to_string()),
+        ..ConnectorConfig::default()
+    };
+    let Err(error) = missing_endpoint.validate(0) else {
+        anyhow::bail!("Jito feature without provider API endpoint should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("features entry \"jito-mev-rewards\" requires provider_api_url"));
+
+    let mut invalid_url = ConnectorConfig {
+        name: "jito".to_string(),
+        provider: "jito".to_string(),
+        features: vec![ProviderFeature::JitoMevRewards],
+        provider_api_url: Some("ftp://jito.example/api/v1".to_string()),
+        ..ConnectorConfig::default()
+    };
+    let Err(error) = invalid_url.validate(0) else {
+        anyhow::bail!("non-HTTP provider API URL should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("provider_api_url must use http:// or https:// with a host"));
+
+    let mut jito = ConnectorConfig {
+        name: "jito".to_string(),
+        provider: "jito".to_string(),
+        features: vec![ProviderFeature::JitoMevRewards],
+        provider_api_url: Some("https://kobe.mainnet.jito.network/api/v1".to_string()),
+        ..ConnectorConfig::default()
+    };
+    jito.validate(1)?;
+
+    let mut config = Config {
+        connectors: vec![rpc_connector("primary"), jito],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    config.modes.economics.validator = Some(WatchedValidatorConfig {
+        identity: Some("id-1".to_string()),
+        vote_account: Some("vote-1".to_string()),
+        labels: vec![],
+    });
+    config.modes.economics.commands.jito_mev_rewards = vec!["jito".to_string()];
+    config.validate()?;
+
+    config.connectors[1].features.clear();
+    let Err(error) = config.validate() else {
+        anyhow::bail!("Jito reward route without declared feature should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("requires provider feature \"jito-mev-rewards\""));
     Ok(())
 }

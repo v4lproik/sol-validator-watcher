@@ -221,6 +221,7 @@ impl Metrics {
                 "solana_rpc_compatibility",
                 "has_rpc",
                 "has_ws",
+                "has_provider_api",
             ],
         )?;
         let sol_connector_feature_info = IntGaugeVec::new(
@@ -475,6 +476,27 @@ impl Metrics {
             ),
             economics_labels,
         )?;
+        let sol_economics_jito_mev_reward_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_jito_mev_reward_sol",
+                "Post-commission Jito MEV reward in SOL paid to the economics validator and its stakers",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_jito_mev_commission_pct = GaugeVec::new(
+            Opts::new(
+                "sol_economics_jito_mev_commission_pct",
+                "Jito MEV commission percentage for the configured economics validator",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_jito_mev_reward_epoch = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_jito_mev_reward_epoch",
+                "Settled epoch represented by the configured economics validator Jito MEV reward",
+            ),
+            economics_labels,
+        )?;
         let sol_watched_validator_info = IntGaugeVec::new(
             Opts::new(
                 "sol_watched_validator_info",
@@ -667,6 +689,9 @@ impl Metrics {
         register(&registry, &sol_economics_vat_reserve_sol)?;
         register(&registry, &sol_economics_vat_epochs_available)?;
         register(&registry, &sol_economics_vat_next_epoch_funded)?;
+        register(&registry, &sol_economics_jito_mev_reward_sol)?;
+        register(&registry, &sol_economics_jito_mev_commission_pct)?;
+        register(&registry, &sol_economics_jito_mev_reward_epoch)?;
         register(&registry, &sol_watched_validator_info)?;
         register(&registry, &sol_watched_validator_scope_info)?;
         register(&registry, &sol_watched_validator_activated_stake_sol)?;
@@ -753,6 +778,9 @@ impl Metrics {
             sol_economics_vat_reserve_sol,
             sol_economics_vat_epochs_available,
             sol_economics_vat_next_epoch_funded,
+            sol_economics_jito_mev_reward_sol,
+            sol_economics_jito_mev_commission_pct,
+            sol_economics_jito_mev_reward_epoch,
             sol_watched_validator_info,
             sol_watched_validator_scope_info,
             sol_watched_validator_activated_stake_sol,
