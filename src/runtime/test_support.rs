@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use axum::{
     extract::{Json, State},
+    http::HeaderMap,
     routing::post,
     Router,
 };
@@ -14,16 +15,19 @@ use std::{
     },
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::{net::TcpListener, task::JoinHandle};
+use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 
 const HEALTHY: u8 = 0;
 const FAILED: u8 = 1;
 const BEHIND: u8 = 2;
 
+pub(super) type RecordedCapabilityProbeRequests = Arc<Mutex<Vec<(String, Option<String>)>>>;
+
 #[derive(Clone)]
 struct CapabilityProbeState {
     missing_method: Option<&'static str>,
     health_state: Arc<AtomicU8>,
+    recorded_requests: Option<RecordedCapabilityProbeRequests>,
 }
 
 pub(super) struct CapabilityProbeControl {
@@ -49,8 +53,27 @@ pub(super) async fn start_capability_probe_server(
     Ok((url, task))
 }
 
+pub(super) async fn start_header_recording_capability_probe_server(
+    missing_method: Option<&'static str>,
+) -> Result<(String, RecordedCapabilityProbeRequests, JoinHandle<()>)> {
+    let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+    let (url, _control, task) = start_capability_probe_server_with_recording(
+        missing_method,
+        Some(Arc::clone(&recorded_requests)),
+    )
+    .await?;
+    Ok((url, recorded_requests, task))
+}
+
 pub(super) async fn start_controlled_capability_probe_server(
     missing_method: Option<&'static str>,
+) -> Result<(String, CapabilityProbeControl, JoinHandle<()>)> {
+    start_capability_probe_server_with_recording(missing_method, None).await
+}
+
+async fn start_capability_probe_server_with_recording(
+    missing_method: Option<&'static str>,
+    recorded_requests: Option<RecordedCapabilityProbeRequests>,
 ) -> Result<(String, CapabilityProbeControl, JoinHandle<()>)> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -62,6 +85,7 @@ pub(super) async fn start_controlled_capability_probe_server(
     let state = CapabilityProbeState {
         missing_method,
         health_state: Arc::clone(&health_state),
+        recorded_requests,
     };
     let app = Router::new()
         .route("/", post(capability_probe_handler))
@@ -76,12 +100,22 @@ pub(super) async fn start_controlled_capability_probe_server(
 
 async fn capability_probe_handler(
     State(state): State<CapabilityProbeState>,
+    headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> Json<Value> {
     let method = request
         .get("method")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    if let Some(recorded_requests) = &state.recorded_requests {
+        recorded_requests.lock().await.push((
+            method.to_string(),
+            headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+        ));
+    }
     let params = request
         .get("params")
         .and_then(Value::as_array)

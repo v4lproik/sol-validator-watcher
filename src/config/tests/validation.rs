@@ -301,24 +301,40 @@ rpc = {{ url = "https://rpc.example" }}
         );
     }
 
-    let connector_error = config_load_error(
-        "unknown-connector-field",
-        r#"
+    for (field_name, setting) in [
+        ("rpc_url", r#"rpc_url = "https://rpc.example""#),
+        ("ws_url", r#"ws_url = "wss://rpc.example""#),
+        ("rpc_timeout_sec", "rpc_timeout_sec = 10"),
+        ("ws_timeout_sec", "ws_timeout_sec = 10"),
+        (
+            "provider_api_url",
+            r#"provider_api_url = "https://provider.example/api/v1""#,
+        ),
+        ("provider_api_timeout_sec", "provider_api_timeout_sec = 10"),
+        ("commitment", r#"commitment = "confirmed""#),
+        ("transport_mode", r#"transport_mode = "poll-http""#),
+    ] {
+        let connector_error = config_load_error(
+            field_name,
+            &format!(
+                r#"
 network = "testnet"
 
 [[connectors]]
 name = "primary"
 provider = "solana"
 features = []
-rpc = { url = "https://rpc.example" }
-transport_mode = "poll-http"
-"#,
-    )?;
-    let connector_message = format!("{connector_error:#}");
-    assert!(
-        connector_message.contains("unknown field `transport_mode`"),
-        "{connector_message}"
-    );
+rpc = {{ url = "https://rpc.example" }}
+{setting}
+"#
+            ),
+        )?;
+        let connector_message = format!("{connector_error:#}");
+        assert!(
+            connector_message.contains(&format!("unknown field `{field_name}`")),
+            "{connector_message}"
+        );
+    }
 
     Ok(())
 }

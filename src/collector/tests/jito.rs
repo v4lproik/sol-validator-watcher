@@ -16,11 +16,19 @@ use axum::{
     routing::get,
     Router,
 };
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
-use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
+use tokio::{
+    net::TcpListener,
+    sync::{oneshot, Mutex},
+    task::JoinHandle,
+    time::{sleep, timeout},
+};
 
 #[derive(Clone)]
 struct MockJitoState {
@@ -28,6 +36,11 @@ struct MockJitoState {
     body: &'static str,
     requests: Arc<AtomicUsize>,
     authorization_headers: Arc<Mutex<Vec<Option<String>>>>,
+}
+
+#[derive(Clone)]
+struct DelayedMockJitoState {
+    request_received: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
 
 #[test]
@@ -122,6 +135,43 @@ headers = {{ authorization = "Bearer {secret}" }}
     assert_eq!(
         authorization_headers.lock().await.as_slice(),
         &[Some(format!("Bearer {secret}"))]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn jito_transport_enforces_total_request_timeout() -> Result<()> {
+    let (api_url, server, request_received) = start_delayed_mock_jito_server().await?;
+    let outcome = async {
+        let client = JitoClient::try_new(&crate::config::HttpTransportConfig {
+            url: api_url,
+            request_timeout_sec: 1,
+            connect_timeout_sec: 1,
+            ..crate::config::HttpTransportConfig::default()
+        })?;
+        let (accepted, result) = tokio::join!(
+            timeout(Duration::from_secs(1), request_received),
+            timeout(Duration::from_secs(2), client.get_mev_reward("vote-1", 8))
+        );
+        Ok::<_, anyhow::Error>((accepted, result))
+    }
+    .await;
+    server.abort();
+
+    let (accepted, result) = outcome?;
+    accepted
+        .context("mock Jito API did not accept the request before its deadline")?
+        .context("mock Jito API dropped the request acceptance signal")?;
+    let error = match result {
+        Ok(Err(error)) => error,
+        Ok(Ok(_)) => anyhow::bail!("delayed Jito response must not complete successfully"),
+        Err(_) => anyhow::bail!("Jito request did not return before the outer deadline"),
+    };
+    assert!(
+        error.chain().any(|cause| cause
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(reqwest::Error::is_timeout)),
+        "Jito request must report a transport timeout: {error:#}"
     );
     Ok(())
 }
@@ -357,6 +407,41 @@ async fn start_header_recording_mock_jito_server(
         requests,
         authorization_headers,
     ))
+}
+
+async fn start_delayed_mock_jito_server() -> Result<(String, JoinHandle<()>, oneshot::Receiver<()>)>
+{
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("failed to bind delayed mock Jito API listener")?;
+    let address = listener
+        .local_addr()
+        .context("failed to read delayed mock Jito API address")?;
+    let (request_started, request_received) = oneshot::channel();
+    let app = Router::new()
+        .route(
+            "/api/v1/validators/:vote_account",
+            get(delayed_mock_jito_handler),
+        )
+        .with_state(DelayedMockJitoState {
+            request_received: Arc::new(Mutex::new(Some(request_started))),
+        });
+    let task = tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    Ok((format!("http://{address}/api/v1"), task, request_received))
+}
+
+async fn delayed_mock_jito_handler(
+    State(state): State<DelayedMockJitoState>,
+    Path(_vote_account): Path<String>,
+) -> impl IntoResponse {
+    if let Some(request_started) = state.request_received.lock().await.take() {
+        let _ = request_started.send(());
+    }
+    sleep(Duration::from_secs(3)).await;
+    (StatusCode::OK, [("content-type", "application/json")], "[]")
 }
 
 async fn mock_jito_handler(

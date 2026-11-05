@@ -60,6 +60,7 @@ struct MockRpcState {
     profile: MockRpcProfile,
     methods: Arc<Mutex<Vec<String>>>,
     authorization_headers: Arc<Mutex<Vec<Option<String>>>>,
+    requests: Arc<Mutex<Vec<Value>>>,
 }
 
 mod aggregate;
@@ -101,9 +102,34 @@ type HeaderRecordingMockRpcServer = (
     Arc<Mutex<Vec<Option<String>>>>,
 );
 
+type RequestRecordingMockRpcServer = (String, JoinHandle<()>, Arc<Mutex<Vec<Value>>>);
+
+type MockRpcServerRecordings = (
+    String,
+    JoinHandle<()>,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<Option<String>>>>,
+    Arc<Mutex<Vec<Value>>>,
+);
+
+async fn start_request_recording_mock_rpc_server(
+    profile: MockRpcProfile,
+) -> Result<RequestRecordingMockRpcServer> {
+    let (url, task, _, _, requests) = start_mock_rpc_server_with_recordings(profile).await?;
+    Ok((url, task, requests))
+}
+
 async fn start_header_recording_mock_rpc_server(
     profile: MockRpcProfile,
 ) -> Result<HeaderRecordingMockRpcServer> {
+    let (url, task, methods, authorization_headers, _) =
+        start_mock_rpc_server_with_recordings(profile).await?;
+    Ok((url, task, methods, authorization_headers))
+}
+
+async fn start_mock_rpc_server_with_recordings(
+    profile: MockRpcProfile,
+) -> Result<MockRpcServerRecordings> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .context("failed to bind mock RPC listener")?;
@@ -112,12 +138,14 @@ async fn start_header_recording_mock_rpc_server(
         .context("failed to read mock RPC listener address")?;
     let methods = Arc::new(Mutex::new(Vec::new()));
     let authorization_headers = Arc::new(Mutex::new(Vec::new()));
+    let requests = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
         .route("/", post(mock_rpc_handler))
         .with_state(MockRpcState {
             profile,
             methods: Arc::clone(&methods),
             authorization_headers: Arc::clone(&authorization_headers),
+            requests: Arc::clone(&requests),
         });
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
@@ -128,6 +156,7 @@ async fn start_header_recording_mock_rpc_server(
         task,
         methods,
         authorization_headers,
+        requests,
     ))
 }
 fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
@@ -190,6 +219,7 @@ async fn mock_rpc_handler(
         .and_then(Value::as_str)
         .unwrap_or_default();
     state.methods.lock().await.push(method.to_string());
+    state.requests.lock().await.push(request.clone());
     state.authorization_headers.lock().await.push(
         headers
             .get(reqwest::header::AUTHORIZATION.as_str())

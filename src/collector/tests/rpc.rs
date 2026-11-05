@@ -296,6 +296,34 @@ headers = {{ authorization = "Bearer {secret}" }}
 }
 
 #[tokio::test]
+async fn rpc_transport_sends_connector_commitment_on_wire() -> Result<()> {
+    let (rpc_url, server_task, requests) =
+        start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let mut transport = rpc_transport(&rpc_url, 5);
+    transport.commitment = "finalized".to_string();
+    let client = RpcClient::try_new(
+        &transport,
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("finalized-rpc"),
+    )?;
+
+    let epoch_info = client.get_epoch_info().await;
+    server_task.abort();
+    epoch_info?;
+
+    assert_eq!(
+        requests.lock().await.as_slice(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getEpochInfo",
+            "params": [{ "commitment": "finalized" }]
+        })],
+        "connector-local commitment must be sent in the JSON-RPC request"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn rpc_transport_enforces_total_request_timeout() -> Result<()> {
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::Delayed).await?;
