@@ -7,6 +7,7 @@ use super::{
     model::{
         AccountBalances, EconomicsMetrics, EpochCreditsSample, RewardSample, ScopeMetrics,
         Snapshot, ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics,
+        MAX_UPCOMING_LEADER_SLOTS,
     },
     rpc::{SlotRange, VoteAccountInfo, VoteAccounts},
 };
@@ -16,7 +17,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BinaryHeap, HashMap},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -152,17 +153,28 @@ pub(super) fn build_record(
         .get(&info.node_pubkey)
         .copied()
         .map_or(0, |(_, produced)| produced);
+    let scopes = context
+        .matcher
+        .labels_for(&info.node_pubkey, &info.vote_pubkey);
 
-    let current_epoch_future_slots = context
-        .current_schedule
-        .and_then(|schedule| schedule.get(&info.node_pubkey))
+    let current_epoch_schedule = context.current_schedule.map(|schedule| {
+        schedule
+            .get(&info.node_pubkey)
+            .map_or(&[][..], Vec::as_slice)
+    });
+    let next_epoch_schedule = context.next_schedule.map(|schedule| {
+        schedule
+            .get(&info.node_pubkey)
+            .map_or(&[][..], Vec::as_slice)
+    });
+    let current_epoch_scheduled_leader_slots =
+        current_epoch_schedule.map(|slots| u64::try_from(slots.len()).unwrap_or(u64::MAX));
+    let current_epoch_future_slots = current_epoch_schedule
         .into_iter()
         .flatten()
         .filter_map(|relative_slot| context.epoch_start_slot.checked_add(*relative_slot))
         .filter(|absolute_slot| *absolute_slot >= context.current_slot);
-    let next_epoch_future_slots = context
-        .next_schedule
-        .and_then(|schedule| schedule.get(&info.node_pubkey))
+    let next_epoch_future_slots = next_epoch_schedule
         .into_iter()
         .flatten()
         .filter_map(|relative_slot| context.next_epoch_start_slot.checked_add(*relative_slot));
@@ -179,6 +191,17 @@ pub(super) fn build_record(
     let seconds_until_next_leader = slots_until_next_leader
         .zip(context.average_slot_time_seconds)
         .map(|(slots, slot_time)| slots as f64 * slot_time);
+    let upcoming_leader_slots = if scopes.iter().any(|scope| scope == LABEL_SCOPE_WATCHED) {
+        bounded_upcoming_leader_slots(
+            current_epoch_schedule,
+            next_epoch_schedule,
+            context.epoch_start_slot,
+            context.next_epoch_start_slot,
+            context.current_slot,
+        )
+    } else {
+        Vec::new()
+    };
 
     let latest_epoch_credits = info
         .epoch_credits
@@ -190,10 +213,6 @@ pub(super) fn build_record(
             earned: credits.saturating_sub(*previous),
         });
     let latest_epoch_reward = context.latest_epoch_rewards.get(&info.vote_pubkey).cloned();
-
-    let scopes = context
-        .matcher
-        .labels_for(&info.node_pubkey, &info.vote_pubkey);
 
     ValidatorRecord {
         identity: info.node_pubkey,
@@ -208,12 +227,47 @@ pub(super) fn build_record(
         latest_epoch_rewarded_blocks_produced: reward_epoch_blocks_produced,
         current_epoch_leader_slots: leader_slots,
         current_epoch_blocks_produced: blocks_produced,
+        current_epoch_scheduled_leader_slots,
         future_leader_slots,
         next_leader_slot,
         slots_until_next_leader,
         seconds_until_next_leader,
+        upcoming_leader_slots,
         scopes,
     }
+}
+
+fn bounded_upcoming_leader_slots(
+    current_epoch_schedule: Option<&[u64]>,
+    next_epoch_schedule: Option<&[u64]>,
+    epoch_start_slot: u64,
+    next_epoch_start_slot: u64,
+    current_slot: u64,
+) -> Vec<u64> {
+    let (Some(current_epoch_schedule), Some(next_epoch_schedule)) =
+        (current_epoch_schedule, next_epoch_schedule)
+    else {
+        return Vec::new();
+    };
+    let current_slots = current_epoch_schedule
+        .iter()
+        .filter_map(|relative_slot| epoch_start_slot.checked_add(*relative_slot))
+        .filter(|absolute_slot| *absolute_slot >= current_slot);
+    let next_slots = next_epoch_schedule
+        .iter()
+        .filter_map(|relative_slot| next_epoch_start_slot.checked_add(*relative_slot));
+    let mut upcoming = BinaryHeap::with_capacity(MAX_UPCOMING_LEADER_SLOTS);
+
+    for slot in current_slots.chain(next_slots) {
+        if upcoming.len() < MAX_UPCOMING_LEADER_SLOTS {
+            upcoming.push(slot);
+        } else if upcoming.peek().is_some_and(|latest| slot < *latest) {
+            upcoming.pop();
+            upcoming.push(slot);
+        }
+    }
+
+    upcoming.into_sorted_vec()
 }
 
 /// Aggregates normalized validator records into deterministic scope and detail rows.
@@ -294,6 +348,7 @@ pub(super) fn aggregate_records(
         network,
         epoch,
         slot,
+        epoch_slots: 0,
         epoch_progress_pct: 0.0,
         epoch_slots_remaining: 0,
         cluster_performance: None,
@@ -349,10 +404,12 @@ pub(super) fn build_watched_validator_metrics(
             record.current_epoch_blocks_produced,
             record.current_epoch_leader_slots,
         ),
+        current_epoch_scheduled_leader_slots: record.current_epoch_scheduled_leader_slots,
         future_leader_slots: record.future_leader_slots,
         next_leader_slot: record.next_leader_slot,
         slots_until_next_leader: record.slots_until_next_leader,
         seconds_until_next_leader: record.seconds_until_next_leader,
+        upcoming_leader_slots: record.upcoming_leader_slots.clone(),
     }
 }
 

@@ -570,6 +570,308 @@
         "x": 0,
         "y": 17
       },
+      "id": 12,
+      "panels": [],
+      "title": "Producer Schedule",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Current-epoch leader assignments normalized to the observed average slot duration. This is scheduled production opportunity, not successful block production, and remains absent without the current schedule or slot-duration sample.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "unit": "suffix: slots/hour"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 0,
+        "y": 18
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_watched_validator_scheduled_leader_slots_per_hour{network=~\"$network\"}",
+          "legendFormat": "{{network}} · {{identity}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Scheduled Producer Frequency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Each watched validator's activated stake divided by all activated network stake. This is the stake-weighted input to leader selection; the realized epoch schedule can differ.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 4,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 6,
+        "y": 18
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * sol_watched_validator_activated_stake_sol{network=~\"$network\"} / on (network) group_left clamp_min(max by (network) (sol_activated_stake_sol{scope=\"scope:all-network\",network=~\"$network\"}), 1e-9)",
+          "legendFormat": "{{network}} · {{identity}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Share of Network Stake",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Earliest 16 leader assignments across the current and next epoch, with an estimated countdown based on observed slot duration. The table is omitted when either schedule is unavailable; Position is bounded and ordered per watched validator.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "position"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Position"
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Slot"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Starts In"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "identity"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Identity"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 15,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "label_join(sol_watched_validator_upcoming_leader_slot{network=~\"$network\"}, \"schedule_key\", \" / \", \"network\", \"vote_account\", \"position\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}} / {{position}}",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "label_join(clamp_min((sol_watched_validator_upcoming_leader_slot{network=~\"$network\"} - on (network) group_left sol_slot{network=~\"$network\"}) * on (network) group_left sol_average_slot_time_seconds{network=~\"$network\"}, 0), \"schedule_key\", \" / \", \"network\", \"vote_account\", \"position\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}} / {{position}}",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "schedule_key",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Value": true,
+              "__name__": true,
+              "__name__ 1": true,
+              "schedule_key": true,
+              "schedule_key 1": true,
+              "network 1": true,
+              "identity 1": true,
+              "vote_account 1": true,
+              "status 1": true,
+              "position 1": true,
+              "deployment": true,
+              "deployment 1": true,
+              "instance": true,
+              "instance 1": true,
+              "job": true,
+              "job 1": true,
+              "network": true,
+              "status": true,
+              "vote_account": true
+            },
+            "indexByName": {
+              "position": 0,
+              "identity": 2,
+              "vote_account": 3,
+              "status": 4,
+              "Value #A": 5,
+              "Value #B": 6
+            },
+            "renameByName": {
+              "position": "Position",
+              "identity": "Identity",
+              "vote_account": "Vote Account",
+              "status": "Status",
+              "Value #A": "Slot",
+              "Value #B": "Starts In"
+            }
+          }
+        }
+      ],
+      "title": "Upcoming Leader Schedule",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
       "id": 10,
       "panels": [],
       "title": "Relative Performance",
@@ -591,7 +893,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 28
       },
       "id": 11,
       "options": {
@@ -689,6 +991,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Leadership",
   "uid": "sol-validator-watcher-leadership",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

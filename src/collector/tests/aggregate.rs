@@ -21,10 +21,12 @@ fn aggregates_by_scope() -> Result<()> {
             latest_epoch_rewarded_blocks_produced: 3,
             current_epoch_leader_slots: 4,
             current_epoch_blocks_produced: 3,
+            current_epoch_scheduled_leader_slots: Some(6),
             future_leader_slots: 2,
             next_leader_slot: Some(105),
             slots_until_next_leader: Some(5),
             seconds_until_next_leader: Some(2.0),
+            upcoming_leader_slots: vec![105, 110],
             scopes: vec!["scope:watched".to_string(), "scope:all-network".to_string()],
         },
         ValidatorRecord {
@@ -46,10 +48,12 @@ fn aggregates_by_scope() -> Result<()> {
             latest_epoch_rewarded_blocks_produced: 1,
             current_epoch_leader_slots: 2,
             current_epoch_blocks_produced: 1,
+            current_epoch_scheduled_leader_slots: None,
             future_leader_slots: 1,
             next_leader_slot: None,
             slots_until_next_leader: None,
             seconds_until_next_leader: None,
+            upcoming_leader_slots: vec![],
             scopes: vec!["scope:network".to_string(), "scope:all-network".to_string()],
         },
     ];
@@ -111,10 +115,12 @@ fn aggregates_by_scope() -> Result<()> {
             blocks_produced: 3,
             blocks_missed: 1,
             block_production_rate: 75.0,
+            current_epoch_scheduled_leader_slots: Some(6),
             future_leader_slots: 2,
             next_leader_slot: Some(105),
             slots_until_next_leader: Some(5),
             seconds_until_next_leader: Some(2.0),
+            upcoming_leader_slots: vec![105, 110],
         }]
     );
 
@@ -139,10 +145,12 @@ fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
         latest_epoch_rewarded_blocks_produced: 0,
         current_epoch_leader_slots: 0,
         current_epoch_blocks_produced: 0,
+        current_epoch_scheduled_leader_slots: Some(5),
         future_leader_slots: 3,
         next_leader_slot: Some(103),
         slots_until_next_leader: Some(3),
         seconds_until_next_leader: Some(1.2),
+        upcoming_leader_slots: vec![103],
         scopes: vec!["scope:watched".to_string()],
     };
 
@@ -165,10 +173,12 @@ fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
             blocks_produced: 0,
             blocks_missed: 0,
             block_production_rate: 0.0,
+            current_epoch_scheduled_leader_slots: Some(5),
             future_leader_slots: 3,
             next_leader_slot: Some(103),
             slots_until_next_leader: Some(3),
             seconds_until_next_leader: Some(1.2),
+            upcoming_leader_slots: vec![103],
         }
     );
 }
@@ -213,7 +223,7 @@ fn build_record_uses_block_production_schedules_and_labels() {
 
     by_identity.insert("id-1".to_string(), (5, 4));
     reward_epoch_by_identity.insert("id-1".to_string(), (4, 3));
-    current_schedule.insert("id-1".to_string(), vec![5, 10, 15]);
+    current_schedule.insert("id-1".to_string(), (0..40).rev().collect());
     next_schedule.insert("id-1".to_string(), vec![1, 2]);
     latest_epoch_rewards.insert(
         "vote-1".to_string(),
@@ -254,10 +264,12 @@ fn build_record_uses_block_production_schedules_and_labels() {
     assert_eq!(record.current_epoch_leader_slots, 5);
     assert_eq!(record.current_epoch_blocks_produced, 4);
     assert_eq!(record.latest_epoch_rewarded_blocks_produced, 3);
-    assert_eq!(record.future_leader_slots, 4);
+    assert_eq!(record.current_epoch_scheduled_leader_slots, Some(40));
+    assert_eq!(record.future_leader_slots, 32);
     assert_eq!(record.next_leader_slot, Some(110));
     assert_eq!(record.slots_until_next_leader, Some(0));
     assert_eq!(record.seconds_until_next_leader, Some(0.0));
+    assert_eq!(record.upcoming_leader_slots, (110..126).collect::<Vec<_>>());
     assert_eq!(
         record.latest_epoch_credits,
         Some(EpochCreditsSample {
@@ -327,9 +339,11 @@ fn build_record_defaults_missing_block_data_to_zero() {
     assert_eq!(record.current_epoch_leader_slots, 0);
     assert_eq!(record.current_epoch_blocks_produced, 0);
     assert_eq!(record.future_leader_slots, 0);
+    assert_eq!(record.current_epoch_scheduled_leader_slots, None);
     assert_eq!(record.next_leader_slot, None);
     assert_eq!(record.slots_until_next_leader, None);
     assert_eq!(record.seconds_until_next_leader, None);
+    assert!(record.upcoming_leader_slots.is_empty());
     assert_eq!(record.latest_epoch_credits, None);
     assert_eq!(record.latest_epoch_reward, None);
     assert!(record.scopes.contains(&"scope:network".to_string()));

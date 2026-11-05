@@ -11,6 +11,9 @@ use crate::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
+/// Maximum upcoming assignments exported per watched validator.
+pub(crate) const MAX_UPCOMING_LEADER_SLOTS: usize = 16;
+
 /// Cluster-reported voting state for a validator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ValidatorStatus {
@@ -228,6 +231,8 @@ pub struct WatchedValidatorMetrics {
     pub blocks_missed: u64,
     /// Percentage of assigned current-epoch leader slots with a produced block.
     pub block_production_rate: f64,
+    /// Total assignments in the current epoch when its schedule was collected.
+    pub current_epoch_scheduled_leader_slots: Option<u64>,
     /// Assigned leader slots later than the current slot.
     pub future_leader_slots: u64,
     /// Next assigned leader slot, when one remains.
@@ -236,6 +241,8 @@ pub struct WatchedValidatorMetrics {
     pub slots_until_next_leader: Option<u64>,
     /// Estimated seconds from now to the next assignment.
     pub seconds_until_next_leader: Option<f64>,
+    /// Earliest current- or next-epoch assignments, ordered by absolute slot.
+    pub upcoming_leader_slots: Vec<u64>,
 }
 
 /// Normalized validator record used as the aggregation input.
@@ -265,6 +272,8 @@ pub struct ValidatorRecord {
     pub current_epoch_leader_slots: u64,
     /// Blocks produced during the current epoch.
     pub current_epoch_blocks_produced: u64,
+    /// Total assignments in the current epoch when its schedule was collected.
+    pub current_epoch_scheduled_leader_slots: Option<u64>,
     /// Assigned leader slots later than the current slot.
     pub future_leader_slots: u64,
     /// Next assigned leader slot, when one remains.
@@ -273,6 +282,8 @@ pub struct ValidatorRecord {
     pub slots_until_next_leader: Option<u64>,
     /// Estimated seconds from now to the next assignment.
     pub seconds_until_next_leader: Option<f64>,
+    /// Earliest current- or next-epoch assignments for a watched validator.
+    pub upcoming_leader_slots: Vec<u64>,
     /// Metric scopes to which this validator contributes.
     pub scopes: Vec<String>,
 }
@@ -397,6 +408,8 @@ pub struct Snapshot {
     pub epoch: u64,
     /// Current absolute slot.
     pub slot: u64,
+    /// Total number of slots in the current epoch.
+    pub epoch_slots: u64,
     /// Percentage of the current epoch completed.
     pub epoch_progress_pct: f64,
     /// Slots remaining in the current epoch.

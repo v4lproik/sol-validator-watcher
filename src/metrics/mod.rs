@@ -4,7 +4,7 @@
 //! reset behavior, rendering, and unit conversion.
 
 use crate::{
-    collector::{Snapshot, WatchedValidatorMetrics},
+    collector::{Snapshot, WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS},
     config::{Config, ConnectorConfig},
     mode::{ModeId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
@@ -17,6 +17,10 @@ use prometheus::{
 mod registration;
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
+const SECONDS_PER_HOUR: f64 = 3_600.0;
+const UPCOMING_LEADER_POSITION_LABELS: [&str; MAX_UPCOMING_LEADER_SLOTS] = [
+    "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16",
+];
 
 /// Single owner of Prometheus collectors and their reset/update semantics.
 #[derive(Clone)]
@@ -106,6 +110,9 @@ pub struct Metrics {
     sol_watched_validator_blocks_missed: GaugeVec,
     sol_watched_validator_block_production_rate: GaugeVec,
     sol_watched_validator_future_leader_slots: GaugeVec,
+    sol_watched_validator_current_epoch_scheduled_leader_slots: IntGaugeVec,
+    sol_watched_validator_scheduled_leader_slots_per_hour: GaugeVec,
+    sol_watched_validator_upcoming_leader_slot: IntGaugeVec,
     sol_watched_validator_next_leader_slot: IntGaugeVec,
     sol_watched_validator_slots_until_next_leader: IntGaugeVec,
     sol_watched_validator_seconds_until_next_leader: GaugeVec,
@@ -608,8 +615,16 @@ impl Metrics {
                 .set(metrics.future_leader_slots as f64);
         }
 
+        let average_slot_time_seconds = snapshot
+            .cluster_performance
+            .and_then(|performance| performance.average_slot_time_seconds);
         for validator in &snapshot.watched_validators {
-            self.update_watched_validator_metrics(&snapshot.network, validator);
+            self.update_watched_validator_metrics(
+                &snapshot.network,
+                snapshot.epoch_slots,
+                average_slot_time_seconds,
+                validator,
+            );
         }
     }
 
@@ -675,12 +690,23 @@ impl Metrics {
         self.sol_watched_validator_blocks_missed.reset();
         self.sol_watched_validator_block_production_rate.reset();
         self.sol_watched_validator_future_leader_slots.reset();
+        self.sol_watched_validator_current_epoch_scheduled_leader_slots
+            .reset();
+        self.sol_watched_validator_scheduled_leader_slots_per_hour
+            .reset();
+        self.sol_watched_validator_upcoming_leader_slot.reset();
         self.sol_watched_validator_next_leader_slot.reset();
         self.sol_watched_validator_slots_until_next_leader.reset();
         self.sol_watched_validator_seconds_until_next_leader.reset();
     }
 
-    fn update_watched_validator_metrics(&self, network: &str, validator: &WatchedValidatorMetrics) {
+    fn update_watched_validator_metrics(
+        &self,
+        network: &str,
+        epoch_slots: u64,
+        average_slot_time_seconds: Option<f64>,
+        validator: &WatchedValidatorMetrics,
+    ) {
         let labels = watched_validator_labels(network, validator);
 
         self.sol_watched_validator_info
@@ -736,6 +762,35 @@ impl Metrics {
             self.sol_watched_validator_next_leader_slot
                 .with_label_values(&labels)
                 .set(next_leader_slot as i64);
+        }
+        if let Some(scheduled_leader_slots) = validator.current_epoch_scheduled_leader_slots {
+            self.sol_watched_validator_current_epoch_scheduled_leader_slots
+                .with_label_values(&labels)
+                .set(metric_count(scheduled_leader_slots));
+            if let Some(slots_per_hour) = scheduled_leader_slots_per_hour(
+                scheduled_leader_slots,
+                epoch_slots,
+                average_slot_time_seconds,
+            ) {
+                self.sol_watched_validator_scheduled_leader_slots_per_hour
+                    .with_label_values(&labels)
+                    .set(slots_per_hour);
+            }
+        }
+        for (slot, position) in validator
+            .upcoming_leader_slots
+            .iter()
+            .zip(UPCOMING_LEADER_POSITION_LABELS)
+        {
+            self.sol_watched_validator_upcoming_leader_slot
+                .with_label_values(&[
+                    network,
+                    validator.identity.as_str(),
+                    validator.vote_account.as_str(),
+                    validator.status.as_str(),
+                    position,
+                ])
+                .set(metric_count(*slot));
         }
         if let Some(slots_until_next_leader) = validator.slots_until_next_leader {
             self.sol_watched_validator_slots_until_next_leader
@@ -800,6 +855,23 @@ fn solana_rpc_compatibility_label(compatibility: Option<SolanaRpcCompatibility>)
 
 fn feature_label(feature: Option<ProviderFeature>) -> &'static str {
     feature.map_or("", ProviderFeature::as_str)
+}
+
+fn scheduled_leader_slots_per_hour(
+    scheduled_leader_slots: u64,
+    epoch_slots: u64,
+    average_slot_time_seconds: Option<f64>,
+) -> Option<f64> {
+    let average_slot_time_seconds =
+        average_slot_time_seconds.filter(|seconds| seconds.is_finite() && *seconds > 0.0)?;
+    if epoch_slots == 0 {
+        return None;
+    }
+
+    Some(
+        scheduled_leader_slots as f64 * SECONDS_PER_HOUR
+            / (epoch_slots as f64 * average_slot_time_seconds),
+    )
 }
 
 fn watched_validator_labels<'a>(
