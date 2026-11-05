@@ -221,8 +221,8 @@ pub struct WatchedValidatorMetrics {
     pub root_slot_lag: u64,
     /// Vote-account commission percentage.
     pub commission_pct: u8,
-    /// Inflation reward earned in the bounded reward epoch.
-    pub latest_epoch_reward_lamports: u64,
+    /// Inflation reward earned in the bounded reward epoch, when available.
+    pub latest_epoch_reward_lamports: Option<u64>,
     /// Blocks produced during the bounded reward epoch.
     pub latest_epoch_rewarded_blocks_produced: u64,
     /// Blocks produced in assigned leader slots during the current epoch.
@@ -355,8 +355,8 @@ pub struct ScopeMetrics {
     pub delinquent_stake_lamports: u64,
     /// Sum of vote credits earned in the bounded sample epoch.
     pub latest_epoch_vote_credits: Option<u64>,
-    /// Sum of inflation rewards in the bounded reward epoch.
-    pub latest_epoch_reward_lamports: u64,
+    /// Complete sum of inflation rewards in the bounded reward epoch, when available.
+    pub latest_epoch_reward_lamports: Option<u64>,
     /// Sum of blocks produced during the bounded reward epoch.
     pub latest_epoch_rewarded_blocks_produced: u64,
     /// Stake-weighted vote efficiency percentage.

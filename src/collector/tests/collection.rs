@@ -67,7 +67,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     assert_eq!(snapshot.watched_validators.len(), 1);
     assert_eq!(
         snapshot.watched_validators[0].latest_epoch_reward_lamports,
-        12_000_000_000
+        Some(12_000_000_000)
     );
     assert_eq!(
         snapshot.watched_validators[0].latest_epoch_rewarded_blocks_produced,

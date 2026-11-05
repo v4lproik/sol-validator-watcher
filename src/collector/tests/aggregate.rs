@@ -78,7 +78,7 @@ fn aggregates_by_scope() -> Result<()> {
             current_stake_lamports: 10,
             delinquent_stake_lamports: 0,
             latest_epoch_vote_credits: Some(10),
-            latest_epoch_reward_lamports: 9_000_000_000,
+            latest_epoch_reward_lamports: Some(9_000_000_000),
             latest_epoch_rewarded_blocks_produced: 3,
             vote_efficiency_pct: Some(100.0),
             last_vote_slot_lag: 5.0,
@@ -106,7 +106,7 @@ fn aggregates_by_scope() -> Result<()> {
             scopes: vec!["scope:watched".to_string(), "scope:all-network".to_string()],
             activated_stake_lamports: 10,
             latest_epoch_vote_credits: Some(10),
-            latest_epoch_reward_lamports: 9_000_000_000,
+            latest_epoch_reward_lamports: Some(9_000_000_000),
             latest_epoch_rewarded_blocks_produced: 3,
             vote_efficiency_pct: Some(100.0),
             last_vote_slot_lag: 5,
@@ -128,7 +128,7 @@ fn aggregates_by_scope() -> Result<()> {
 }
 
 #[test]
-fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
+fn watched_validator_metrics_preserve_missing_reward_and_block_count() {
     let record = ValidatorRecord {
         identity: "id-1".to_string(),
         vote_account: "vote-1".to_string(),
@@ -142,7 +142,7 @@ fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
             earned: 12,
         }),
         latest_epoch_reward: None,
-        latest_epoch_rewarded_blocks_produced: 0,
+        latest_epoch_rewarded_blocks_produced: 7,
         current_epoch_leader_slots: 0,
         current_epoch_blocks_produced: 0,
         current_epoch_scheduled_leader_slots: Some(5),
@@ -164,8 +164,8 @@ fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 10,
             latest_epoch_vote_credits: None,
-            latest_epoch_reward_lamports: 0,
-            latest_epoch_rewarded_blocks_produced: 0,
+            latest_epoch_reward_lamports: None,
+            latest_epoch_rewarded_blocks_produced: 7,
             vote_efficiency_pct: None,
             last_vote_slot_lag: 2,
             root_slot_lag: 3,
@@ -181,6 +181,66 @@ fn watched_validator_metrics_omit_efficiency_without_matching_epoch() {
             upcoming_leader_slots: vec![103],
         }
     );
+}
+
+#[test]
+fn aggregate_reward_is_absent_when_any_scope_member_lacks_the_sample() -> Result<()> {
+    let sampled = ValidatorRecord {
+        identity: "id-1".to_string(),
+        vote_account: "vote-1".to_string(),
+        status: ValidatorStatus::Current,
+        activated_stake_lamports: 10,
+        commission: 5,
+        last_vote: 95,
+        root_slot: 94,
+        latest_epoch_credits: None,
+        latest_epoch_reward: Some(RewardSample {
+            epoch: 9,
+            amount_lamports: 0,
+        }),
+        latest_epoch_rewarded_blocks_produced: 2,
+        current_epoch_leader_slots: 0,
+        current_epoch_blocks_produced: 0,
+        current_epoch_scheduled_leader_slots: None,
+        future_leader_slots: 0,
+        next_leader_slot: None,
+        slots_until_next_leader: None,
+        seconds_until_next_leader: None,
+        upcoming_leader_slots: vec![],
+        scopes: vec!["scope:watched".to_string()],
+    };
+    let mut missing = sampled.clone();
+    missing.identity = "id-2".to_string();
+    missing.vote_account = "vote-2".to_string();
+    missing.latest_epoch_reward = None;
+    missing.latest_epoch_rewarded_blocks_produced = 3;
+
+    let snapshot = aggregate_records("mainnet-beta".to_string(), 10, 100, &[sampled, missing]);
+    let watched = snapshot
+        .scopes
+        .get("scope:watched")
+        .ok_or_else(|| anyhow!("missing watched scope"))?;
+
+    assert_eq!(snapshot.reward_sample_epoch, Some(9));
+    assert_eq!(watched.latest_epoch_reward_lamports, None);
+    assert_eq!(watched.latest_epoch_rewarded_blocks_produced, 5);
+    assert_eq!(
+        snapshot.watched_validators[0].latest_epoch_reward_lamports,
+        Some(0)
+    );
+    assert_eq!(
+        snapshot.watched_validators[0].latest_epoch_rewarded_blocks_produced,
+        2
+    );
+    assert_eq!(
+        snapshot.watched_validators[1].latest_epoch_reward_lamports,
+        None
+    );
+    assert_eq!(
+        snapshot.watched_validators[1].latest_epoch_rewarded_blocks_produced,
+        3
+    );
+    Ok(())
 }
 
 #[test]

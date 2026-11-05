@@ -30,6 +30,7 @@ struct ScopeAccumulator {
     delinquent_stake_lamports: u64,
     latest_epoch_vote_credits: Option<u64>,
     latest_epoch_reward_lamports: u64,
+    latest_epoch_reward_sample_count: u64,
     latest_epoch_rewarded_blocks_produced: u64,
     weighted_vote_efficiency_sum: f64,
     vote_efficiency_weight_sum: f64,
@@ -83,10 +84,10 @@ impl ScopeAccumulator {
             self.vote_efficiency_weight_sum += weight;
         }
 
+        self.latest_epoch_rewarded_blocks_produced += record.latest_epoch_rewarded_blocks_produced;
         if let Some(reward_lamports) = record.matching_epoch_reward_lamports(reward_sample_epoch) {
             self.latest_epoch_reward_lamports += reward_lamports;
-            self.latest_epoch_rewarded_blocks_produced +=
-                record.latest_epoch_rewarded_blocks_produced;
+            self.latest_epoch_reward_sample_count += 1;
         }
 
         self.blocks_produced += record.current_epoch_blocks_produced;
@@ -101,6 +102,10 @@ impl ScopeAccumulator {
             1.0
         };
         let total_blocks = self.blocks_produced + self.blocks_missed;
+        let validator_count = self.current_count.saturating_add(self.delinquent_count);
+        let latest_epoch_reward_lamports = (validator_count > 0
+            && self.latest_epoch_reward_sample_count == validator_count)
+            .then_some(self.latest_epoch_reward_lamports);
 
         ScopeMetrics {
             current_count: self.current_count,
@@ -108,7 +113,7 @@ impl ScopeAccumulator {
             current_stake_lamports: self.current_stake_lamports,
             delinquent_stake_lamports: self.delinquent_stake_lamports,
             latest_epoch_vote_credits: self.latest_epoch_vote_credits,
-            latest_epoch_reward_lamports: self.latest_epoch_reward_lamports,
+            latest_epoch_reward_lamports,
             latest_epoch_rewarded_blocks_produced: self.latest_epoch_rewarded_blocks_produced,
             vote_efficiency_pct: (self.vote_efficiency_weight_sum > 0.0)
                 .then(|| self.weighted_vote_efficiency_sum / self.vote_efficiency_weight_sum),
@@ -373,9 +378,7 @@ pub(super) fn build_watched_validator_metrics(
     reward_sample_epoch: Option<u64>,
 ) -> WatchedValidatorMetrics {
     let latest_epoch_vote_credits = record.matching_epoch_credits(sample_epoch);
-    let latest_epoch_reward_lamports = record
-        .matching_epoch_reward_lamports(reward_sample_epoch)
-        .unwrap_or_default();
+    let latest_epoch_reward_lamports = record.matching_epoch_reward_lamports(reward_sample_epoch);
     let vote_efficiency_pct = record.vote_efficiency_pct(ideal_epoch_credits, sample_epoch);
 
     WatchedValidatorMetrics {
@@ -390,11 +393,7 @@ pub(super) fn build_watched_validator_metrics(
         root_slot_lag: record.root_slot_lag(current_slot),
         commission_pct: record.commission,
         latest_epoch_reward_lamports,
-        latest_epoch_rewarded_blocks_produced: if latest_epoch_reward_lamports > 0 {
-            record.latest_epoch_rewarded_blocks_produced
-        } else {
-            0
-        },
+        latest_epoch_rewarded_blocks_produced: record.latest_epoch_rewarded_blocks_produced,
         blocks_produced: record.current_epoch_blocks_produced,
         blocks_missed: record.blocks_missed(),
         block_production_rate: ratio(

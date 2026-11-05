@@ -384,10 +384,485 @@
         "x": 0,
         "y": 8
       },
+      "id": 27,
+      "panels": [],
+      "title": "Tracked Validator Protocol Rewards",
+      "type": "row",
+      "description": "Compares inflation rewards and reward-epoch production for the watched validators selected above. Missing rewards remain absent rather than rendering as zero."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "One row per selected watched validator with independently collected reward-epoch block production. Reward panels below remain absent for validators without an inflation-reward sample; Reward Data Available quantifies current coverage.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "current": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "Current"
+                      },
+                      "delinquent": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "Delinquent"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "custom.align",
+                "value": "center"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Identity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 230
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 230
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rewarded Blocks"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 18,
+        "x": 0,
+        "y": 9
+      },
+      "id": 28,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Stake (SOL)"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1), \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "B",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "validator_key",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "Value #A": true,
+              "__name__": true,
+              "validator_key": true,
+              "Time 1": true,
+              "__name__ 1": true,
+              "validator_key 1": true,
+              "network 1": true,
+              "identity 1": true,
+              "vote_account 1": true,
+              "status 1": true
+            },
+            "indexByName": {
+              "identity": 0,
+              "status": 1,
+              "vote_account": 2,
+              "Value #B": 3,
+              "network": 4
+            },
+            "renameByName": {
+              "network": "Network",
+              "identity": "Identity",
+              "vote_account": "Vote Account",
+              "status": "Status",
+              "Value #B": "Rewarded Blocks"
+            }
+          }
+        }
+      ],
+      "title": "Tracked Validator Reward-Epoch Snapshot",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 9
+      },
+      "id": 29,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_reward_sample_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · reward epoch",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Reward Sample Epoch",
+      "type": "stat",
+      "description": "Epoch represented by the tracked-validator inflation reward and produced-block samples."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 14
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "(100 * count(sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)) / clamp_min(count(sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\"}), 1)) or vector(0)",
+          "instant": true,
+          "legendFormat": "selected validators",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Reward Data Available",
+      "type": "stat",
+      "description": "Percentage of selected watched validators with an inflation-reward sample. A missing sample is no data, not zero reward."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Epoch-sampled Solana inflation reward for each selected watched validator.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 19
+      },
+      "id": 31,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": false,
+          "legendFormat": "{{network}} · {{identity}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Tracked Inflation Reward History",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Blocks produced by each selected watched validator during the sampled reward epoch.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 19
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": false,
+          "legendFormat": "{{network}} · {{identity}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Tracked Rewarded Blocks History",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Inflation reward divided by produced blocks for each selected watched validator; absent when its reward sample is missing.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 19
+      },
+      "id": 33,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_watched_validator_reward_per_block_sol{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": false,
+          "legendFormat": "{{network}} · {{identity}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Tracked Reward / Produced Block History",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
       "id": 5,
       "panels": [],
-      "title": "Solana Protocol Inflation Rewards",
-      "type": "row"
+      "title": "Configured Economics Target — Protocol Inflation",
+      "type": "row",
+      "description": "These panels describe the single validator configured under modes.economics.validator, separate from the tracked-validator comparison above."
     },
     {
       "datasource": {
@@ -405,7 +880,7 @@
         "h": 5,
         "w": 8,
         "x": 0,
-        "y": 9
+        "y": 28
       },
       "id": 6,
       "options": {
@@ -432,7 +907,7 @@
           "refId": "A"
         }
       ],
-      "title": "Latest Protocol Inflation Reward",
+      "title": "Target Protocol Inflation Reward",
       "type": "stat",
       "description": "Latest Solana protocol inflation reward for the configured economics validator."
     },
@@ -452,7 +927,7 @@
         "h": 5,
         "w": 8,
         "x": 8,
-        "y": 9
+        "y": 28
       },
       "id": 7,
       "options": {
@@ -479,7 +954,7 @@
           "refId": "A"
         }
       ],
-      "title": "Protocol Sample Epoch",
+      "title": "Target Protocol Sample Epoch",
       "type": "stat",
       "description": "Epoch represented by the latest Solana protocol inflation reward sample. This is independent of each provider's settled reward epoch."
     },
@@ -499,7 +974,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 9
+        "y": 28
       },
       "id": 8,
       "options": {
@@ -526,7 +1001,7 @@
           "refId": "A"
         }
       ],
-      "title": "Produced Blocks in Protocol Sample",
+      "title": "Target Produced Blocks in Protocol Sample",
       "type": "stat",
       "description": "Blocks produced by the configured economics validator during the Solana protocol reward sample epoch."
     },
@@ -550,7 +1025,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 15
+        "y": 34
       },
       "id": 16,
       "options": {
@@ -572,7 +1047,7 @@
           "refId": "A"
         }
       ],
-      "title": "Protocol Inflation Reward History",
+      "title": "Target Protocol Inflation Reward History",
       "type": "timeseries"
     },
     {
@@ -595,7 +1070,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 15
+        "y": 34
       },
       "id": 17,
       "options": {
@@ -617,7 +1092,7 @@
           "refId": "A"
         }
       ],
-      "title": "Protocol Reward / Produced Block History",
+      "title": "Target Reward / Produced Block History",
       "type": "timeseries"
     },
     {
@@ -626,12 +1101,13 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 42
       },
       "id": 20,
       "panels": [],
-      "title": "Recent Validator Block Fees",
-      "type": "row"
+      "title": "Configured Economics Target — Recent Block Fees",
+      "type": "row",
+      "description": "These panels describe the single validator configured under modes.economics.validator, separate from the tracked-validator comparison above."
     },
     {
       "datasource": {
@@ -650,7 +1126,7 @@
         "h": 6,
         "w": 6,
         "x": 0,
-        "y": 24
+        "y": 43
       },
       "id": 21,
       "options": {
@@ -673,7 +1149,7 @@
           "editorMode": "code",
           "expr": "sol_economics_block_fee_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · latest block fee",
+          "legendFormat": "{{identity}} · latest block fee",
           "range": false,
           "refId": "A"
         }
@@ -698,7 +1174,7 @@
         "h": 6,
         "w": 6,
         "x": 6,
-        "y": 24
+        "y": 43
       },
       "id": 22,
       "options": {
@@ -721,7 +1197,7 @@
           "editorMode": "code",
           "expr": "sol_economics_recent_block_fee_reward_average_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · recent average",
+          "legendFormat": "{{identity}} · recent average",
           "range": false,
           "refId": "A"
         }
@@ -746,7 +1222,7 @@
         "h": 6,
         "w": 6,
         "x": 12,
-        "y": 24
+        "y": 43
       },
       "id": 23,
       "options": {
@@ -769,7 +1245,7 @@
           "editorMode": "code",
           "expr": "sol_economics_block_fee_reward_slot{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · latest sampled slot",
+          "legendFormat": "{{identity}} · latest sampled slot",
           "range": false,
           "refId": "A"
         }
@@ -794,7 +1270,7 @@
         "h": 6,
         "w": 6,
         "x": 18,
-        "y": 24
+        "y": 43
       },
       "id": 24,
       "options": {
@@ -817,7 +1293,7 @@
           "editorMode": "code",
           "expr": "sol_economics_recent_block_fee_reward_sample_count{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · sampled blocks",
+          "legendFormat": "{{identity}} · sampled blocks",
           "range": false,
           "refId": "A"
         }
@@ -845,7 +1321,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 30
+        "y": 49
       },
       "id": 25,
       "options": {
@@ -862,7 +1338,7 @@
         {
           "editorMode": "code",
           "expr": "sol_economics_block_fee_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "legendFormat": "{{network}} · latest block fee",
+          "legendFormat": "{{identity}} · latest block fee",
           "range": true,
           "refId": "A"
         }
@@ -890,7 +1366,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 30
+        "y": 49
       },
       "id": 26,
       "options": {
@@ -907,7 +1383,7 @@
         {
           "editorMode": "code",
           "expr": "sol_economics_recent_block_fee_reward_average_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "legendFormat": "{{network}} · recent block fee average",
+          "legendFormat": "{{identity}} · recent block fee average",
           "range": true,
           "refId": "A"
         }
@@ -921,12 +1397,13 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 57
       },
       "id": 12,
       "panels": [],
-      "title": "Jito MEV Rewards",
-      "type": "row"
+      "title": "Configured Economics Target — Jito MEV Rewards",
+      "type": "row",
+      "description": "These panels describe the single validator configured under modes.economics.validator, separate from the tracked-validator comparison above."
     },
     {
       "datasource": {
@@ -945,7 +1422,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 39
+        "y": 58
       },
       "id": 13,
       "options": {
@@ -968,7 +1445,7 @@
           "editorMode": "code",
           "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · MEV reward",
+          "legendFormat": "{{identity}} · MEV reward",
           "range": false,
           "refId": "A"
         }
@@ -995,7 +1472,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 39
+        "y": 58
       },
       "id": 14,
       "options": {
@@ -1018,7 +1495,7 @@
           "editorMode": "code",
           "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · Commission",
+          "legendFormat": "{{identity}} · Commission",
           "range": false,
           "refId": "A"
         }
@@ -1043,7 +1520,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 39
+        "y": 58
       },
       "id": 15,
       "options": {
@@ -1066,7 +1543,7 @@
           "editorMode": "code",
           "expr": "sol_economics_jito_mev_reward_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "{{network}} · Reward epoch",
+          "legendFormat": "{{identity}} · Reward epoch",
           "range": false,
           "refId": "A"
         }
@@ -1094,7 +1571,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 64
       },
       "id": 18,
       "options": {
@@ -1111,7 +1588,7 @@
         {
           "editorMode": "code",
           "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "legendFormat": "{{network}} · Jito MEV reward",
+          "legendFormat": "{{identity}} · Jito MEV reward",
           "range": true,
           "refId": "A"
         }
@@ -1141,7 +1618,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 64
       },
       "id": 19,
       "options": {
@@ -1158,7 +1635,7 @@
         {
           "editorMode": "code",
           "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "legendFormat": "{{network}} · Jito commission",
+          "legendFormat": "{{identity}} · Jito commission",
           "range": true,
           "refId": "A"
         }
@@ -1172,12 +1649,13 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 72
       },
       "id": 9,
       "panels": [],
-      "title": "Funding Runway and Timing",
-      "type": "row"
+      "title": "Configured Economics Target — Funding and Timing",
+      "type": "row",
+      "description": "These panels describe the single validator configured under modes.economics.validator, separate from the tracked-validator comparison above."
     },
     {
       "datasource": {
@@ -1386,7 +1864,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 73
       },
       "id": 10,
       "options": {
@@ -1409,7 +1887,7 @@
           "editorMode": "code",
           "expr": "sol_economics_identity_balance_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "Identity Balance",
+          "legendFormat": "{{identity}} · Identity Balance",
           "range": false,
           "refId": "A"
         },
@@ -1417,7 +1895,7 @@
           "editorMode": "code",
           "expr": "sol_economics_vote_account_balance_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "Vote Balance",
+          "legendFormat": "{{identity}} · Vote Balance",
           "range": false,
           "refId": "B"
         },
@@ -1425,7 +1903,7 @@
           "editorMode": "code",
           "expr": "sol_economics_vote_account_rent_exempt_minimum_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "Rent Minimum",
+          "legendFormat": "{{identity}} · Rent Minimum",
           "range": false,
           "refId": "C"
         },
@@ -1433,7 +1911,7 @@
           "editorMode": "code",
           "expr": "sol_economics_vat_reserve_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "VAT Reserve",
+          "legendFormat": "{{identity}} · VAT Reserve",
           "range": false,
           "refId": "D"
         },
@@ -1441,7 +1919,7 @@
           "editorMode": "code",
           "expr": "sol_economics_vat_epochs_available{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "VAT Runway",
+          "legendFormat": "{{identity}} · VAT Runway",
           "range": false,
           "refId": "E"
         },
@@ -1449,12 +1927,12 @@
           "editorMode": "code",
           "expr": "sol_economics_vat_next_epoch_funded{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "Next VAT",
+          "legendFormat": "{{identity}} · Next VAT",
           "range": false,
           "refId": "F"
         }
       ],
-      "title": "Account Balances and VAT Runway",
+      "title": "Target Account Balances and VAT Runway",
       "type": "stat"
     },
     {
@@ -1549,7 +2027,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 81
       },
       "id": 11,
       "options": {
@@ -1601,7 +2079,7 @@
           "refId": "D"
         }
       ],
-      "title": "Epoch and Leader Timing",
+      "title": "Target Epoch and Leader Timing",
       "type": "stat"
     }
   ],
@@ -1640,6 +2118,31 @@
         "refresh": 2,
         "sort": 1,
         "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": ".*"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(sol_watched_validator_info{network=~\"$network\"}, identity)",
+        "includeAll": true,
+        "label": "Validators",
+        "multi": true,
+        "name": "validator",
+        "options": [],
+        "query": {
+          "query": "label_values(sol_watched_validator_info{network=~\"$network\"}, identity)",
+          "refId": "PrometheusVariableQueryEditor-Validator"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -1651,6 +2154,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 7,
+  "version": 8,
   "weekStart": ""
 }
