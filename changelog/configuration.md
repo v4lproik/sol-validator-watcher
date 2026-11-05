@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Replaced flat connector endpoint fields with nested `rpc`, `websocket`, and `provider_api` transport tables that own URLs, sensitive headers, connect/request/handshake deadlines, and RPC commitment without compatibility aliases.
-- Added case-normalized header validation, protocol-owned header protection, contradictory-timeout rejection, secure TLS-only configuration, redacted transport debug output, and source-free TOML parse diagnostics that retain safe line/column locations for expanded credentials.
+- Added case-normalized header validation, protocol-owned header protection, redirect denial, contradictory-timeout rejection, secure TLS-only configuration, redacted transport debug output, and source-free TOML parse diagnostics that retain safe line/column locations for expanded credentials.
 - Rejected empty, malformed, hostless, or unsupported-scheme connector RPC, WebSocket, and provider-API URLs before client construction while keeping every endpoint and timeout connector-local.
 - Rejected command routes whose connector lacks the required RPC, WebSocket, or provider-API transport.
 - Added validated provider-API connector URLs and timeouts, the `jito-mev-rewards` provider feature, and the optional economics `jito_mev_rewards` command route without inferring either from provider names or standard Solana RPC compatibility.

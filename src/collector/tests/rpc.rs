@@ -296,6 +296,36 @@ headers = {{ authorization = "Bearer {secret}" }}
 }
 
 #[tokio::test]
+async fn rpc_transport_does_not_replay_custom_headers_across_redirects() -> Result<()> {
+    let (rpc_url, redirect_server, target_server, redirected_headers) =
+        start_redirecting_mock_rpc_server().await?;
+    let secret = "redirect-header-secret";
+    let transport: crate::config::RpcTransportConfig = toml::from_str(&format!(
+        r#"
+url = "{rpc_url}"
+request_timeout_sec = 5
+connect_timeout_sec = 5
+headers = {{ "X-API-Key" = "{secret}" }}
+"#
+    ))?;
+    let client = RpcClient::try_new(
+        &transport,
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("redirect-rpc"),
+    )?;
+
+    let result = client.node_health().await;
+    redirect_server.abort();
+    target_server.abort();
+
+    assert!(result.is_err(), "RPC redirects must not be followed");
+    assert!(
+        redirected_headers.lock().await.is_empty(),
+        "custom connector headers must never reach a redirected endpoint"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn rpc_transport_sends_connector_commitment_on_wire() -> Result<()> {
     let (rpc_url, server_task, requests) =
         start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
@@ -623,4 +653,63 @@ async fn connector_capability_probe_reports_declared_historical_data_feature() -
     assert!(message.contains("getInflationReward"), "{message}");
     server_task.abort();
     Ok(())
+}
+
+type RedirectedHeaders = Arc<Mutex<Vec<Option<String>>>>;
+
+async fn start_redirecting_mock_rpc_server(
+) -> Result<(String, JoinHandle<()>, JoinHandle<()>, RedirectedHeaders)> {
+    let target_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("failed to bind redirect target listener")?;
+    let target_address = target_listener
+        .local_addr()
+        .context("failed to read redirect target address")?;
+    let redirected_headers = Arc::new(Mutex::new(Vec::new()));
+    let target_app = Router::new()
+        .route("/", post(redirected_rpc_target))
+        .with_state(Arc::clone(&redirected_headers));
+    let target_server = tokio::spawn(async move {
+        let _ = axum::serve(target_listener, target_app).await;
+    });
+
+    let redirect_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("failed to bind redirect source listener")?;
+    let redirect_address = redirect_listener
+        .local_addr()
+        .context("failed to read redirect source address")?;
+    let redirect_app = Router::new()
+        .route("/", post(redirect_rpc_request))
+        .with_state(format!("http://{target_address}"));
+    let redirect_server = tokio::spawn(async move {
+        let _ = axum::serve(redirect_listener, redirect_app).await;
+    });
+
+    Ok((
+        format!("http://{redirect_address}"),
+        redirect_server,
+        target_server,
+        redirected_headers,
+    ))
+}
+
+async fn redirect_rpc_request(
+    State(target_url): State<String>,
+) -> (StatusCode, [(&'static str, String); 1]) {
+    (StatusCode::TEMPORARY_REDIRECT, [("location", target_url)])
+}
+
+async fn redirected_rpc_target(
+    State(headers_seen): State<RedirectedHeaders>,
+    headers: HeaderMap,
+    Json(_request): Json<Value>,
+) -> Json<Value> {
+    headers_seen.lock().await.push(
+        headers
+            .get("x-api-key")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+    );
+    Json(rpc_success(json!("ok")))
 }

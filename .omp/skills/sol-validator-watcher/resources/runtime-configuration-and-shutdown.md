@@ -60,10 +60,10 @@ liveness files, signals, and shutdown.
 - Treat each connector's nested `rpc`, `websocket`, and `provider_api` table as
   the complete transport configuration. A present table requires a nonempty
   URL; omission disables that transport. HTTP tables own the complete URL,
-  custom headers, total request timeout, and connect timeout; RPC additionally
-  owns commitment. WebSocket owns its URL, upgrade headers, and one bounded
-  DNS/TCP/TLS/upgrade handshake timeout. Do not duplicate transports in
-  `features` or add transport toggles.
+  custom headers, total request timeout, and connect timeout; their clients do
+  not follow redirects. RPC additionally owns commitment. WebSocket owns its
+  URL, upgrade headers, and one bounded DNS/TCP/TLS/upgrade handshake timeout.
+  Do not duplicate transports in `features` or add transport toggles.
 - Do not add an endpoint or client configuration for a transport without a
   typed command that consumes it and a startup verification boundary. In
   particular, no gRPC configuration exists until the watcher consumes a

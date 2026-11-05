@@ -408,6 +408,7 @@ fn build_http_client(
     }
     reqwest::Client::builder()
         .default_headers(headers)
+        .redirect(reqwest::redirect::Policy::none())
         .min_tls_version(reqwest::tls::Version::TLS_1_2)
         .connect_timeout(Duration::from_secs(connect_timeout_sec))
         .timeout(Duration::from_secs(request_timeout_sec))
