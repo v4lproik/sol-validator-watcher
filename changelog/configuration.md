@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the `block-fee-rewards` provider feature and optional economics `recent_block_fee_rewards` route, requiring an extended RPC endpoint with confirmed or finalized commitment and explicit connector capability.
 - Replaced flat connector endpoint fields with nested `rpc`, `websocket`, and `provider_api` transport tables that own URLs, sensitive headers, connect/request/handshake deadlines, and RPC commitment without compatibility aliases.
 - Added case-normalized header validation, protocol-owned header protection, redirect denial, contradictory-timeout rejection, secure TLS-only configuration, redacted transport debug output, and source-free TOML parse diagnostics that retain safe line/column locations for expanded credentials.
 - Rejected empty, malformed, hostless, or unsupported-scheme connector RPC, WebSocket, and provider-API URLs before client construction while keeping every endpoint and timeout connector-local.

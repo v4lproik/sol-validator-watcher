@@ -7,7 +7,10 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         connectors: vec![ConnectorConfig {
             name: "primary".to_string(),
             provider: "mock-solana".to_string(),
-            features: vec![ProviderFeature::HistoricalData],
+            features: vec![
+                ProviderFeature::HistoricalData,
+                ProviderFeature::BlockFeeRewards,
+            ],
             rpc: Some(crate::config::RpcTransportConfig::new(rpc_url.clone())),
             ..ConnectorConfig::default()
         }],
@@ -24,6 +27,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         vote_account: Some("vote-1".to_string()),
         labels: vec!["focus:economics".to_string()],
     });
+    config.modes.economics.commands.recent_block_fee_rewards = vec!["primary".to_string()];
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
@@ -106,6 +110,18 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     assert_eq!(economics.vat_reserve_lamports, Some(1_600_000_000));
     assert_eq!(economics.vat_epochs_available, Some(2));
     assert_eq!(economics.vat_next_epoch_funded, Some(true));
+    assert_eq!(
+        economics.recent_block_fee_rewards,
+        Some(RecentBlockFeeRewards {
+            latest_slot: 805,
+            latest_reward_lamports: 3_000_000,
+            total_reward_lamports: 4_000_000,
+            sampled_block_count: 2,
+        })
+    );
+    assert!(snapshot.data_sources.iter().any(|source| {
+        source.command == CommandId::RecentBlockFeeRewards && source.connector.as_ref() == "primary"
+    }));
     Ok(())
 }
 
@@ -494,5 +510,63 @@ async fn economics_succeeds_when_optional_leadership_command_is_unavailable() ->
         .data_sources
         .iter()
         .any(|source| source.command == CommandId::RewardEpochBlockProduction));
+    Ok(())
+}
+
+#[tokio::test]
+async fn block_fee_reward_identity_mismatch_falls_back_to_the_next_connector() -> Result<()> {
+    let (wrong_url, wrong_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::WrongBlockFeeRewardIdentity).await?;
+    let (fallback_url, fallback_task) = start_mock_rpc_server().await?;
+    let features = vec![
+        ProviderFeature::HistoricalData,
+        ProviderFeature::BlockFeeRewards,
+    ];
+    let mut config = Config {
+        network: "devnet".to_string(),
+        connectors: vec![
+            ConnectorConfig {
+                name: "wrong-reward".to_string(),
+                provider: "mock-primary".to_string(),
+                features: features.clone(),
+                rpc: Some(crate::config::RpcTransportConfig::new(wrong_url)),
+                ..ConnectorConfig::default()
+            },
+            ConnectorConfig {
+                name: "fallback-reward".to_string(),
+                provider: "mock-fallback".to_string(),
+                features,
+                rpc: Some(crate::config::RpcTransportConfig::new(fallback_url)),
+                ..ConnectorConfig::default()
+            },
+        ],
+        modes: modes_for(&["wrong-reward", "fallback-reward"], true),
+        ..Config::default()
+    };
+    config.modes.economics.commands.recent_block_fee_rewards =
+        vec!["wrong-reward".to_string(), "fallback-reward".to_string()];
+    let sources =
+        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+
+    let snapshot = collect_snapshot(&sources, &config).await?;
+    wrong_task.abort();
+    fallback_task.abort();
+
+    assert_eq!(
+        snapshot
+            .economics
+            .as_ref()
+            .and_then(|economics| economics.recent_block_fee_rewards),
+        Some(RecentBlockFeeRewards {
+            latest_slot: 805,
+            latest_reward_lamports: 3_000_000,
+            total_reward_lamports: 4_000_000,
+            sampled_block_count: 2,
+        })
+    );
+    assert!(snapshot.data_sources.iter().any(|source| {
+        source.command == CommandId::RecentBlockFeeRewards
+            && source.connector.as_ref() == "fallback-reward"
+    }));
     Ok(())
 }

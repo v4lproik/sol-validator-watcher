@@ -82,6 +82,7 @@ fn modes_for(rpc: &str, ws: Option<&str>, economics_enabled: bool) -> ModesConfi
                 reward_epoch_block_production: economics_enabled
                     .then(rpc_route)
                     .unwrap_or_default(),
+                recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
             },
         },

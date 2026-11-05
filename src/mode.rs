@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 13;
+pub const COMMAND_COUNT: usize = 14;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -66,6 +66,8 @@ impl SolanaRpcCompatibility {
 pub enum ProviderFeature {
     /// Retained prior-epoch data needed for historical rewards and production.
     HistoricalData,
+    /// Bounded confirmed block rewards served through standard Solana `getBlock`.
+    BlockFeeRewards,
     /// Settled per-validator rewards served by the Jito validator API.
     JitoMevRewards,
 }
@@ -75,6 +77,7 @@ impl ProviderFeature {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::HistoricalData => "historical-data",
+            Self::BlockFeeRewards => "block-fee-rewards",
             Self::JitoMevRewards => "jito-mev-rewards",
         }
     }
@@ -105,6 +108,11 @@ const RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSo
     transport: Transport::Rpc,
     solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
     feature: Some(ProviderFeature::HistoricalData),
+};
+const RPC_EXTENDED_BLOCK_FEE_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+    transport: Transport::Rpc,
+    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+    feature: Some(ProviderFeature::BlockFeeRewards),
 };
 const WEBSOCKET_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
     transport: Transport::Websocket,
@@ -181,6 +189,8 @@ pub enum CommandId {
     RewardEpochBlockProduction,
     /// Settled prior-epoch Jito MEV reward for the economics validator.
     JitoMevRewards,
+    /// Recent confirmed block-fee rewards for the economics validator.
+    RecentBlockFeeRewards,
 }
 
 impl CommandId {
@@ -199,6 +209,7 @@ impl CommandId {
         Self::InflationRewards,
         Self::RewardEpochBlockProduction,
         Self::JitoMevRewards,
+        Self::RecentBlockFeeRewards,
     ];
 
     /// Returns the stable metric and configuration label.
@@ -217,6 +228,7 @@ impl CommandId {
             Self::InflationRewards => "inflation-rewards",
             Self::RewardEpochBlockProduction => "reward-epoch-block-production",
             Self::JitoMevRewards => "jito-mev-rewards",
+            Self::RecentBlockFeeRewards => "recent-block-fee-rewards",
         }
     }
 
@@ -233,7 +245,8 @@ impl CommandId {
             Self::AccountBalances
             | Self::InflationRewards
             | Self::RewardEpochBlockProduction
-            | Self::JitoMevRewards => ModeId::Economics,
+            | Self::JitoMevRewards
+            | Self::RecentBlockFeeRewards => ModeId::Economics,
         }
     }
 
@@ -254,6 +267,7 @@ impl CommandId {
                 RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT
             }
             Self::JitoMevRewards => PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT,
+            Self::RecentBlockFeeRewards => RPC_EXTENDED_BLOCK_FEE_SOURCE_REQUIREMENT,
         }
     }
 
@@ -273,6 +287,7 @@ impl CommandId {
             Self::InflationRewards => 10,
             Self::RewardEpochBlockProduction => 11,
             Self::JitoMevRewards => 12,
+            Self::RecentBlockFeeRewards => 13,
         }
     }
 }
@@ -336,6 +351,14 @@ mod tests {
         ] {
             assert_eq!(command.source_requirement(), historical_rpc);
         }
+        assert_eq!(
+            CommandId::RecentBlockFeeRewards.source_requirement(),
+            ModeSourceRequirement {
+                transport: Transport::Rpc,
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                feature: Some(ProviderFeature::BlockFeeRewards),
+            }
+        );
         assert_eq!(
             CommandId::JitoMevRewards.source_requirement(),
             ModeSourceRequirement {

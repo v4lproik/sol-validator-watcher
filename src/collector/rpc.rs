@@ -4,7 +4,8 @@
 //! not choose connectors or apply cross-connector fallback policy.
 
 use super::model::{
-    AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus, RewardSample,
+    AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards,
+    RewardSample,
 };
 use crate::{
     config::{has_explicit_authority, RpcTransportConfig},
@@ -21,6 +22,8 @@ use tracing::warn;
 /// Largest inclusive slot range sent in one `getBlockProduction` request.
 pub(super) const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
 const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
+/// Maximum number of recent assigned slots requested in one `getBlock` batch.
+pub(super) const MAX_RECENT_BLOCK_FEE_REWARD_SLOTS: usize = 32;
 /// Connector-local Solana JSON-RPC client with shared response telemetry.
 #[derive(Clone)]
 pub struct RpcClient {
@@ -187,6 +190,16 @@ impl RpcClient {
                         ProviderFeature::HistoricalData.as_str()
                     )
                 })?;
+            }
+            if features.contains(&ProviderFeature::BlockFeeRewards) {
+                self.get_block_fee_rewards(&[probe_slot], None)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "RPC endpoint does not satisfy provider feature {:?}",
+                            ProviderFeature::BlockFeeRewards.as_str()
+                        )
+                    })?;
             }
         }
 
@@ -560,6 +573,178 @@ impl RpcClient {
 
         Ok(by_address)
     }
+    /// Returns validator fee rewards from a bounded batch of recent assigned slots.
+    ///
+    /// Skipped slots are omitted. A produced block must contain exactly one
+    /// non-negative fee reward for `identity`; malformed rewards fail the command so
+    /// the configured connector fallback can run.
+    pub(super) async fn get_recent_block_fee_rewards(
+        &self,
+        slots: &[u64],
+        identity: &str,
+    ) -> Result<Option<RecentBlockFeeRewards>> {
+        self.get_block_fee_rewards(slots, Some(identity)).await
+    }
+
+    async fn get_block_fee_rewards(
+        &self,
+        slots: &[u64],
+        identity: Option<&str>,
+    ) -> Result<Option<RecentBlockFeeRewards>> {
+        let started_at = Instant::now();
+        let result = self.get_block_fee_rewards_request(slots, identity).await;
+        let outcome = if result.is_ok() {
+            RpcRequestOutcome::Succeeded
+        } else {
+            RpcRequestOutcome::Failed
+        };
+        let telemetry_result =
+            self.telemetry
+                .record_request("getBlock", started_at.elapsed(), outcome);
+
+        match (result, telemetry_result) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Ok(_), Err(error)) => Err(error),
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(telemetry_error)) => {
+                Err(error.context(format!("failed to record RPC request: {telemetry_error:#}")))
+            }
+        }
+    }
+
+    async fn get_block_fee_rewards_request(
+        &self,
+        slots: &[u64],
+        identity: Option<&str>,
+    ) -> Result<Option<RecentBlockFeeRewards>> {
+        if slots.is_empty() {
+            return Ok(None);
+        }
+        if slots.len() > MAX_RECENT_BLOCK_FEE_REWARD_SLOTS {
+            bail!(
+                "getBlock batch contains {} slots; maximum is {}",
+                slots.len(),
+                MAX_RECENT_BLOCK_FEE_REWARD_SLOTS
+            );
+        }
+        for (index, slot) in slots.iter().enumerate() {
+            if slots[..index].contains(slot) {
+                bail!("getBlock batch contains duplicate slot {slot}");
+            }
+        }
+
+        let requests = slots
+            .iter()
+            .map(|slot| {
+                JsonRpcRequest::with_id(
+                    *slot,
+                    "getBlock",
+                    (
+                        *slot,
+                        GetBlockConfig {
+                            commitment: &self.commitment,
+                            transaction_details: "none",
+                            rewards: true,
+                        },
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        let (status, responses): (StatusCode, Vec<JsonRpcEnvelope<BlockResponse>>) =
+            self.send_batch_requests("getBlock", &requests).await?;
+        if responses.len() != slots.len() {
+            bail!(
+                "getBlock batch returned {} responses for {} slots",
+                responses.len(),
+                slots.len()
+            );
+        }
+
+        let mut seen = [false; MAX_RECENT_BLOCK_FEE_REWARD_SLOTS];
+        for response in &responses {
+            let Some(index) = slots.iter().position(|slot| *slot == response.id) else {
+                bail!(
+                    "getBlock batch returned unexpected response id {}",
+                    response.id
+                );
+            };
+            if seen[index] {
+                bail!(
+                    "getBlock batch returned duplicate response id {}",
+                    response.id
+                );
+            }
+            seen[index] = true;
+            if let Some(error) = &response.error {
+                bail!(
+                    "getBlock for slot {} failed with JSON-RPC code {}",
+                    response.id,
+                    error.code
+                );
+            }
+            if matches!(response.result, JsonRpcResult::Missing) {
+                bail!(
+                    "getBlock for slot {} returned no result or error",
+                    response.id
+                );
+            }
+        }
+        if !status.is_success() {
+            bail!("getBlock returned non-success HTTP status {status}");
+        }
+        if seen[..slots.len()].contains(&false) {
+            bail!("getBlock batch omitted one or more requested slots");
+        }
+
+        let Some(identity) = identity else {
+            return Ok(None);
+        };
+        let mut latest_slot = None;
+        let mut latest_reward_lamports = 0;
+        let mut total_reward_lamports = 0_u64;
+        let mut sampled_block_count = 0_u64;
+        for response in responses {
+            let JsonRpcResult::Value(block) = response.result else {
+                continue;
+            };
+            let mut fee_rewards = block.rewards.iter().filter(|reward| {
+                reward.reward_type == Some(BlockRewardType::Fee) && reward.pubkey == identity
+            });
+            let reward = fee_rewards.next().with_context(|| {
+                format!(
+                    "getBlock for slot {} returned no fee reward for validator identity",
+                    response.id
+                )
+            })?;
+            if fee_rewards.next().is_some() {
+                bail!(
+                    "getBlock for slot {} returned multiple fee rewards for validator identity",
+                    response.id
+                );
+            }
+            let reward_lamports = u64::try_from(reward.lamports).with_context(|| {
+                format!(
+                    "getBlock for slot {} returned a negative validator fee reward",
+                    response.id
+                )
+            })?;
+            total_reward_lamports = total_reward_lamports
+                .checked_add(reward_lamports)
+                .context("recent block fee reward total overflowed u64")?;
+            sampled_block_count += 1;
+            if latest_slot.is_none_or(|slot| response.id > slot) {
+                latest_slot = Some(response.id);
+                latest_reward_lamports = reward_lamports;
+            }
+        }
+
+        Ok(latest_slot.map(|latest_slot| RecentBlockFeeRewards {
+            latest_slot,
+            latest_reward_lamports,
+            total_reward_lamports,
+            sampled_block_count,
+        }))
+    }
 
     async fn call<T, P>(&self, method: &'static str, params: P) -> Result<T>
     where
@@ -673,6 +858,42 @@ impl RpcClient {
 
         Ok(JsonRpcResponse { status, envelope })
     }
+    async fn send_batch_requests<T, P>(
+        &self,
+        method: &'static str,
+        requests: &[JsonRpcRequest<'_, P>],
+    ) -> Result<(StatusCode, Vec<JsonRpcEnvelope<T>>)>
+    where
+        T: DeserializeOwned,
+        P: Serialize,
+    {
+        let response = self
+            .http
+            .post(self.url.clone())
+            .json(requests)
+            .send()
+            .await
+            .map_err(reqwest::Error::without_url)
+            .with_context(|| format!("{method} batch request failed"))?;
+        let status = response.status();
+        self.telemetry.record_response(status.as_u16())?;
+        let body = response
+            .text()
+            .await
+            .map_err(reqwest::Error::without_url)
+            .with_context(|| format!("{method} batch response body read failed"))?;
+        let envelopes = serde_json::from_str(&body).with_context(|| {
+            if status.is_success() {
+                format!("{method} returned an invalid batch JSON-RPC payload")
+            } else {
+                format!(
+                    "{method} returned non-success HTTP status {status} with an invalid batch JSON-RPC payload"
+                )
+            }
+        })?;
+
+        Ok((status, envelopes))
+    }
 }
 fn merge_block_production(target: &mut BlockProduction, update: BlockProduction) {
     for (identity, (leader_slots, blocks_produced)) in update.by_identity {
@@ -691,9 +912,13 @@ struct JsonRpcRequest<'a, P> {
 
 impl<'a, P> JsonRpcRequest<'a, P> {
     fn new(method: &'a str, params: P) -> Self {
+        Self::with_id(1, method, params)
+    }
+
+    fn with_id(id: u64, method: &'a str, params: P) -> Self {
         Self {
             jsonrpc: "2.0",
-            id: 1,
+            id,
             method,
             params,
         }
@@ -740,6 +965,13 @@ pub(super) struct GetBlockProductionConfig<'a> {
     /// Optional inclusive slot range.
     pub(super) range: Option<SlotRange>,
 }
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GetBlockConfig<'a> {
+    commitment: &'a str,
+    transaction_details: &'static str,
+    rewards: bool,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -766,6 +998,7 @@ struct JsonRpcResponse<T> {
 #[derive(Deserialize)]
 #[serde(bound(deserialize = "T: Deserialize<'de>"))]
 struct JsonRpcEnvelope<T> {
+    id: u64,
     #[serde(default, deserialize_with = "deserialize_json_rpc_result")]
     result: JsonRpcResult<T>,
     error: Option<JsonRpcError>,
@@ -831,6 +1064,25 @@ struct RecentPerformanceSample {
 struct AccountValue {
     lamports: u64,
     space: Option<u64>,
+}
+#[derive(Deserialize)]
+struct BlockResponse {
+    rewards: Vec<BlockReward>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BlockReward {
+    pubkey: String,
+    lamports: i64,
+    reward_type: Option<BlockRewardType>,
+}
+
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
+enum BlockRewardType {
+    Fee,
+    #[serde(other)]
+    Other,
 }
 
 /// Decoded fields used from `getEpochInfo`.

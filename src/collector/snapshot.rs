@@ -10,7 +10,7 @@ use super::{
     },
     command,
     model::{ModeStatus, NodeVotingStatus, Snapshot, ValidatorStatus},
-    rpc::BlockProduction,
+    rpc::{BlockProduction, MAX_RECENT_BLOCK_FEE_REWARD_SLOTS},
 };
 use crate::{
     config::Config,
@@ -19,6 +19,7 @@ use crate::{
     source::SourceChain,
 };
 use anyhow::Result;
+use std::collections::BinaryHeap;
 
 /// Exercises every required economics command before economics collection starts.
 ///
@@ -215,6 +216,39 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         data_sources.push(resolved.source.into());
         resolved.value
     });
+    let recent_block_fee_rewards = match (
+        economics_target.as_ref(),
+        current_schedule.as_ref(),
+        config
+            .modes
+            .route(CommandId::RecentBlockFeeRewards)
+            .is_empty(),
+    ) {
+        (Some(target), Some(schedule), false) => {
+            let slots = schedule
+                .get(&target.identity)
+                .map(|relative_slots| {
+                    recent_completed_leader_slots(relative_slots, epoch_start_slot, current_slot)
+                })
+                .unwrap_or_default();
+            if slots.is_empty() {
+                None
+            } else {
+                let command = command::GetRecentBlockFeeRewards {
+                    slots: &slots,
+                    identity: &target.identity,
+                };
+                match sources.optional(&command).await {
+                    Some(resolved) => {
+                        data_sources.push(resolved.source.into());
+                        resolved.value
+                    }
+                    None => None,
+                }
+            }
+        }
+        _ => None,
+    };
     let economics = match (economics_target.as_ref(), account_balances) {
         (Some(target), Some(resolved)) => {
             data_sources.push(resolved.source.into());
@@ -222,6 +256,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
                 target,
                 resolved.value,
                 jito_mev_reward,
+                recent_block_fee_rewards,
             ))
         }
         _ => None,
@@ -303,4 +338,59 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         });
     }
     Ok(snapshot)
+}
+
+fn recent_completed_leader_slots(
+    relative_slots: &[u64],
+    epoch_start_slot: u64,
+    current_slot: u64,
+) -> Vec<u64> {
+    let mut latest_slots = BinaryHeap::with_capacity(MAX_RECENT_BLOCK_FEE_REWARD_SLOTS);
+    for relative_slot in relative_slots {
+        let Some(slot) = epoch_start_slot.checked_add(*relative_slot) else {
+            continue;
+        };
+        if slot >= current_slot {
+            continue;
+        }
+
+        let encoded_slot = u64::MAX - slot;
+        if latest_slots
+            .iter()
+            .any(|existing| *existing == encoded_slot)
+        {
+            continue;
+        }
+        if latest_slots.len() < MAX_RECENT_BLOCK_FEE_REWARD_SLOTS {
+            latest_slots.push(encoded_slot);
+        } else if latest_slots
+            .peek()
+            .is_some_and(|oldest| encoded_slot < *oldest)
+        {
+            latest_slots.pop();
+            latest_slots.push(encoded_slot);
+        }
+    }
+
+    let mut slots = latest_slots.into_vec();
+    for slot in &mut slots {
+        *slot = u64::MAX - *slot;
+    }
+    slots.sort_unstable_by(|left, right| right.cmp(left));
+    slots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::recent_completed_leader_slots;
+
+    #[test]
+    fn recent_completed_leader_slots_keeps_the_latest_bounded_unique_slots() {
+        let mut relative_slots = (0..40).collect::<Vec<_>>();
+        relative_slots.extend([39, u64::MAX]);
+
+        let slots = recent_completed_leader_slots(&relative_slots, 100, 138);
+
+        assert_eq!(slots, (106..=137).rev().collect::<Vec<_>>());
+    }
 }

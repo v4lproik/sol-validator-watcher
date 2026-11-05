@@ -116,6 +116,14 @@ Snapshot-dependent conditions require data newer than the greater of 120
 seconds or four configured poll intervals. Alertmanager notification routing
 remains an external deployment responsibility.
 
+Recent validator block-fee economics are exposed through
+`sol_economics_block_fee_reward_sol`,
+`sol_economics_block_fee_reward_slot`,
+`sol_economics_recent_block_fee_reward_average_sol`, and
+`sol_economics_recent_block_fee_reward_sample_count`. The bounded confirmed
+block sample includes Harmonic priority fees when Harmonic built a sampled
+block, but Solana does not expose provider attribution for that fee reward.
+
 ## Metrics the exporter should add
 
 These are the operator signals that would most improve the dashboards.
@@ -132,12 +140,14 @@ These are the operator signals that would most improve the dashboards.
 
 ### Validator economics and revenue
 
-- Harmonic revenue
-- base revenue per block
-- total revenue per produced block
+- attributable Harmonic-only revenue if Harmonic publishes a stable validator
+  reward protocol
+- total revenue per produced block across protocol inflation, block fees, and
+  settled provider rewards
 - revenue per leader slot
 - revenue normalized by activated stake
-- revenue split by base fees, tips, and sidecar/auction sources when available
+- revenue split by base fees, priority fees, tips, and sidecar/auction sources
+  when those components are independently attributable
 
 ### Stake and topology
 

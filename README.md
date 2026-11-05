@@ -100,7 +100,7 @@ commitment = "confirmed"
 [[connectors]]
 name = "helius-devnet"
 provider = "helius"
-features = ["historical-data"]
+features = ["historical-data", "block-fee-rewards"]
 solana_rpc_compatibility = "extended"
 
 [connectors.rpc]
@@ -144,6 +144,7 @@ enabled = true
 account_balances = ["helius-devnet"]
 inflation_rewards = ["helius-devnet"]
 reward_epoch_block_production = ["helius-devnet"]
+recent_block_fee_rewards = ["helius-devnet"]
 jito_mev_rewards = ["jito-api"]
 
 [modes.economics.validator]
@@ -158,9 +159,10 @@ Command requirements are independent of the provider name:
 | `ws-health` | WebSocket | None | None |
 | `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `extended` | None |
 | `inflation-rewards`, `reward-epoch-block-production` | RPC | `extended` | `historical-data` |
+| `recent-block-fee-rewards` | RPC | `extended` | `block-fee-rewards` |
 | `jito-mev-rewards` | Provider API | None | `jito-mev-rewards` |
 
-`core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, identity, version, block-height, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available.
+`core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, identity, version, block-height, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available. `block-fee-rewards` is an independent opt-in promise that the endpoint serves bounded confirmed `getBlock` reward batches.
 
 `jito-mev-rewards` is optional within enabled economics mode. It reads the
 configured target vote account from Jito's validator API and exports the latest
@@ -170,6 +172,18 @@ exhaustion omits only the Jito series; required balance, inflation-reward, and
 block-production failures still fail the economics round. Settled rewards are
 cached for the active source chain; an absent epoch is retried after Jito's
 documented 60-second API cache.
+
+`recent-block-fee-rewards` is optional within enabled economics mode. Each poll
+selects at most 32 of the target identity's latest completed current-epoch
+leader slots and fetches them in one `getBlock` batch with transaction bodies
+omitted. Missed slots are omitted. A produced block must contain exactly one
+non-negative `Fee` reward for the target identity or the command advances to
+the next configured connector. The resulting latest reward, slot, recent
+average, and produced-block sample count include normal Solana transaction fees
+and priority fees delivered by Harmonic when Harmonic built the block.
+Solana's block reward does not identify the block-building provider, and
+Harmonic does not publish a validator reward API or distinct on-chain tip
+account, so these metrics must not be interpreted as Harmonic-only revenue.
 
 `node_status` is an optional health-mode route intended for an operator-owned validator endpoint. When configured, it collects the active identity, validator client version and feature set, block height, structured catch-up distance, and vote-set classification from that routed connector. Route exhaustion omits the node-local series and marks health mode down without fabricating values.
 
@@ -240,16 +254,25 @@ When a Jito reward route succeeds, the economics dashboard publishes
 economics mode is disabled, no route is configured, the epoch is not settled,
 or every configured provider-API connector fails.
 
+When a recent block-fee route succeeds, the dashboard publishes
+`sol_economics_block_fee_reward_sol`,
+`sol_economics_block_fee_reward_slot`,
+`sol_economics_recent_block_fee_reward_average_sol`, and
+`sol_economics_recent_block_fee_reward_sample_count`. These series remain
+absent when the route is not configured, no completed assigned slots exist, or
+every configured RPC connector fails.
+
 The dashboard keeps the configured economics validator's Solana protocol
-inflation reward and protocol sample epoch separate from its Jito MEV reward
-and Jito settled epoch in adjacent source-specific sections. Provider rewards
-are not merged into protocol rewards; any future provider integration requires
-its own typed command, metrics, and dashboard section.
+inflation rewards, recent validator block fees, and Jito MEV rewards in
+adjacent source-specific sections. Recent block fees include Harmonic priority
+fees when Harmonic built a sampled block, but cannot attribute any amount to
+Harmonic independently. Jito provider rewards are not merged into protocol
+inflation rewards or recent block fees; any future attributable provider
+integration requires its own typed command, metrics, and dashboard section.
 Each source section includes history graphs over the selected Grafana time
-range. Protocol history shows the target's latest inflation reward and reward
-per produced block; Jito history shows the latest settled MEV reward and
-commission. These are epoch-sampled values held until a newer sample or
-settlement appears, not within-epoch accrual.
+range. Protocol and Jito values are epoch-sampled and held until a newer sample
+or settlement. Block-fee graphs show the latest produced block and bounded
+recent-sample average observed by each poll.
 
 The local Prometheus scrapes only the watcher profiles selected by
 `just stack up <target>` and evaluates baseline target-down, readiness,

@@ -2,8 +2,8 @@ use super::{bool_label, Metrics};
 use crate::{
     collector::{
         ClusterPerformanceMetrics, EconomicsMetrics, JitoMevReward, ModeStatus, NodeHealth,
-        NodeMetrics, NodeVotingStatus, ScopeMetrics, Snapshot, SnapshotDataSource, ValidatorStatus,
-        WatchedValidatorMetrics,
+        NodeMetrics, NodeVotingStatus, RecentBlockFeeRewards, ScopeMetrics, Snapshot,
+        SnapshotDataSource, ValidatorStatus, WatchedValidatorMetrics,
     },
     config::{
         Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -104,6 +104,16 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
             },
             SnapshotDataSource {
                 mode: ModeId::Economics,
+                command: CommandId::RecentBlockFeeRewards,
+                connector: Arc::from("helius-rpc"),
+                provider: Arc::from("helius"),
+                transport: Transport::Rpc,
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+                feature: Some(ProviderFeature::BlockFeeRewards),
+                precedence: 1,
+            },
+            SnapshotDataSource {
+                mode: ModeId::Economics,
                 command: CommandId::JitoMevRewards,
                 connector: Arc::from("jito-api"),
                 provider: Arc::from("jito"),
@@ -149,6 +159,12 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 reward_lamports: 123_456_789,
                 commission_bps: 800,
             }),
+            recent_block_fee_rewards: Some(RecentBlockFeeRewards {
+                latest_slot: 1_230,
+                latest_reward_lamports: 2_000_000,
+                total_reward_lamports: 6_000_000,
+                sampled_block_count: 3,
+            }),
         }),
     };
     metrics.set_watcher_up("mainnet-beta", true);
@@ -170,7 +186,10 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
             ConnectorConfig {
                 name: "helius-rpc".to_string(),
                 provider: "helius".to_string(),
-                features: vec![ProviderFeature::HistoricalData],
+                features: vec![
+                    ProviderFeature::HistoricalData,
+                    ProviderFeature::BlockFeeRewards,
+                ],
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
                 rpc: Some(crate::config::RpcTransportConfig::new(
                     "https://rpc.helius.example".to_string(),
@@ -216,6 +235,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     config.modes.health.commands.ws_health =
         vec!["local-validator".to_string(), "helius-ws".to_string()];
     config.modes.economics.commands.jito_mev_rewards = vec!["jito-api".to_string()];
+    config.modes.economics.commands.recent_block_fee_rewards = vec!["helius-rpc".to_string()];
     let sources =
         SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
     metrics.begin_poll(&config, &sources);
@@ -229,12 +249,15 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_connector_info{connector=\"jito-api\",declaration_order=\"5\",has_provider_api=\"true\",has_rpc=\"false\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"jito\",solana_rpc_compatibility=\"\"} 1"));
     assert!(rendered.contains("sol_connector_feature_info{connector=\"jito-api\",feature=\"jito-mev-rewards\",network=\"mainnet-beta\",provider=\"jito\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
+    assert!(rendered.contains("sol_connector_feature_info{connector=\"helius-rpc\",feature=\"block-fee-rewards\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
+    assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"recent-block-fee-rewards\",connector=\"helius-rpc\",feature=\"block-fee-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"false\",command=\"ws-health\",connector=\"local-validator\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"core\",transport=\"websocket\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"ws-health\",connector=\"helius-ws\",feature=\"\",mode=\"health\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"websocket\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-data\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
+    assert!(rendered.contains("sol_mode_command_source_info{command=\"recent-block-fee-rewards\",connector=\"helius-rpc\",feature=\"block-fee-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1"));
     assert!(rendered.contains("sol_mode_up{mode=\"leadership\",network=\"mainnet-beta\"} 1"));
     assert!(rendered.contains("sol_ws_up{network=\"mainnet-beta\"} 1"));
@@ -258,6 +281,10 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_economics_vat_reserve_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.6"));
     assert!(rendered.contains("sol_economics_vat_epochs_available{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2"));
     assert!(rendered.contains("sol_economics_vat_next_epoch_funded{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1"));
+    assert!(rendered.contains("sol_economics_block_fee_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.002"));
+    assert!(rendered.contains("sol_economics_block_fee_reward_slot{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1230"));
+    assert!(rendered.contains("sol_economics_recent_block_fee_reward_average_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.002"));
+    assert!(rendered.contains("sol_economics_recent_block_fee_reward_sample_count{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 3"));
     assert!(rendered.contains("sol_economics_jito_mev_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.123456789"));
     assert!(rendered.contains("sol_economics_jito_mev_commission_pct{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 8"));
     assert!(rendered.contains("sol_economics_jito_mev_reward_epoch{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 41"));
@@ -309,6 +336,7 @@ fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
             vat_epochs_available: None,
             vat_next_epoch_funded: None,
             jito_mev_reward: None,
+            recent_block_fee_rewards: None,
         }),
         ..Snapshot::default()
     });
@@ -445,6 +473,12 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
                 reward_lamports: 1,
                 commission_bps: 0,
             }),
+            recent_block_fee_rewards: Some(RecentBlockFeeRewards {
+                latest_slot: 1,
+                latest_reward_lamports: 1,
+                total_reward_lamports: 1,
+                sampled_block_count: 1,
+            }),
         }),
     });
     metrics.update_snapshot(&Snapshot {
@@ -504,6 +538,10 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_cluster_slots_per_second{"));
     assert!(!rendered.contains("sol_estimated_epoch_end_unixtime{"));
     assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
+    assert!(!rendered.contains("sol_economics_block_fee_reward_sol{"));
+    assert!(!rendered.contains("sol_economics_block_fee_reward_slot{"));
+    assert!(!rendered.contains("sol_economics_recent_block_fee_reward_average_sol{"));
+    assert!(!rendered.contains("sol_economics_recent_block_fee_reward_sample_count{"));
 
     Ok(())
 }
@@ -719,6 +757,7 @@ fn modes_for(
                 reward_epoch_block_production: economics_enabled
                     .then(rpc_route)
                     .unwrap_or_default(),
+                recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
             },
         },

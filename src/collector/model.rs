@@ -146,6 +146,18 @@ pub struct JitoMevReward {
     /// Validator MEV commission in basis points.
     pub commission_bps: u16,
 }
+/// Validator fee rewards sampled from recent confirmed blocks.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecentBlockFeeRewards {
+    /// Most recent produced slot in the bounded sample.
+    pub latest_slot: u64,
+    /// Validator fee reward paid for the most recent sampled block.
+    pub latest_reward_lamports: u64,
+    /// Sum of validator fee rewards across sampled produced blocks.
+    pub total_reward_lamports: u64,
+    /// Number of produced blocks represented by the sample.
+    pub sampled_block_count: u64,
+}
 
 /// Balances needed to derive validator economics metrics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -179,6 +191,8 @@ pub struct EconomicsMetrics {
     pub vat_next_epoch_funded: Option<bool>,
     /// Settled Jito MEV reward, when a configured Jito route has published the epoch.
     pub jito_mev_reward: Option<JitoMevReward>,
+    /// Recent confirmed validator fee rewards, including Harmonic priority-fee tips.
+    pub recent_block_fee_rewards: Option<RecentBlockFeeRewards>,
 }
 
 /// Per-validator values exported for explicitly watched validators.

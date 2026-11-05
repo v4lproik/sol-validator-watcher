@@ -3,9 +3,9 @@ use super::{
     collect_snapshot, ensure_economics_supported, estimated_epoch_end_unixtime_at, ratio,
     resolve_economics_target, reward_epoch_block_range, AccountBalances, BlockProduction,
     ClusterPerformanceMetrics, EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig,
-    RecordBuildContext, RewardSample, RpcClient, RpcValueResponse, ScopeMetrics, SlotRange,
-    ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts, WatchedValidatorMetrics,
-    MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
+    RecentBlockFeeRewards, RecordBuildContext, RewardSample, RpcClient, RpcValueResponse,
+    ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts,
+    WatchedValidatorMetrics, MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
 };
 use crate::{
     config::{
@@ -46,6 +46,8 @@ enum MockRpcProfile {
     NoInflationRewards,
     NoLeaderSchedule,
     NoMinimumLedgerSlot,
+    NoBlockFeeRewards,
+    WrongBlockFeeRewardIdentity,
     NoPerformanceSamples,
     InvalidPerformanceTransactionSplit,
     MissingPerformanceTransactionSplit,
@@ -181,6 +183,15 @@ fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
                     "range": { "firstSlot": 809, "lastSlot": 809 }
                 }])
         }
+        "getBlock" => {
+            params.first().and_then(Value::as_u64).is_some()
+                && params.get(1)
+                    == Some(&json!({
+                        "commitment": "confirmed",
+                        "transactionDetails": "none",
+                        "rewards": true
+                    }))
+        }
         "getMultipleAccounts" => {
             actual
                 == json!([
@@ -214,19 +225,37 @@ async fn mock_rpc_handler(
     headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> impl IntoResponse {
+    let profile = state.profile;
+    let authorization = headers
+        .get(reqwest::header::AUTHORIZATION.as_str())
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    if let Some(batch) = request.as_array() {
+        state.requests.lock().await.push(request.clone());
+        state.authorization_headers.lock().await.push(authorization);
+        state.methods.lock().await.extend(batch.iter().map(|item| {
+            item.get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        }));
+        if matches!(profile, MockRpcProfile::Delayed) {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+        let responses = batch
+            .iter()
+            .map(|item| mock_batch_response(profile, item))
+            .collect();
+        return (StatusCode::OK, Json(Value::Array(responses))).into_response();
+    }
+
     let method = request
         .get("method")
         .and_then(Value::as_str)
         .unwrap_or_default();
     state.methods.lock().await.push(method.to_string());
     state.requests.lock().await.push(request.clone());
-    state.authorization_headers.lock().await.push(
-        headers
-            .get(reqwest::header::AUTHORIZATION.as_str())
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-    );
-    let profile = state.profile;
+    state.authorization_headers.lock().await.push(authorization);
     if matches!(profile, MockRpcProfile::Delayed) {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
@@ -497,22 +526,89 @@ async fn mock_rpc_handler(
     }
 }
 
+fn mock_batch_response(profile: MockRpcProfile, request: &Value) -> Value {
+    let id = request
+        .get("id")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let method = request
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let params = request
+        .get("params")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if method != "getBlock" {
+        return rpc_error_with_id(id, -32601, "method not found");
+    }
+    if matches!(profile, MockRpcProfile::StrictCapabilityParams)
+        && !capability_probe_params_are_valid(method, &params)
+    {
+        return rpc_error_with_id(id, -32602, "invalid capability probe params");
+    }
+    if matches!(profile, MockRpcProfile::NoBlockFeeRewards) {
+        return rpc_error_with_id(id, -32601, "method not found");
+    }
+
+    let slot = params.first().and_then(Value::as_u64).unwrap_or_default();
+    if slot == 802 {
+        return rpc_success_with_id(id, Value::Null);
+    }
+    let identity = if matches!(profile, MockRpcProfile::WrongBlockFeeRewardIdentity) {
+        "other-id"
+    } else {
+        "id-1"
+    };
+    let lamports = match slot {
+        800 => 1_000_000,
+        805 => 3_000_000,
+        _ => 2_000_000,
+    };
+    rpc_success_with_id(
+        id,
+        json!({
+            "blockHeight": slot,
+            "blockTime": 1_700_000_000,
+            "blockhash": "blockhash",
+            "parentSlot": slot.saturating_sub(1),
+            "previousBlockhash": "previous",
+            "rewards": [{
+                "pubkey": identity,
+                "lamports": lamports,
+                "postBalance": 1_000_000_000u64,
+                "rewardType": "Fee",
+                "commission": null
+            }]
+        }),
+    )
+}
+
 fn rpc_success(result: Value) -> Value {
+    rpc_success_with_id(1, result)
+}
+
+fn rpc_success_with_id(id: u64, result: Value) -> Value {
     json!({
         "jsonrpc": "2.0",
         "result": result,
-        "id": 1
+        "id": id
     })
 }
 
 fn rpc_error(code: i64, message: &str) -> Value {
+    rpc_error_with_id(1, code, message)
+}
+
+fn rpc_error_with_id(id: u64, code: i64, message: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
         "error": {
             "code": code,
             "message": message
         },
-        "id": 1
+        "id": id
     })
 }
 
@@ -551,6 +647,7 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
                 account_balances: economics_enabled.then(route).unwrap_or_default(),
                 inflation_rewards: economics_enabled.then(route).unwrap_or_default(),
                 reward_epoch_block_production: economics_enabled.then(route).unwrap_or_default(),
+                recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
             },
         },
