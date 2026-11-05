@@ -40,21 +40,27 @@ impl AppState {
     }
 }
 
+/// Binds the metrics listener before supervised tasks start.
+pub(super) async fn bind_http_listener(address: SocketAddr) -> Result<TcpListener> {
+    TcpListener::bind(address)
+        .await
+        .with_context(|| format!("failed to bind metrics server on {address}"))
+}
+
 /// Serves metrics, liveness, and readiness until cooperative shutdown.
 pub(super) async fn run_http_server(
     state: AppState,
-    address: SocketAddr,
+    listener: TcpListener,
     mut shutdown: Shutdown,
 ) -> Result<TaskExit> {
+    let address = listener
+        .local_addr()
+        .context("failed to read metrics server address")?;
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
         .route("/healthz", get(health_handler))
         .route("/readyz", get(readiness_handler))
         .with_state(state);
-
-    let listener = TcpListener::bind(address)
-        .await
-        .with_context(|| format!("failed to bind metrics server on {}", address))?;
 
     info!(address = %address, "serving metrics");
     axum::serve(listener, app)

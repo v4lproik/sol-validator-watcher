@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Bound the metrics listener before supervised tasks start and exercised the production health, readiness, metrics, and cooperative-shutdown boundaries.
 - Preserved Solana `getHealth` error `-32005` as a completed degraded snapshot so node catch-up diagnostics remain observable while RPC health and readiness stay down; other dependency failures retain whole-poll recovery behavior.
 - Routed WebSocket probe failures through the watcher-state actor so counters remain ordered with polling transitions while preserving RPC-based readiness admission.
 - Defaulted the metrics HTTP listener to loopback and added a bounded `healthcheck` command that probes process liveness without conflating recoverable collection failures with container health.

@@ -289,6 +289,63 @@ fn build_record_uses_block_production_schedules_and_labels() {
 }
 
 #[test]
+fn build_record_keeps_each_available_epoch_schedule() {
+    let config = Config {
+        watched_validators: vec![WatchedValidatorConfig {
+            identity: Some("id-1".to_string()),
+            vote_account: Some("vote-1".to_string()),
+            labels: vec![],
+        }],
+        ..Config::default()
+    };
+    let matcher = LabelMatcher::from_config(&config);
+    let by_identity = HashMap::new();
+    let reward_epoch_by_identity = HashMap::new();
+    let latest_epoch_rewards = HashMap::new();
+    let current_schedule = HashMap::from([("id-1".to_string(), vec![5, 10])]);
+    let next_schedule = HashMap::from([("id-1".to_string(), vec![1, 3])]);
+    let build = |current_schedule, next_schedule| {
+        build_record(
+            VoteAccountInfo {
+                vote_pubkey: "vote-1".to_string(),
+                node_pubkey: "id-1".to_string(),
+                activated_stake: 0,
+                commission: 0,
+                epoch_credits: vec![],
+                last_vote: 0,
+                root_slot: 0,
+            },
+            ValidatorStatus::Current,
+            &RecordBuildContext {
+                matcher: &matcher,
+                current_epoch: 1,
+                current_slot: 102,
+                epoch_start_slot: 100,
+                next_epoch_start_slot: 200,
+                average_slot_time_seconds: Some(0.4),
+                by_identity: &by_identity,
+                reward_epoch_by_identity: &reward_epoch_by_identity,
+                current_schedule,
+                next_schedule,
+                latest_epoch_rewards: &latest_epoch_rewards,
+            },
+        )
+    };
+
+    let current_only = build(Some(&current_schedule), None);
+    assert_eq!(current_only.current_epoch_scheduled_leader_slots, Some(2));
+    assert_eq!(current_only.future_leader_slots, 2);
+    assert_eq!(current_only.next_leader_slot, Some(105));
+    assert_eq!(current_only.upcoming_leader_slots, vec![105, 110]);
+
+    let next_only = build(None, Some(&next_schedule));
+    assert_eq!(next_only.current_epoch_scheduled_leader_slots, None);
+    assert_eq!(next_only.future_leader_slots, 2);
+    assert_eq!(next_only.next_leader_slot, Some(201));
+    assert_eq!(next_only.upcoming_leader_slots, vec![201, 203]);
+}
+
+#[test]
 fn build_record_defaults_missing_block_data_to_zero() {
     let config = Config {
         network: "devnet".to_string(),

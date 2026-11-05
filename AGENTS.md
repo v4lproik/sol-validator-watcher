@@ -64,7 +64,7 @@ or site scripts directly.
 | `just ci verify` | Baseline pre-commit/pre-push gate: format, Clippy, build, and tests |
 | `just ci full` | Full local CI including coverage and the focused Surfpool smoke |
 | `just coverage summary` | Generate a local coverage summary |
-| `just coverage check [threshold]` | Enforce line coverage; default threshold is 80 |
+| `just coverage check [threshold]` | Enforce line and region coverage; default threshold is 90 |
 | `just coverage html` | Generate the local HTML coverage report |
 | `just coverage lcov` | Generate `lcov.info` |
 | `just surfpool doctor` | Verify the optional Surfpool CLI |

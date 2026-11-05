@@ -244,17 +244,14 @@ fn bounded_upcoming_leader_slots(
     next_epoch_start_slot: u64,
     current_slot: u64,
 ) -> Vec<u64> {
-    let (Some(current_epoch_schedule), Some(next_epoch_schedule)) =
-        (current_epoch_schedule, next_epoch_schedule)
-    else {
-        return Vec::new();
-    };
     let current_slots = current_epoch_schedule
-        .iter()
+        .into_iter()
+        .flatten()
         .filter_map(|relative_slot| epoch_start_slot.checked_add(*relative_slot))
         .filter(|absolute_slot| *absolute_slot >= current_slot);
     let next_slots = next_epoch_schedule
-        .iter()
+        .into_iter()
+        .flatten()
         .filter_map(|relative_slot| next_epoch_start_slot.checked_add(*relative_slot));
     let mut upcoming = BinaryHeap::with_capacity(MAX_UPCOMING_LEADER_SLOTS);
 
