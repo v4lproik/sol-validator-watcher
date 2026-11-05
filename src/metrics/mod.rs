@@ -575,18 +575,20 @@ impl Metrics {
                     .with_label_values(&[scope, network])
                     .set(vote_credits as f64);
             }
-            self.sol_epoch_reward_sol
-                .with_label_values(&[scope, network])
-                .set(lamports_to_sol(metrics.latest_epoch_reward_lamports));
+            if let Some(reward_lamports) = metrics.latest_epoch_reward_lamports {
+                self.sol_epoch_reward_sol
+                    .with_label_values(&[scope, network])
+                    .set(lamports_to_sol(reward_lamports));
+                self.sol_reward_per_block_sol
+                    .with_label_values(&[scope, network])
+                    .set(reward_per_block_sol(
+                        reward_lamports,
+                        metrics.latest_epoch_rewarded_blocks_produced,
+                    ));
+            }
             self.sol_rewarded_blocks_latest_epoch
                 .with_label_values(&[scope, network])
                 .set(metrics.latest_epoch_rewarded_blocks_produced as f64);
-            self.sol_reward_per_block_sol
-                .with_label_values(&[scope, network])
-                .set(reward_per_block_sol(
-                    metrics.latest_epoch_reward_lamports,
-                    metrics.latest_epoch_rewarded_blocks_produced,
-                ));
             if let Some(vote_efficiency_pct) = metrics.vote_efficiency_pct {
                 self.sol_vote_efficiency_pct
                     .with_label_values(&[scope, network])
@@ -720,18 +722,20 @@ impl Metrics {
                 .with_label_values(&labels)
                 .set(vote_credits as f64);
         }
-        self.sol_watched_validator_epoch_reward_sol
-            .with_label_values(&labels)
-            .set(lamports_to_sol(validator.latest_epoch_reward_lamports));
+        if let Some(reward_lamports) = validator.latest_epoch_reward_lamports {
+            self.sol_watched_validator_epoch_reward_sol
+                .with_label_values(&labels)
+                .set(lamports_to_sol(reward_lamports));
+            self.sol_watched_validator_reward_per_block_sol
+                .with_label_values(&labels)
+                .set(reward_per_block_sol(
+                    reward_lamports,
+                    validator.latest_epoch_rewarded_blocks_produced,
+                ));
+        }
         self.sol_watched_validator_rewarded_blocks_latest_epoch
             .with_label_values(&labels)
             .set(validator.latest_epoch_rewarded_blocks_produced as f64);
-        self.sol_watched_validator_reward_per_block_sol
-            .with_label_values(&labels)
-            .set(reward_per_block_sol(
-                validator.latest_epoch_reward_lamports,
-                validator.latest_epoch_rewarded_blocks_produced,
-            ));
         if let Some(vote_efficiency_pct) = validator.vote_efficiency_pct {
             self.sol_watched_validator_vote_efficiency_pct
                 .with_label_values(&labels)

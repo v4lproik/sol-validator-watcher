@@ -45,7 +45,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 current_stake_lamports: 1_500_000_000,
                 delinquent_stake_lamports: 0,
                 latest_epoch_vote_credits: Some(11),
-                latest_epoch_reward_lamports: 6_000_000_000,
+                latest_epoch_reward_lamports: Some(6_000_000_000),
                 latest_epoch_rewarded_blocks_produced: 3,
                 vote_efficiency_pct: Some(91.5),
                 last_vote_slot_lag: 4.0,
@@ -68,7 +68,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
             ],
             activated_stake_lamports: 1_500_000_000,
             latest_epoch_vote_credits: Some(11),
-            latest_epoch_reward_lamports: 6_000_000_000,
+            latest_epoch_reward_lamports: Some(6_000_000_000),
             latest_epoch_rewarded_blocks_produced: 3,
             vote_efficiency_pct: Some(91.5),
             last_vote_slot_lag: 4,
@@ -342,7 +342,7 @@ fn scheduled_frequency_requires_a_valid_epoch_duration() -> Result<()> {
         last_vote_slot_lag: 0,
         root_slot_lag: 0,
         commission_pct: 0,
-        latest_epoch_reward_lamports: 0,
+        latest_epoch_reward_lamports: None,
         latest_epoch_rewarded_blocks_produced: 0,
         blocks_produced: 0,
         blocks_missed: 0,
@@ -483,7 +483,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 1_000_000_000,
             latest_epoch_vote_credits: Some(1),
-            latest_epoch_reward_lamports: 1_000_000_000,
+            latest_epoch_reward_lamports: Some(1_000_000_000),
             latest_epoch_rewarded_blocks_produced: 1,
             vote_efficiency_pct: Some(100.0),
             last_vote_slot_lag: 0,
@@ -562,8 +562,8 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 1_000_000_000,
             latest_epoch_vote_credits: None,
-            latest_epoch_reward_lamports: 0,
-            latest_epoch_rewarded_blocks_produced: 0,
+            latest_epoch_reward_lamports: None,
+            latest_epoch_rewarded_blocks_produced: 3,
             vote_efficiency_pct: None,
             last_vote_slot_lag: 0,
             root_slot_lag: 0,
@@ -597,6 +597,11 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_watched_validator_vote_credits_latest_epoch{"));
     assert!(!rendered.contains("sol_watched_validator_vote_efficiency_pct{"));
     assert!(rendered.contains("sol_watched_validator_current_epoch_scheduled_leader_slots{identity=\"current-id\",network=\"mainnet-beta\",status=\"current\",vote_account=\"current-vote\"} 1"));
+    assert!(!rendered.contains("sol_watched_validator_epoch_reward_sol{identity=\"current-id\""));
+    assert!(
+        !rendered.contains("sol_watched_validator_reward_per_block_sol{identity=\"current-id\"")
+    );
+    assert!(rendered.contains("sol_watched_validator_rewarded_blocks_latest_epoch{identity=\"current-id\",network=\"mainnet-beta\",status=\"current\",vote_account=\"current-vote\"} 3"));
     assert!(!rendered
         .contains("sol_watched_validator_scheduled_leader_slots_per_hour{identity=\"current-id\""));
     assert!(

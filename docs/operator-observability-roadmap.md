@@ -131,6 +131,12 @@ Recent validator block-fee economics are exposed through
 block sample includes Harmonic priority fees when Harmonic built a sampled
 block, but Solana does not expose provider attribution for that fee reward.
 
+The economics dashboard exposes watched-validator filtering and keeps
+per-validator protocol reward, reward-epoch block production, and reward per
+produced block comparisons separate from the configured economics target's
+balances, block fees, and Jito rewards. Missing inflation-reward samples remain
+absent while independently collected reward-epoch block counts stay visible.
+
 ## Metrics the exporter should add
 
 These are the operator signals that would most improve the dashboards.

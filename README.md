@@ -79,7 +79,7 @@ Use `just stack ps <target>` and `just stack logs <target>` to inspect a stack. 
 
 Readiness requires five consecutive clean polling rounds. Recoverable collection failures retain the last successful snapshot while marking affected modes and readiness down.
 
-Grafana includes overview, consensus, leadership, and economics dashboards. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
+Grafana includes overview, consensus, leadership, and economics dashboards. The economics dashboard compares selected watched validators by inflation reward, reward-epoch blocks, and reward per produced block while keeping configured-target balances, fees, and Jito rewards separate. Missing reward samples render as no data instead of zero. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
 
 ## Published images
 
