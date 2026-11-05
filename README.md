@@ -240,6 +240,17 @@ When a Jito reward route succeeds, the economics dashboard publishes
 economics mode is disabled, no route is configured, the epoch is not settled,
 or every configured provider-API connector fails.
 
+The dashboard keeps the configured economics validator's Solana protocol
+inflation reward and protocol sample epoch separate from its Jito MEV reward
+and Jito settled epoch in adjacent source-specific sections. Provider rewards
+are not merged into protocol rewards; any future provider integration requires
+its own typed command, metrics, and dashboard section.
+Each source section includes history graphs over the selected Grafana time
+range. Protocol history shows the target's latest inflation reward and reward
+per produced block; Jito history shows the latest settled MEV reward and
+commission. These are epoch-sampled values held until a newer sample or
+settlement appears, not within-epoch accrual.
+
 The local Prometheus scrapes only the watcher profiles selected by
 `just stack up <target>` and evaluates baseline target-down, readiness,
 freshness, RPC- and WebSocket-failure, node-behind, node-not-voting, validator
