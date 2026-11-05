@@ -5,7 +5,7 @@ fn expands_env_variables_with_defaults() -> Result<()> {
         r#"
 network = "${WATCHER_NETWORK:-localnet}"
 poll_interval_sec = ${WATCHER_POLL_INTERVAL_SEC:-15}
-rpc_url = "${WATCHER_RPC_URL}"
+url = "${WATCHER_RPC_URL}"
 "#,
         |key| {
             let value = match key {
@@ -18,13 +18,13 @@ rpc_url = "${WATCHER_RPC_URL}"
 
     assert!(expanded.contains("network = \"localnet\""));
     assert!(expanded.contains("poll_interval_sec = 15"));
-    assert!(expanded.contains("rpc_url = \"http://validator:8899\""));
+    assert!(expanded.contains("url = \"http://validator:8899\""));
     Ok(())
 }
 
 #[test]
 fn rejects_missing_env_variables_without_defaults() -> Result<()> {
-    let error = match expand_env_vars_with("rpc_url = \"${WATCHER_RPC_URL}\"", |_| Ok(None)) {
+    let error = match expand_env_vars_with("url = \"${WATCHER_RPC_URL}\"", |_| Ok(None)) {
         Ok(_) => anyhow::bail!("expansion should fail"),
         Err(error) => error,
     };
@@ -48,7 +48,7 @@ fn uses_default_for_empty_env_values() -> Result<()> {
 
 #[test]
 fn rejects_unterminated_env_expressions() -> Result<()> {
-    let error = match expand_env_vars_with("rpc_url = \"${WATCHER_RPC_URL\"", |_| Ok(None)) {
+    let error = match expand_env_vars_with("url = \"${WATCHER_RPC_URL\"", |_| Ok(None)) {
         Ok(_) => anyhow::bail!("expansion should fail"),
         Err(error) => error,
     };

@@ -34,10 +34,12 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
             provider: "surfpool".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some(harness.rpc_url()),
-            rpc_timeout_sec: 5,
-            ws_url: Some(harness.ws_url()),
-            ws_timeout_sec: 5,
+            rpc: Some(crate::config::RpcTransportConfig::new(harness.rpc_url())),
+            websocket: Some(crate::config::WebsocketTransportConfig {
+                url: harness.ws_url(),
+                handshake_timeout_sec: 5,
+                ..crate::config::WebsocketTransportConfig::default()
+            }),
             ..ConnectorConfig::default()
         }],
         modes: surfpool_modes(),
@@ -185,9 +187,12 @@ impl SurfpoolHarness {
         let deadline = Instant::now() + timeout;
         let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
         let client = RpcClient::try_new(
-            &self.rpc_url(),
-            Duration::from_secs(2),
-            "confirmed".to_string(),
+            &crate::config::RpcTransportConfig {
+                url: self.rpc_url(),
+                request_timeout_sec: 2,
+                connect_timeout_sec: 2,
+                ..crate::config::RpcTransportConfig::default()
+            },
             crate::watcher_state::RpcTelemetry::unobserved().for_connector("surfpool"),
         )?;
 

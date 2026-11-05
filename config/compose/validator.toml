@@ -11,15 +11,15 @@ name = "external-validator"
 provider = "solana-validator"
 features = []
 solana_rpc_compatibility = "${SOL_VALIDATOR_SOLANA_RPC_COMPATIBILITY:-core}"
-rpc_url = "${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}"
-rpc_timeout_sec = ${SOL_WATCHER_RPC_TIMEOUT_SEC:-30}
-ws_url = "${SOL_VALIDATOR_WS_URL:-}"
-ws_timeout_sec = ${SOL_WATCHER_WS_TIMEOUT_SEC:-10}
+[connectors.rpc]
+url = "${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}"
+request_timeout_sec = ${SOL_WATCHER_RPC_REQUEST_TIMEOUT_SEC:-30}
+connect_timeout_sec = ${SOL_WATCHER_RPC_CONNECT_TIMEOUT_SEC:-10}
 commitment = "${SOL_WATCHER_COMMITMENT:-confirmed}"
 
 [modes.health.commands]
 rpc_health = ["external-validator"]
-ws_health = ["external-validator"]
+ws_health = []
 node_status = ["external-validator"]
 
 [modes.consensus.commands]

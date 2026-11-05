@@ -154,7 +154,7 @@ name = "limited-rpc"
 provider = "mock-provider"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}/?api-key={secret}"
+rpc = {{ url = "{rpc_url}/?api-key={secret}" }}
 
 [modes.health.commands]
 rpc_health = ["limited-rpc"]
@@ -536,7 +536,7 @@ name = "recovering-rpc"
 provider = "mock-provider"
 features = []
 solana_rpc_compatibility = "core"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["recovering-rpc"]
@@ -569,7 +569,9 @@ fn disabled_economics_runtime() -> Result<RuntimeState> {
             provider: "solana".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
+            rpc: Some(crate::config::RpcTransportConfig::new(
+                "https://api.mainnet-beta.solana.com".to_string(),
+            )),
             ..ConnectorConfig::default()
         }],
         modes: modes_for("primary"),

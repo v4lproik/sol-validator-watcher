@@ -9,9 +9,13 @@ probes, and economics collection.
 ## Ownership and Boundaries
 
 - `collector/rpc.rs` owns JSON-RPC wire types, HTTP status handling, method
-  implementations, capability probes, and request batching.
+  implementations, capability probes, and request batching. It consumes the
+  validated per-connector RPC URL, commitment, sensitive headers, disabled
+  redirect following, and bounded connect/request deadlines; it does not
+  rebuild transport policy.
 - `collector/jito.rs` owns bounded Jito validator-reward HTTP decoding and the
-  epoch-stable response cache.
+  epoch-stable response cache. It consumes the same validated provider-API
+  header, redirect, and timeout contract.
 - `collector/command.rs` maps typed source commands to their compile-time RPC or
   provider-API client and output.
 - `collector/model.rs`, `collector/aggregate.rs`, and `collector/snapshot.rs`
@@ -143,9 +147,12 @@ probes, and economics collection.
    selection deterministic?
 5. Do dependent calls remain on one candidate connector?
 6. Is source provenance emitted only for successful data?
-7. Are request count, range, address count, timeout, and response size bounded?
-8. Does economics mode still fail closed for every required command?
-9. Would logs and `sol_mode_command_source_info` reveal the actual source?
+7. Are request count, range, address count, connect timeout, total request
+   timeout, WebSocket handshake timeout, and response size bounded?
+8. Are custom headers validated, marked sensitive, blocked from redirects, and
+   absent from diagnostics?
+9. Does economics mode still fail closed for every required command?
+10. Would logs and `sol_mode_command_source_info` reveal the actual source?
 
 ## Prohibited Shortcuts
 
@@ -163,10 +170,11 @@ probes, and economics collection.
 - Pure range, merge, aggregation, command-capability mapping, and provider
   response selection: unit tests.
 - HTTP status, JSON-RPC envelope, batching, connector fallback, capability
-  verification, provider-API decoding, caching, and provenance: local Axum
-  boundaries using the production clients. Capability mocks return valid
-  method-specific success envelopes; a generic invalid-params response is not
-  proof that the method exists.
+  verification, provider-API decoding, caching, custom header delivery,
+  redirect rejection, request/handshake deadlines, and provenance: local
+  Axum/WebSocket boundaries using the production clients. Capability mocks
+  return valid method-specific success envelopes; a generic invalid-params
+  response is not proof that the method exists.
 - Real validator compatibility: `just surfpool test`.
 - Runtime source selection: run the watcher against controlled connectors and
   inspect `sol_mode_command_route_info` and `sol_mode_command_source_info`.

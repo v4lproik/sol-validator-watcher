@@ -23,13 +23,13 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use axum::{
     extract::{Json, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::post,
     Router,
 };
 use serde_json::{json, Value};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
 use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 
 #[derive(Clone, Copy)]
@@ -41,6 +41,7 @@ enum MockRpcProfile {
     Behind,
     BehindHttp503,
     Unhealthy,
+    Delayed,
     NoEpochInfo,
     NoInflationRewards,
     NoLeaderSchedule,
@@ -58,12 +59,23 @@ enum MockRpcProfile {
 struct MockRpcState {
     profile: MockRpcProfile,
     methods: Arc<Mutex<Vec<String>>>,
+    authorization_headers: Arc<Mutex<Vec<Option<String>>>>,
+    requests: Arc<Mutex<Vec<Value>>>,
 }
 
 mod aggregate;
 mod collection;
 mod jito;
 mod rpc;
+
+fn rpc_transport(url: &str, timeout_sec: u64) -> crate::config::RpcTransportConfig {
+    crate::config::RpcTransportConfig {
+        url: url.to_string(),
+        request_timeout_sec: timeout_sec,
+        connect_timeout_sec: timeout_sec,
+        ..crate::config::RpcTransportConfig::default()
+    }
+}
 
 async fn start_mock_rpc_server() -> Result<(String, JoinHandle<()>)> {
     start_mock_rpc_server_with_profile(MockRpcProfile::Default).await
@@ -79,6 +91,45 @@ async fn start_mock_rpc_server_with_profile(
 async fn start_recording_mock_rpc_server(
     profile: MockRpcProfile,
 ) -> Result<(String, JoinHandle<()>, Arc<Mutex<Vec<String>>>)> {
+    let (url, task, methods, _) = start_header_recording_mock_rpc_server(profile).await?;
+    Ok((url, task, methods))
+}
+
+type HeaderRecordingMockRpcServer = (
+    String,
+    JoinHandle<()>,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<Option<String>>>>,
+);
+
+type RequestRecordingMockRpcServer = (String, JoinHandle<()>, Arc<Mutex<Vec<Value>>>);
+
+type MockRpcServerRecordings = (
+    String,
+    JoinHandle<()>,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<Option<String>>>>,
+    Arc<Mutex<Vec<Value>>>,
+);
+
+async fn start_request_recording_mock_rpc_server(
+    profile: MockRpcProfile,
+) -> Result<RequestRecordingMockRpcServer> {
+    let (url, task, _, _, requests) = start_mock_rpc_server_with_recordings(profile).await?;
+    Ok((url, task, requests))
+}
+
+async fn start_header_recording_mock_rpc_server(
+    profile: MockRpcProfile,
+) -> Result<HeaderRecordingMockRpcServer> {
+    let (url, task, methods, authorization_headers, _) =
+        start_mock_rpc_server_with_recordings(profile).await?;
+    Ok((url, task, methods, authorization_headers))
+}
+
+async fn start_mock_rpc_server_with_recordings(
+    profile: MockRpcProfile,
+) -> Result<MockRpcServerRecordings> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .context("failed to bind mock RPC listener")?;
@@ -86,17 +137,27 @@ async fn start_recording_mock_rpc_server(
         .local_addr()
         .context("failed to read mock RPC listener address")?;
     let methods = Arc::new(Mutex::new(Vec::new()));
+    let authorization_headers = Arc::new(Mutex::new(Vec::new()));
+    let requests = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
         .route("/", post(mock_rpc_handler))
         .with_state(MockRpcState {
             profile,
             methods: Arc::clone(&methods),
+            authorization_headers: Arc::clone(&authorization_headers),
+            requests: Arc::clone(&requests),
         });
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
 
-    Ok((format!("http://{address}"), task, methods))
+    Ok((
+        format!("http://{address}"),
+        task,
+        methods,
+        authorization_headers,
+        requests,
+    ))
 }
 fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
     let actual = Value::Array(params.to_vec());
@@ -150,6 +211,7 @@ fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
 
 async fn mock_rpc_handler(
     State(state): State<MockRpcState>,
+    headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> impl IntoResponse {
     let method = request
@@ -157,7 +219,17 @@ async fn mock_rpc_handler(
         .and_then(Value::as_str)
         .unwrap_or_default();
     state.methods.lock().await.push(method.to_string());
+    state.requests.lock().await.push(request.clone());
+    state.authorization_headers.lock().await.push(
+        headers
+            .get(reqwest::header::AUTHORIZATION.as_str())
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string),
+    );
     let profile = state.profile;
+    if matches!(profile, MockRpcProfile::Delayed) {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
     let params = request
         .get("params")
         .and_then(Value::as_array)

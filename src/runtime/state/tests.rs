@@ -1,7 +1,11 @@
 use super::{config_mtime, RuntimeState};
 use crate::{
+    collector::command::GetHealth,
     mode::CommandId,
-    runtime::test_support::{start_capability_probe_server, unique_test_dir},
+    runtime::test_support::{
+        start_capability_probe_server, start_header_recording_capability_probe_server,
+        unique_test_dir,
+    },
 };
 use anyhow::{Context, Result};
 use std::{fs, time::UNIX_EPOCH};
@@ -40,13 +44,13 @@ name = "primary"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://primary.example"
+rpc = { url = "https://primary.example" }
 
 [[connectors]]
 name = "fallback"
 provider = "helius"
 features = []
-ws_url = "wss://fallback.example"
+websocket = { url = "wss://fallback.example" }
 
 [modes.health.commands]
 rpc_health = ["primary"]
@@ -86,15 +90,15 @@ name = "fallback"
 provider = "helius"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
-ws_url = "wss://fallback.example"
+rpc = {{ url = "{rpc_url}" }}
+websocket = {{ url = "wss://fallback.example" }}
 
 [[connectors]]
 name = "replacement"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["replacement", "fallback"]
@@ -160,7 +164,7 @@ name = "primary"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://primary.example"
+rpc = { url = "https://primary.example" }
 
 [modes.health.commands]
 rpc_health = ["primary"]
@@ -197,7 +201,7 @@ network = "testnet"
 name = "ws-only"
 provider = "helius"
 features = []
-ws_url = "wss://ws-only.example"
+websocket = { url = "wss://ws-only.example" }
 "#,
     )
     .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -209,7 +213,7 @@ ws_url = "wss://ws-only.example"
 
     assert!(error
         .to_string()
-        .contains("at least one connector with rpc_url is required"));
+        .contains("at least one connector with an rpc transport is required"));
     assert_eq!(runtime.config.network, "mainnet-beta");
     assert_eq!(runtime.config.connectors.len(), 1);
     assert_eq!(runtime.config.connectors[0].name, "primary");
@@ -246,7 +250,7 @@ name = "current"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://current.example"
+rpc = { url = "https://current.example" }
 
 [modes.health.commands]
 rpc_health = ["current"]
@@ -280,7 +284,7 @@ name = "candidate"
 provider = "mock-provider"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}/?api-key={secret}"
+rpc = {{ url = "{rpc_url}/?api-key={secret}" }}
 
 [modes.health.commands]
 rpc_health = ["candidate"]
@@ -340,7 +344,7 @@ name = "current"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://current.example"
+rpc = { url = "https://current.example" }
 
 [modes.health.commands]
 rpc_health = ["current"]
@@ -374,7 +378,7 @@ name = "candidate"
 provider = "mock-provider"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["candidate"]
@@ -449,7 +453,7 @@ name = "primary"
 provider = "mock-provider"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["primary"]
@@ -510,5 +514,105 @@ reward_epoch_block_production = ["primary"]
     fs::remove_dir_all(&test_dir)
         .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
     server_task.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn reload_if_needed_rebuilds_rpc_client_when_authorization_header_changes() -> Result<()> {
+    let (rpc_url, recorded_requests, server_task) =
+        start_header_recording_capability_probe_server(None).await?;
+    let test_dir = unique_test_dir("reload-rpc-header");
+    fs::create_dir_all(&test_dir)
+        .with_context(|| format!("failed to create {}", test_dir.display()))?;
+    let config_path = test_dir.join("watcher.toml");
+    let old_authorization = "Bearer old-token";
+    let new_authorization = "Bearer new-token";
+    let config_toml = |authorization: &str| {
+        format!(
+            r#"
+network = "mainnet-beta"
+
+[[connectors]]
+name = "primary"
+provider = "mock-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc = {{ url = "{rpc_url}", headers = {{ authorization = "{authorization}" }} }}
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+
+[modes.economics]
+enabled = false
+"#
+        )
+    };
+    fs::write(&config_path, config_toml(old_authorization))
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+    let mut runtime = RuntimeState::load(
+        config_path.clone(),
+        crate::watcher_state::RpcTelemetry::unobserved(),
+    )?;
+    runtime.config_modified = UNIX_EPOCH;
+
+    fs::write(&config_path, config_toml(new_authorization))
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    runtime.reload_if_needed().await?;
+
+    {
+        let requests = recorded_requests.lock().await;
+        assert!(
+            requests.iter().any(
+                |(method, authorization)| method == "getRecentPerformanceSamples"
+                    && authorization.as_deref() == Some(new_authorization)
+            ),
+            "reload must probe extended RPC capability with the replacement authorization header"
+        );
+        assert!(
+            requests
+                .iter()
+                .all(|(_, authorization)| authorization.as_deref() == Some(new_authorization)),
+            "reload capability probes must not use the previous authorization header: {requests:?}"
+        );
+    }
+
+    let request_count_before_routed_health_check = recorded_requests.lock().await.len();
+    let health = runtime.sources.required(&GetHealth).await?;
+    assert!(health.value.is_healthy());
+
+    let requests = recorded_requests.lock().await;
+    assert_eq!(
+        requests.len(),
+        request_count_before_routed_health_check + 1,
+        "the routed health check should make one request"
+    );
+    assert_eq!(
+        requests.last(),
+        Some(&("getHealth".to_string(), Some(new_authorization.to_string()))),
+        "the rebuilt client must send the replacement authorization header"
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|(_, authorization)| authorization.as_deref() == Some(new_authorization)),
+        "no request may use the previous authorization header: {requests:?}"
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|(_, authorization)| authorization.as_deref() == Some(old_authorization)),
+        "no request may use the previous authorization header: {requests:?}"
+    );
+    drop(requests);
+
+    fs::remove_dir_all(&test_dir)
+        .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+    server_task.abort();
+    let _ = server_task.await;
     Ok(())
 }

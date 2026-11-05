@@ -2,8 +2,10 @@
 
 ## Unreleased
 
+- Applied each connector's custom headers and bounded connect/request/handshake deadlines to reusable RPC, provider-API, and WebSocket clients, with HTTP redirects disabled, Rustls certificate and hostname verification, HTTP TLS 1.2 minimums, and no insecure override.
+- Added local RPC, Jito, and WebSocket boundary coverage proving credential header delivery and redaction, redirect rejection, and enforced HTTP request and WebSocket handshake deadlines.
 - Added an optional routed Jito provider-API command that publishes one economics target's settled prior-epoch MEV reward and commission, uses ordered connector fallback, bounds response size, and caches settled or briefly absent epoch results.
-- Made RPC, WebSocket, and Jito API client construction reject malformed or unsupported connector-local URLs before polling while retaining redacted transport failures.
+- Made RPC, WebSocket, and Jito API client construction reject zero deadlines, protocol-owned header overrides, and malformed or unsupported connector-local URLs before polling while retaining redacted transport failures.
 - Rejected ambiguous `scheme:///path` authorities consistently in direct RPC, WebSocket, and Jito API client construction without exposing endpoint query parameters.
 - Expanded the routed recent-performance command with total, vote, and non-vote transaction rates plus slot throughput, preserving omitted transaction splits as absent and falling back when a sample is internally inconsistent.
 - Simplified route-exhaustion diagnostics with composable typed formatting and deferred failure-buffer allocation until a connector actually fails.

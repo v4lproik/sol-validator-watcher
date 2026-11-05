@@ -13,18 +13,24 @@ name = "mainnet-rpc"
 provider = "helius"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "${SOL_MAINNET_RPC_URL}"
-rpc_timeout_sec = 30
-ws_url = "${SOL_MAINNET_WS_URL}"
-ws_timeout_sec = 10
+[connectors.rpc]
+url = "${SOL_MAINNET_RPC_URL}"
+request_timeout_sec = 30
+connect_timeout_sec = 10
 commitment = "confirmed"
+
+[connectors.websocket]
+url = "${SOL_MAINNET_WS_URL}"
+handshake_timeout_sec = 10
 
 [[connectors]]
 name = "jito-api"
 provider = "jito"
 features = ["jito-mev-rewards"]
-provider_api_url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
-provider_api_timeout_sec = 30
+[connectors.provider_api]
+url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
+request_timeout_sec = 30
+connect_timeout_sec = 10
 
 [[watched_validators]]
 vote_account = "BeRtYZ7SVQozwTby6ajQzrHtKYkn4qoKyRfb3NDAedtA"

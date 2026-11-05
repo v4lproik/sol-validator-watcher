@@ -14,7 +14,7 @@ use crate::{
     websocket::WebsocketProbeClient,
 };
 use anyhow::{bail, Context, Result};
-use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc};
 use tracing::warn;
 
 /// Provenance for the connector that successfully supplied one command result.
@@ -138,26 +138,17 @@ struct Connector {
 impl Connector {
     fn from_config(config: &ConnectorConfig, telemetry: RpcTelemetry) -> Result<Self> {
         let rpc_client = config
-            .rpc_url
-            .as_deref()
-            .map(|url| {
-                RpcClient::try_new(
-                    url,
-                    Duration::from_secs(config.rpc_timeout_sec),
-                    config.commitment_config()?,
-                    telemetry.for_connector(&config.name),
-                )
-            })
+            .rpc
+            .as_ref()
+            .map(|transport| RpcClient::try_new(transport, telemetry.for_connector(&config.name)))
             .transpose()
             .with_context(|| {
                 format!("failed to build RPC client for connector {:?}", config.name)
             })?;
         let jito_client = config
-            .provider_api_url
-            .as_deref()
-            .map(|url| {
-                JitoClient::try_new(url, Duration::from_secs(config.provider_api_timeout_sec))
-            })
+            .provider_api
+            .as_ref()
+            .map(JitoClient::try_new)
             .transpose()
             .with_context(|| {
                 format!(
@@ -166,12 +157,11 @@ impl Connector {
                 )
             })?;
         let ws_client = config
-            .ws_url
-            .as_deref()
-            .map(|url| {
+            .websocket
+            .as_ref()
+            .map(|transport| {
                 WebsocketProbeClient::try_new(
-                    url,
-                    Duration::from_secs(config.ws_timeout_sec),
+                    transport,
                     telemetry.for_websocket_connector(&config.name),
                 )
             })

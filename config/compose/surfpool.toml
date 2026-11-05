@@ -11,11 +11,15 @@ name = "surfpool"
 provider = "surfpool"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "http://surfpool:8899"
-rpc_timeout_sec = 5
-ws_url = "ws://surfpool:8900"
-ws_timeout_sec = 5
+[connectors.rpc]
+url = "http://surfpool:8899"
+request_timeout_sec = 5
+connect_timeout_sec = 5
 commitment = "confirmed"
+
+[connectors.websocket]
+url = "ws://surfpool:8900"
+handshake_timeout_sec = 5
 
 [modes.health.commands]
 rpc_health = ["surfpool"]

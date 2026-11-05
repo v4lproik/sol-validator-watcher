@@ -162,7 +162,9 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-                rpc_url: Some("http://127.0.0.1:8899".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "http://127.0.0.1:8899".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
@@ -170,14 +172,18 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 provider: "helius".to_string(),
                 features: vec![ProviderFeature::HistoricalData],
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                rpc_url: Some("https://rpc.helius.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "https://rpc.helius.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "helius-ws".to_string(),
                 provider: "helius".to_string(),
                 features: Vec::new(),
-                ws_url: Some("wss://ws.helius.example".to_string()),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(
+                    "wss://ws.helius.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
@@ -185,14 +191,18 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 provider: "solana-validator".to_string(),
                 features: vec![ProviderFeature::HistoricalData],
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                rpc_url: Some("https://extended-rpc.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "https://extended-rpc.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "jito-api".to_string(),
                 provider: "jito".to_string(),
                 features: vec![ProviderFeature::JitoMevRewards],
-                provider_api_url: Some("https://kobe.mainnet.jito.network/api/v1".to_string()),
+                provider_api: Some(crate::config::HttpTransportConfig::new(
+                    "https://kobe.mainnet.jito.network/api/v1".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
         ],
@@ -347,8 +357,12 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             provider: "solana".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
-            ws_url: Some("wss://api.mainnet-beta.solana.com".to_string()),
+            rpc: Some(crate::config::RpcTransportConfig::new(
+                "https://api.mainnet-beta.solana.com".to_string(),
+            )),
+            websocket: Some(crate::config::WebsocketTransportConfig::new(
+                "wss://api.mainnet-beta.solana.com".to_string(),
+            )),
             ..ConnectorConfig::default()
         }],
         modes: modes_for(&["primary"], Some("primary"), false),
@@ -595,7 +609,9 @@ fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() 
                 provider: "solana".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                rpc_url: Some("https://primary.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "https://primary.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
@@ -603,7 +619,9 @@ fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() 
                 provider: "helius".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                rpc_url: Some("https://fallback.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "https://fallback.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
         ],

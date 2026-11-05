@@ -27,17 +27,19 @@ liveness files, signals, and shutdown.
 ## Configuration Invariants
 
 - Expand `${VAR}` and `${VAR:-default}` before deserialization. Missing required
-  variables fail with the config field/path context; never log resolved secrets.
+  variables fail with field/path context. TOML parse diagnostics retain the
+  parser message and safe line/column location but discard expanded source
+  excerpts because connector headers and URLs may contain credentials.
 - Default an omitted `metrics_host` to `127.0.0.1`; non-loopback HTTP binding
   must be explicit in a validated profile. Container-loaded profiles use a
   literal `0.0.0.0`; do not route listener policy through an environment value.
 - Keep connectors inline in the profile. Each connector has one stable
   `provider` name plus an explicit `features` array, which may be empty.
   Provider names are provenance, not capabilities.
-- A connector with `rpc_url` must declare
+- A connector with an `rpc` transport must declare
   `solana_rpc_compatibility = "core"` or
-  `solana_rpc_compatibility = "extended"`. A connector without `rpc_url` must
-  not declare standard Solana RPC compatibility. `extended` satisfies `core`.
+  `solana_rpc_compatibility = "extended"`. A connector without `rpc` must not
+  declare standard Solana RPC compatibility. `extended` satisfies `core`.
   The `historical-data` feature requires `extended`; provider-API features do
   not imply standard Solana RPC compatibility.
 - The compatibility profile describes only standard Solana JSON-RPC methods
@@ -55,26 +57,34 @@ liveness files, signals, and shutdown.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
   Optional extended routes may be empty in a core-only profile.
-- Treat each connector's `rpc_url`, `ws_url`, and `provider_api_url` plus their
-  timeouts as its transport configuration. Do not duplicate transports in
-  `features` or add transport toggles.
+- Treat each connector's nested `rpc`, `websocket`, and `provider_api` table as
+  the complete transport configuration. A present table requires a nonempty
+  URL; omission disables that transport. HTTP tables own the complete URL,
+  custom headers, total request timeout, and connect timeout; their clients do
+  not follow redirects. RPC additionally owns commitment. WebSocket owns its
+  URL, upgrade headers, and one bounded DNS/TCP/TLS/upgrade handshake timeout.
+  Do not duplicate transports in `features` or add transport toggles.
 - Do not add an endpoint or client configuration for a transport without a
   typed command that consumes it and a startup verification boundary. In
   particular, no gRPC configuration exists until the watcher consumes a
   concrete gRPC service.
-- Normalize names, URLs, commitments, labels, and public keys once, then validate
-  the normalized value.
+- Normalize names, URLs, commitments, header names, labels, and public keys
+  once, then validate the normalized value. Treat every custom header value and
+  complete URL as credential-bearing: redact them from debug and returned
+  transport errors.
 - Reject unknown fields, missing providers or feature arrays, missing or
-  misplaced Solana RPC compatibility declarations, duplicate features, zero
-  ports/timeouts/intervals, duplicate connector names, unsupported commitments,
-  malformed or hostless transport URLs, unsupported URL schemes, missing
-  required routes, unknown or duplicate route entries, and routes whose
-  connector lacks the required transport, Solana RPC compatibility, or provider
-  feature before client construction.
+  misplaced Solana RPC compatibility declarations, duplicate features, zero or
+  contradictory timeouts, duplicate connector names, unsupported commitments,
+  malformed or hostless transport URLs, unsupported URL schemes, invalid or
+  duplicate header names, invalid header values, protocol-owned header
+  overrides, missing required routes, unknown or duplicate route entries, and
+  routes whose connector lacks the required transport, Solana RPC
+  compatibility, or provider feature before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
-  `ws_url` is empty; expose them as unavailable and skip them at execution.
-- Removed split-config and single-connection fields stay unsupported. Do not
-  add aliases or a second migration path.
+  `websocket.url` is empty; expose them as unavailable and skip them at
+  execution.
+- Removed flat transport fields, split-config fields, and single-connection
+  fields stay unsupported. Do not add aliases or a second migration path.
 - Config reload is transactional: load and validate the candidate, build every
   changed runtime dependency, verify declared RPC capabilities, then replace the
   last known-good state. A failed reload keeps the prior state and remains
@@ -98,8 +108,9 @@ liveness files, signals, and shutdown.
   and health mode down, but complete and publish the snapshot so node-local
   catch-up data remains observable. `health.ws_health` records every failed
   connector attempt, marks health mode down only when its configured route is
-  exhausted, and remains optional when no named connector has `ws_url`.
-  A configured optional `health.node_status` route contributes identity,
+  exhausted, and remains optional when no named connector has a `websocket`
+  transport. A configured optional `health.node_status` route contributes
+  identity,
   version, block height, health, and vote-set state; route exhaustion omits
   those dynamic series and marks health mode down.
 - Verify every declared standard Solana RPC compatibility profile before

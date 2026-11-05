@@ -18,6 +18,10 @@ task failure.
   owns method/connector failures. Config owns field/path validation.
 - Logs supplement returned errors; logging an error does not make swallowing it
   correct.
+- Expanded configuration may contain header and URL credentials. TOML parse
+  failures preserve the parser's causal message and safe line/column location
+  but must not retain or render expanded source excerpts. Header validation and
+  transport errors identify the field or header name, never the value.
 
 ## Invariants
 
@@ -98,7 +102,8 @@ task failure.
 ## Boundary Proof
 
 Exercise each classification at the narrow real boundary: controlled HTTP
-status, malformed JSON, JSON-RPC error, null/missing result, timeout, connector
-fallback, invalid config, task panic/error, and shutdown cancellation. Assert the
-observable return, selected source, metric, file state, or process exit rather
-than the internal helper call.
+status, malformed JSON, JSON-RPC error, null/missing result, request or
+WebSocket-handshake timeout, connector fallback, invalid config, secret-bearing
+header delivery and redaction, task panic/error, and shutdown cancellation.
+Assert the observable return, selected source, metric, file state, or process
+exit rather than the internal helper call.

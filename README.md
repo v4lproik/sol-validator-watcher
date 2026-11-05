@@ -90,22 +90,37 @@ name = "validator"
 provider = "solana-validator"
 features = []
 solana_rpc_compatibility = "core"
-rpc_url = "http://validator:8899"
+
+[connectors.rpc]
+url = "http://validator:8899"
+request_timeout_sec = 30
+connect_timeout_sec = 10
+commitment = "confirmed"
 
 [[connectors]]
 name = "helius-devnet"
 provider = "helius"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "${SOL_DEVNET_RPC_URL}"
-ws_url = "${SOL_DEVNET_WS_URL}"
+
+[connectors.rpc]
+url = "${SOL_DEVNET_RPC_URL}"
+headers = { authorization = "Bearer ${SOL_DEVNET_AUTH_TOKEN}" }
+
+[connectors.websocket]
+url = "${SOL_DEVNET_WS_URL}"
+handshake_timeout_sec = 10
+headers = { authorization = "Bearer ${SOL_DEVNET_WS_AUTH_TOKEN}" }
 
 [[connectors]]
 name = "jito-api"
 provider = "jito"
 features = ["jito-mev-rewards"]
-provider_api_url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
-provider_api_timeout_sec = 30
+
+[connectors.provider_api]
+url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
+request_timeout_sec = 30
+connect_timeout_sec = 10
 
 [modes.health.commands]
 rpc_health = ["validator", "helius-devnet"]
@@ -162,7 +177,11 @@ A Helius connector may be `extended` for the standard Solana methods while also 
 
 Route and source metrics expose the connector declaration as `solana_rpc_compatibility` and the command requirement as `required_solana_rpc_compatibility`; Grafana labels both as standard Solana RPC compatibility.
 
-The complete endpoint and timeout settings are connector-local, including any provider-specific host, path, and authentication query. The watcher does not reconstruct endpoints from an API token. `rpc_url` and `provider_api_url` must be HTTP(S) URLs with a host; `ws_url` must be a WS(S) URL with a host. `rpc_url` also requires an explicit `solana_rpc_compatibility`, while a `provider_api_url` route must satisfy the command's declared provider feature. Provider names are provenance labels, not capability inference. The watcher has no gRPC transport or gRPC configuration because no typed command currently consumes one.
+The complete endpoint, header, and timeout settings are nested under each connector's `rpc`, `websocket`, or `provider_api` transport. HTTP transports default to a 30-second total request deadline and a 10-second DNS/TCP/TLS connection deadline; `connect_timeout_sec` cannot exceed `request_timeout_sec`. HTTP clients do not follow redirects, preventing connector headers from being replayed to another endpoint. WebSocket probes default to a 10-second DNS/TCP/TLS/upgrade handshake deadline. Custom header names are normalized and validated; protocol-owned `Host`, framing, and WebSocket upgrade headers cannot be overridden. Header values and endpoint URLs are redacted from debug and transport errors, and TOML diagnostics omit expanded source lines so credentials are not echoed. Environment expansion happens before TOML decoding, so interpolated header values must remain valid TOML strings and single-line HTTP header values.
+
+HTTPS and WSS use Rustls with bundled WebPKI roots, SNI, certificate-chain verification, and hostname verification. HTTP clients require TLS 1.2 or newer; WebSocket clients use Rustls safe protocol defaults. There is no certificate-verification bypass, custom-CA, client-certificate, or gRPC configuration. The flat `rpc_url`, `rpc_timeout_sec`, `ws_url`, `ws_timeout_sec`, `provider_api_url`, and `provider_api_timeout_sec` fields are rejected.
+
+RPC and provider-API URLs must use HTTP(S) with an explicit host; WebSocket URLs must use WS(S) with an explicit host. A present transport table requires a nonempty URL; omit the table to disable that transport. An `rpc` transport also requires `solana_rpc_compatibility`, while a `provider_api` route must satisfy the command's declared provider feature. Provider names are provenance labels, not capability inference. To enable a WebSocket probe in the Compose validator profile, add its `connectors.websocket` table and the same connector name to `modes.health.commands.ws_health` together.
 
 Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration and checks configured Jito reward routes against the economics target. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime. When a required RPC command or configured WebSocket health command exhausts its route, the returned error preserves every failed connector, provider, and causal error in fallback order.
 

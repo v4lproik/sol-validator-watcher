@@ -42,7 +42,9 @@ fn rpc_connector(name: &str) -> ConnectorConfig {
         provider: "solana".to_string(),
         features: vec![ProviderFeature::HistoricalData],
         solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-        rpc_url: Some("https://api.mainnet-beta.solana.com".to_string()),
+        rpc: Some(crate::config::RpcTransportConfig::new(
+            "https://api.mainnet-beta.solana.com".to_string(),
+        )),
         ..ConnectorConfig::default()
     }
 }

@@ -9,9 +9,10 @@ name = "local-validator"
 provider = "solana-validator"
 features = []
 solana_rpc_compatibility = "core"
-rpc_url = "http://127.0.0.1:8899"
-rpc_timeout_sec = 30
-ws_timeout_sec = 10
+[connectors.rpc]
+url = "http://127.0.0.1:8899"
+request_timeout_sec = 30
+connect_timeout_sec = 10
 commitment = "confirmed"
 
 [[watched_validators]]

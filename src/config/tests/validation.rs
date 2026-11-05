@@ -23,7 +23,7 @@ network = "testnet"
 name = "helius"
 provider = "helius"
 features = ["{feature}"]
-rpc_url = "https://rpc.helius.example"
+rpc = {{ url = "https://rpc.helius.example" }}
 "#
         );
         let error = config_load_error("transport-provider-feature", &raw)?;
@@ -43,7 +43,7 @@ network = "testnet"
 [[connectors]]
 name = "helius"
 provider = "helius"
-rpc_url = "https://rpc.helius.example"
+rpc = { url = "https://rpc.helius.example" }
 "#,
     )?;
 
@@ -57,7 +57,9 @@ fn rejects_invalid_provider_feature_declarations() -> Result<()> {
         (
             ConnectorConfig {
                 name: "primary".to_string(),
-                rpc_url: Some("https://rpc.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "https://rpc.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             "provider must not be empty",
@@ -70,7 +72,9 @@ fn rejects_invalid_provider_feature_declarations() -> Result<()> {
                     ProviderFeature::HistoricalData,
                     ProviderFeature::HistoricalData,
                 ],
-                rpc_url: Some("https://rpc.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "https://rpc.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
             "contains duplicate provider feature \"historical-data\"",
@@ -96,7 +100,9 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
         name: "rpc".to_string(),
         provider: "solana-validator".to_string(),
         features: Vec::new(),
-        rpc_url: Some("https://rpc.example".to_string()),
+        rpc: Some(crate::config::RpcTransportConfig::new(
+            "https://rpc.example".to_string(),
+        )),
         ..ConnectorConfig::default()
     };
     let Err(error) = missing_compatibility.validate(0) else {
@@ -104,14 +110,16 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
     };
     assert!(error
         .to_string()
-        .contains("solana_rpc_compatibility is required when rpc_url is configured"));
+        .contains("solana_rpc_compatibility is required when rpc is configured"));
 
     let mut compatibility_without_endpoint = ConnectorConfig {
         name: "websocket".to_string(),
         provider: "solana-validator".to_string(),
         features: Vec::new(),
         solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-        ws_url: Some("wss://ws.example".to_string()),
+        websocket: Some(crate::config::WebsocketTransportConfig::new(
+            "wss://ws.example".to_string(),
+        )),
         ..ConnectorConfig::default()
     };
     let Err(error) = compatibility_without_endpoint.validate(0) else {
@@ -119,14 +127,16 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
     };
     assert!(error
         .to_string()
-        .contains("solana_rpc_compatibility requires a configured rpc_url"));
+        .contains("solana_rpc_compatibility requires a configured rpc transport"));
 
     let mut history_on_core = ConnectorConfig {
         name: "core".to_string(),
         provider: "solana-validator".to_string(),
         features: vec![ProviderFeature::HistoricalData],
         solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-        rpc_url: Some("https://rpc.example".to_string()),
+        rpc: Some(crate::config::RpcTransportConfig::new(
+            "https://rpc.example".to_string(),
+        )),
         ..ConnectorConfig::default()
     };
     let Err(error) = history_on_core.validate(0) else {
@@ -147,10 +157,12 @@ fn rejects_invalid_connector_transport_urls() -> Result<()> {
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-                rpc_url: Some("ftp://rpc.example".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "ftp://rpc.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
-            "rpc_url must use http:// or https:// with a host",
+            "connectors[0].rpc.url must use http:// or https:// with a host",
         ),
         (
             ConnectorConfig {
@@ -158,20 +170,57 @@ fn rejects_invalid_connector_transport_urls() -> Result<()> {
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-                rpc_url: Some("http:///rpc".to_string()),
+                rpc: Some(crate::config::RpcTransportConfig::new(
+                    "http:///rpc".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
-            "rpc_url must use http:// or https:// with a host",
+            "connectors[0].rpc.url must use http:// or https:// with a host",
+        ),
+        (
+            ConnectorConfig {
+                name: "rpc".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc: Some(crate::config::RpcTransportConfig::new("   ".to_string())),
+                ..ConnectorConfig::default()
+            },
+            "connectors[0].rpc.url must not be empty",
         ),
         (
             ConnectorConfig {
                 name: "websocket".to_string(),
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
-                ws_url: Some("ws:///socket".to_string()),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(
+                    "ws:///socket".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
-            "ws_url must use ws:// or wss:// with a host",
+            "connectors[0].websocket.url must use ws:// or wss:// with a host",
+        ),
+        (
+            ConnectorConfig {
+                name: "websocket".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(
+                    "   ".to_string(),
+                )),
+                ..ConnectorConfig::default()
+            },
+            "connectors[0].websocket.url must not be empty",
+        ),
+        (
+            ConnectorConfig {
+                name: "provider-api".to_string(),
+                provider: "jito".to_string(),
+                features: vec![ProviderFeature::JitoMevRewards],
+                provider_api: Some(crate::config::HttpTransportConfig::new("   ".to_string())),
+                ..ConnectorConfig::default()
+            },
+            "connectors[0].provider_api.url must not be empty",
         ),
     ];
 
@@ -192,9 +241,9 @@ name = "test"
 provider = "jito"
 features = ["historical-data", "jito-mev-rewards"]
 solana_rpc_compatibility = "extended"
-rpc_url = "https://rpc.example"
-ws_url = "wss://rpc.example"
-provider_api_url = "https://kobe.mainnet.jito.network/api/v1"
+rpc = { url = "https://rpc.example" }
+websocket = { url = "wss://rpc.example" }
+provider_api = { url = "https://kobe.mainnet.jito.network/api/v1" }
 "#,
     )?;
 
@@ -241,7 +290,7 @@ network = "testnet"
 name = "primary"
 provider = "solana"
 features = []
-rpc_url = "https://rpc.example"
+rpc = {{ url = "https://rpc.example" }}
 "#
             ),
         )?;
@@ -252,24 +301,40 @@ rpc_url = "https://rpc.example"
         );
     }
 
-    let connector_error = config_load_error(
-        "unknown-connector-field",
-        r#"
+    for (field_name, setting) in [
+        ("rpc_url", r#"rpc_url = "https://rpc.example""#),
+        ("ws_url", r#"ws_url = "wss://rpc.example""#),
+        ("rpc_timeout_sec", "rpc_timeout_sec = 10"),
+        ("ws_timeout_sec", "ws_timeout_sec = 10"),
+        (
+            "provider_api_url",
+            r#"provider_api_url = "https://provider.example/api/v1""#,
+        ),
+        ("provider_api_timeout_sec", "provider_api_timeout_sec = 10"),
+        ("commitment", r#"commitment = "confirmed""#),
+        ("transport_mode", r#"transport_mode = "poll-http""#),
+    ] {
+        let connector_error = config_load_error(
+            field_name,
+            &format!(
+                r#"
 network = "testnet"
 
 [[connectors]]
 name = "primary"
 provider = "solana"
 features = []
-rpc_url = "https://rpc.example"
-transport_mode = "poll-http"
-"#,
-    )?;
-    let connector_message = format!("{connector_error:#}");
-    assert!(
-        connector_message.contains("unknown field `transport_mode`"),
-        "{connector_message}"
-    );
+rpc = {{ url = "https://rpc.example" }}
+{setting}
+"#
+            ),
+        )?;
+        let connector_message = format!("{connector_error:#}");
+        assert!(
+            connector_message.contains(&format!("unknown field `{field_name}`")),
+            "{connector_message}"
+        );
+    }
 
     Ok(())
 }
@@ -294,7 +359,9 @@ fn rejects_ws_only_connector_list() -> Result<()> {
             name: "ws-only".to_string(),
             provider: "helius".to_string(),
             features: Vec::new(),
-            ws_url: Some("wss://ws.helius.example".to_string()),
+            websocket: Some(crate::config::WebsocketTransportConfig::new(
+                "wss://ws.helius.example".to_string(),
+            )),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
@@ -304,7 +371,7 @@ fn rejects_ws_only_connector_list() -> Result<()> {
         Ok(()) => anyhow::bail!("a websocket-only list should be rejected"),
         Err(error) => assert!(error
             .to_string()
-            .contains("at least one connector with rpc_url is required")),
+            .contains("at least one connector with an rpc transport is required")),
     }
     Ok(())
 }
@@ -328,7 +395,9 @@ fn rejects_duplicate_connector_names() -> Result<()> {
 #[test]
 fn rejects_invalid_ws_scheme() -> Result<()> {
     let mut connector = rpc_connector("primary");
-    connector.ws_url = Some("https://api.mainnet-beta.solana.com".to_string());
+    connector.websocket = Some(crate::config::WebsocketTransportConfig::new(
+        "https://api.mainnet-beta.solana.com".to_string(),
+    ));
     let mut config = Config {
         connectors: vec![connector],
         ..Config::default()
@@ -338,24 +407,41 @@ fn rejects_invalid_ws_scheme() -> Result<()> {
         Ok(()) => anyhow::bail!("invalid websocket URL should be rejected"),
         Err(error) => assert!(error
             .to_string()
-            .contains("ws_url must use ws:// or wss:// with a host")),
+            .contains("connectors[0].websocket.url must use ws:// or wss:// with a host")),
     }
     Ok(())
 }
 
 #[test]
-fn trims_blank_ws_url() -> Result<()> {
+fn rejects_blank_transport_url() -> Result<()> {
     let mut connector = rpc_connector("primary");
-    connector.ws_url = Some("   ".to_string());
-    let mut config = Config {
-        connectors: vec![connector],
-        modes: modes_for("primary", None, false),
-        ..Config::default()
+    connector.websocket = Some(crate::config::WebsocketTransportConfig::new(
+        "   ".to_string(),
+    ));
+    let Err(error) = connector.validate(0) else {
+        anyhow::bail!("a declared transport with a blank URL should fail");
     };
 
-    config.validate()?;
+    assert!(error
+        .to_string()
+        .contains("connectors[0].websocket.url must not be empty"));
+    Ok(())
+}
 
-    assert!(config.connectors[0].ws_url.is_none());
+#[test]
+fn rejects_websocket_route_without_websocket_transport() -> Result<()> {
+    let mut config = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", Some("primary"), false),
+        ..Config::default()
+    };
+    let Err(error) = config.validate() else {
+        anyhow::bail!("a WebSocket route requires a WebSocket transport");
+    };
+
+    assert!(error.to_string().contains(
+        "modes.health.commands.ws_health references connector \"primary\", which has no configured WebSocket endpoint"
+    ));
     Ok(())
 }
 
@@ -399,7 +485,9 @@ fn rejects_rpc_command_routed_to_websocket_only_connector() -> Result<()> {
                 name: "ws-only".to_string(),
                 provider: "helius".to_string(),
                 features: Vec::new(),
-                ws_url: Some("wss://ws.example".to_string()),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(
+                    "wss://ws.example".to_string(),
+                )),
                 ..ConnectorConfig::default()
             },
         ],
@@ -619,7 +707,9 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
         name: "jito".to_string(),
         provider: "jito".to_string(),
         features: vec![ProviderFeature::JitoMevRewards],
-        ws_url: Some("wss://example.invalid".to_string()),
+        websocket: Some(crate::config::WebsocketTransportConfig::new(
+            "wss://example.invalid".to_string(),
+        )),
         ..ConnectorConfig::default()
     };
     let Err(error) = missing_endpoint.validate(0) else {
@@ -627,13 +717,15 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
     };
     assert!(error
         .to_string()
-        .contains("features entry \"jito-mev-rewards\" requires provider_api_url"));
+        .contains("features entry \"jito-mev-rewards\" requires provider_api"));
 
     let mut invalid_url = ConnectorConfig {
         name: "jito".to_string(),
         provider: "jito".to_string(),
         features: vec![ProviderFeature::JitoMevRewards],
-        provider_api_url: Some("ftp://jito.example/api/v1".to_string()),
+        provider_api: Some(crate::config::HttpTransportConfig::new(
+            "ftp://jito.example/api/v1".to_string(),
+        )),
         ..ConnectorConfig::default()
     };
     let Err(error) = invalid_url.validate(0) else {
@@ -641,13 +733,15 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
     };
     assert!(error
         .to_string()
-        .contains("provider_api_url must use http:// or https:// with a host"));
+        .contains("connectors[0].provider_api.url must use http:// or https:// with a host"));
 
     let mut jito = ConnectorConfig {
         name: "jito".to_string(),
         provider: "jito".to_string(),
         features: vec![ProviderFeature::JitoMevRewards],
-        provider_api_url: Some("https://kobe.mainnet.jito.network/api/v1".to_string()),
+        provider_api: Some(crate::config::HttpTransportConfig::new(
+            "https://kobe.mainnet.jito.network/api/v1".to_string(),
+        )),
         ..ConnectorConfig::default()
     };
     jito.validate(1)?;
@@ -672,5 +766,147 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
     assert!(error
         .to_string()
         .contains("requires provider feature \"jito-mev-rewards\""));
+    Ok(())
+}
+
+#[test]
+fn normalizes_transport_headers_and_redacts_credentials() -> Result<()> {
+    let mut connector: ConnectorConfig = toml::from_str(
+        r#"
+name = "primary"
+provider = "solana"
+features = []
+solana_rpc_compatibility = "core"
+rpc = { url = "https://rpc.example/?api-key=url-secret", headers = { "X-API-Key" = "header-secret" } }
+"#,
+    )?;
+
+    connector.validate(0)?;
+
+    let rpc = connector
+        .rpc
+        .as_ref()
+        .context("validated RPC transport is missing")?;
+    assert!(rpc.headers.values.contains_key("x-api-key"));
+    let debug = format!("{connector:?}");
+    assert!(debug.contains("x-api-key"));
+    assert!(!debug.contains("header-secret"));
+    assert!(!debug.contains("url-secret"));
+    assert!(!debug.contains("rpc.example"));
+    Ok(())
+}
+
+#[test]
+fn toml_parse_errors_do_not_expose_expanded_header_credentials() -> Result<()> {
+    let test_dir = unique_test_dir("header-parse-redaction");
+    fs::create_dir_all(&test_dir)
+        .with_context(|| format!("failed to create {}", test_dir.display()))?;
+    let config_path = test_dir.join("watcher.toml");
+    fs::write(
+        &config_path,
+        r#"
+network = "testnet"
+
+[[connectors]]
+name = "primary"
+provider = "solana"
+features = []
+solana_rpc_compatibility = "core"
+rpc = { url = "https://rpc.example", headers = { authorization = "Bearer ${AUTH_SECRET}" }
+"#,
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+    let secret = "expanded-header-secret";
+
+    let error = match Config::load_with(&config_path, |raw| {
+        expand_env_vars_with(raw, |key| {
+            Ok((key == "AUTH_SECRET").then(|| secret.to_string()))
+        })
+    }) {
+        Ok(_) => anyhow::bail!("malformed TOML should be rejected"),
+        Err(error) => error,
+    };
+    fs::remove_dir_all(&test_dir)
+        .with_context(|| format!("failed to remove {}", test_dir.display()))?;
+
+    let message = format!("{error:#}");
+    assert!(message.contains("failed to parse TOML config"), "{message}");
+    assert!(message.contains("at line 9, column"), "{message}");
+    assert!(
+        !message.contains(secret),
+        "TOML parse errors must not expose expanded header credentials"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_unsafe_transport_headers_timeouts_and_tls_overrides() -> Result<()> {
+    let cases = [
+        (
+            "rpc-reserved-header",
+            r#"rpc = { url = "https://rpc.example", headers = { Host = "ignored" } }"#,
+            "connectors[0].rpc.headers must not override protocol-owned header \"host\"",
+        ),
+        (
+            "websocket-reserved-header",
+            r#"rpc = { url = "https://rpc.example" }
+websocket = { url = "wss://rpc.example", headers = { Connection = "ignored" } }"#,
+            "connectors[0].websocket.headers must not override protocol-owned header \"connection\"",
+        ),
+        (
+            "invalid-header-value",
+            r#"rpc = { url = "https://rpc.example", headers = { authorization = "Bearer header-value-secret\nInjected: yes" } }"#,
+            "connectors[0].rpc.headers.authorization contains an invalid header value",
+        ),
+        (
+            "duplicate-header-name",
+            r#"rpc = { url = "https://rpc.example", headers = { Authorization = "first", authorization = "second" } }"#,
+            "connectors[0].rpc.headers contains duplicate header name \"authorization\"",
+        ),
+        (
+            "invalid-http-timeouts",
+            r#"rpc = { url = "https://rpc.example", request_timeout_sec = 5, connect_timeout_sec = 6 }"#,
+            "connectors[0].rpc.connect_timeout_sec must not exceed request_timeout_sec",
+        ),
+        (
+            "invalid-websocket-timeout",
+            r#"rpc = { url = "https://rpc.example" }
+websocket = { url = "wss://rpc.example", handshake_timeout_sec = 0 }"#,
+            "connectors[0].websocket.handshake_timeout_sec must be greater than 0",
+        ),
+        (
+            "insecure-rpc-tls-override",
+            r#"rpc = { url = "https://rpc.example", danger_accept_invalid_certs = true }"#,
+            "unknown field `danger_accept_invalid_certs`",
+        ),
+        (
+            "insecure-websocket-tls-override",
+            r#"rpc = { url = "https://rpc.example" }
+websocket = { url = "wss://rpc.example", danger_accept_invalid_certs = true }"#,
+            "unknown field `danger_accept_invalid_certs`",
+        ),
+    ];
+
+    for (name, transport, expected) in cases {
+        let raw = format!(
+            r#"
+network = "testnet"
+
+[[connectors]]
+name = "primary"
+provider = "solana"
+features = []
+solana_rpc_compatibility = "core"
+{transport}
+"#
+        );
+        let error = config_load_error(name, &raw)?;
+        let message = format!("{error:#}");
+        assert!(message.contains(expected), "{name}: {message}");
+        assert!(
+            !message.contains("header-value-secret"),
+            "{name}: transport errors must not expose header values"
+        );
+    }
     Ok(())
 }
