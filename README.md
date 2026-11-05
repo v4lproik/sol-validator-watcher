@@ -10,18 +10,7 @@
   Prometheus monitoring and Grafana dashboards for Solana validator operators.
 </p>
 
-Solana Validator Watcher executes typed health, consensus, leadership, and economics command chains, aggregates network and watched-validator health, and exports the result as Prometheus metrics. Each command declares its own ordered connector fallback route, so provider choice is explicit rather than inferred from global connector order.
-
-## Modules
-
-| Module | Owns | Start here | Changelog |
-| --- | --- | --- | --- |
-| Watcher | Typed mode commands, Solana RPC collection, connector fallback, provenance, labels, and validator aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/) | [`changelog/watcher.md`](changelog/watcher.md) |
-| Runtime | Process startup, polling, HTTP serving, reload, watcher state, task supervision, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/), [`src/watcher_state/`](src/watcher_state/), [`src/tasks.rs`](src/tasks.rs) | [`changelog/runtime.md`](changelog/runtime.md) |
-| Configuration | TOML loading, environment expansion, validation, and committed profiles | [`src/config/`](src/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
-| Observability | Prometheus metrics, scraping, Grafana provisioning, dashboards, and the Pages site | [`src/metrics/`](src/metrics/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/), [`site/`](site/) | [`changelog/observability.md`](changelog/observability.md) |
-| Operations | Container image, Compose profiles, Surfpool, and local stack lifecycle | [`docker/`](docker/) | [`changelog/operations.md`](changelog/operations.md) |
-| Tooling | Just commands, CI, coverage, publishing, scripts, and repository guidance | [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
+Solana Validator Watcher polls configured Solana RPC, WebSocket, and provider APIs for health, consensus, leadership, and validator economics. It exports Prometheus metrics and uses explicit per-command connector fallback routes.
 
 ## Quick start
 
@@ -33,45 +22,68 @@ cp .env.example .env
 just stack up surfpool
 ```
 
-Open Prometheus at <http://127.0.0.1:9090> and Grafana at <http://127.0.0.1:3001>. Stop the stack with:
+Open Prometheus at <http://127.0.0.1:9090> and Grafana at <http://127.0.0.1:3001>.
 
 ```bash
 just stack down
 ```
 
-Run `just` to discover all module commands. Configuration templates live in [`config/`](config/), grouped under `local/`, `compose/`, and `remote/`; each runnable profile is one self-contained TOML file. Keep credentials in the ignored root `.env`.
+Run `just` to list all supported commands.
 
-## HTTP and container security
+## Configuration
 
-`metrics_host` defaults to `127.0.0.1`, so profiles that omit it expose
-`/metrics`, `/healthz`, and `/readyz` only on the local machine. Profiles loaded
-by containers explicitly listen on `0.0.0.0` so Prometheus can scrape them,
-while every documented host publication remains bound to `127.0.0.1`. The
-committed Devnet and Mainnet profiles are container-oriented; do not use them
-for a direct host run without changing `metrics_host`.
+Each watcher process loads one self-contained TOML profile. Start from the committed examples:
 
-The runtime image runs as the unprivileged `watcher` user. Compose drops all
-Linux capabilities, prevents privilege escalation, makes the root filesystem
-read-only, and mounts a bounded `/tmp` tmpfs for the liveness file. The image
-health check runs `sol-validator-watcher healthcheck`, which probes `/healthz`;
-collection failures remain a readiness concern and do not make the container
-unhealthy.
+- [`config/local/validator.toml`](config/local/validator.toml) — direct local validator
+- [`config/compose/surfpool.toml`](config/compose/surfpool.toml) — local Surfpool stack
+- [`config/compose/validator.toml`](config/compose/validator.toml) — validator Compose stack
+- [`config/remote/devnet.toml`](config/remote/devnet.toml) — hosted Devnet endpoints
+- [`config/remote/mainnet.toml`](config/remote/mainnet.toml) — hosted Mainnet endpoints
 
-Grafana and Prometheus are loopback-only local tools. Grafana uses the
-credentials from `.env` and defaults to `admin`/`admin`; change that password
-before intentionally adapting the Compose files for non-loopback access.
+Keep credentials in the ignored root `.env`. Connector names are stable references used by ordered command routes; the first successful connector wins.
+
+| Declaration | Purpose |
+| --- | --- |
+| `solana_rpc_compatibility = "core"` | Standard health, epoch, vote-account, and leader-schedule RPC methods |
+| `solana_rpc_compatibility = "extended"` | Additional performance, block-production, account, and reward RPC methods |
+| `historical-data` | Retained prior-epoch rewards and block production |
+| `block-fee-rewards` | Confirmed validator block-fee reward reads |
+| `jito-mev-rewards` | Settled Jito validator rewards through its provider API |
+
+Run a profile directly with:
+
+```bash
+just rust run release config/local/validator.toml
+```
+
+## Local stacks
+
+| Target | Command | Purpose |
+| --- | --- | --- |
+| Surfpool | `just stack up surfpool` | Local simulated validator and watcher |
+| Validator | `just stack up validator` | Local validator endpoint |
+| Devnet | `just stack up devnet` | Hosted Devnet RPC and WebSocket endpoints |
+| Mainnet | `just stack up mainnet` | Hosted Mainnet monitoring |
+
+Use `just stack ps <target>` and `just stack logs <target>` to inspect a stack. Validate Compose rendering with `just stack config <target>`.
+
+## Observability
+
+| Surface | Purpose |
+| --- | --- |
+| `/metrics` | Prometheus metrics |
+| `/healthz` | HTTP process health |
+| `/readyz` | Collection readiness |
+| <http://127.0.0.1:9090> | Local Prometheus |
+| <http://127.0.0.1:3001> | Local Grafana dashboards |
+
+Readiness requires five consecutive clean polling rounds. Recoverable collection failures retain the last successful snapshot while marking affected modes and readiness down.
+
+Grafana includes overview, consensus, leadership, and economics dashboards. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
 
 ## Published images
 
-The container workflow publishes only after the repository CI workflow passes
-for the same commit. Main-branch, version-tag, and explicitly dispatched builds
-produce a `linux/amd64` and `linux/arm64` image index with BuildKit provenance,
-an SBOM, and a GitHub artifact attestation for the published digest. Branch and
-version tags preserve the existing release semantics; `sha-*` tags contain the
-full verified commit identifier.
-
-After authenticating to GHCR, verify a published digest or tag against the
-repository and its publishing workflow:
+The container workflow publishes multi-architecture GHCR images only after repository CI passes for the same commit. Published images include provenance, an SBOM, and a GitHub artifact attestation.
 
 ```bash
 gh attestation verify \
@@ -80,216 +92,28 @@ gh attestation verify \
   --signer-workflow v4lproik/sol-validator-watcher/.github/workflows/container.yml
 ```
 
-## Command routes
+## Modules
 
-`[[connectors]]` declares a stable provider name, its compatibility with the standard Solana JSON-RPC methods used by this watcher, optional provider features, and reusable transport settings. Each mode then assigns an exact fallback order to every command it owns:
-
-```toml
-[[connectors]]
-name = "validator"
-provider = "solana-validator"
-features = []
-solana_rpc_compatibility = "core"
-
-[connectors.rpc]
-url = "http://validator:8899"
-request_timeout_sec = 30
-connect_timeout_sec = 10
-commitment = "confirmed"
-
-[[connectors]]
-name = "helius-devnet"
-provider = "helius"
-features = ["historical-data", "block-fee-rewards"]
-solana_rpc_compatibility = "extended"
-
-[connectors.rpc]
-url = "${SOL_DEVNET_RPC_URL}"
-headers = { authorization = "Bearer ${SOL_DEVNET_AUTH_TOKEN}" }
-
-[connectors.websocket]
-url = "${SOL_DEVNET_WS_URL}"
-handshake_timeout_sec = 10
-headers = { authorization = "Bearer ${SOL_DEVNET_WS_AUTH_TOKEN}" }
-
-[[connectors]]
-name = "jito-api"
-provider = "jito"
-features = ["jito-mev-rewards"]
-
-[connectors.provider_api]
-url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
-request_timeout_sec = 30
-connect_timeout_sec = 10
-
-[modes.health.commands]
-rpc_health = ["validator", "helius-devnet"]
-ws_health = ["helius-devnet"]
-node_status = ["validator"]
-
-[modes.consensus.commands]
-epoch_info = ["validator", "helius-devnet"]
-vote_accounts = ["validator", "helius-devnet"]
-recent_performance_samples = ["helius-devnet"]
-
-[modes.leadership.commands]
-current_block_production = ["helius-devnet"]
-current_leader_schedule = ["validator", "helius-devnet"]
-next_leader_schedule = ["validator", "helius-devnet"]
-
-[modes.economics]
-enabled = true
-
-[modes.economics.commands]
-account_balances = ["helius-devnet"]
-inflation_rewards = ["helius-devnet"]
-reward_epoch_block_production = ["helius-devnet"]
-recent_block_fee_rewards = ["helius-devnet"]
-jito_mev_rewards = ["jito-api"]
-
-[modes.economics.validator]
-vote_account = "<VOTE_ACCOUNT_PUBKEY>"
-```
-
-Command requirements are independent of the provider name:
-
-| Commands | Transport | Required Solana RPC compatibility | Required provider feature |
+| Module | Owns | Start here | Changelog |
 | --- | --- | --- | --- |
-| `rpc-health`, `node-status`, `epoch-info`, `vote-accounts`, `current-leader-schedule`, `next-leader-schedule` | RPC | `core` | None |
-| `ws-health` | WebSocket | None | None |
-| `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `extended` | None |
-| `inflation-rewards`, `reward-epoch-block-production` | RPC | `extended` | `historical-data` |
-| `recent-block-fee-rewards` | RPC | `extended` | `block-fee-rewards` |
-| `jito-mev-rewards` | Provider API | None | `jito-mev-rewards` |
+| Watcher | Commands, collection, routing, provenance, and aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/) | [`changelog/watcher.md`](changelog/watcher.md) |
+| Runtime | Startup, polling, HTTP, reload, state, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/) | [`changelog/runtime.md`](changelog/runtime.md) |
+| Configuration | TOML loading, validation, and profiles | [`src/config/`](src/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
+| Observability | Metrics, Prometheus, Grafana, and Pages | [`src/metrics/`](src/metrics/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/) | [`changelog/observability.md`](changelog/observability.md) |
+| Operations | Containers, Compose, and local stacks | [`docker/`](docker/) | [`changelog/operations.md`](changelog/operations.md) |
+| Tooling | Just, CI, coverage, and publishing | [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
 
-`core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, identity, version, block-height, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available. `block-fee-rewards` is an independent opt-in promise that the endpoint serves bounded confirmed `getBlock` reward batches.
+## Development
 
-`jito-mev-rewards` is optional within enabled economics mode. It reads the
-configured target vote account from Jito's validator API and exports the latest
-settled prior-epoch MEV reward plus validator commission. A configured route is
-checked during startup and transactional reload. During polling, route
-exhaustion omits only the Jito series; required balance, inflation-reward, and
-block-production failures still fail the economics round. Settled rewards are
-cached for the active source chain; an absent epoch is retried after Jito's
-documented 60-second API cache.
-
-`recent-block-fee-rewards` is optional within enabled economics mode. Each poll
-selects at most 32 of the target identity's latest completed current-epoch
-leader slots and fetches them in one `getBlock` batch with transaction bodies
-omitted. Missed slots are omitted. A produced block must contain exactly one
-non-negative `Fee` reward for the target identity or the command advances to
-the next configured connector. The resulting latest reward, slot, recent
-average, and produced-block sample count include normal Solana transaction fees
-and priority fees delivered by Harmonic when Harmonic built the block.
-Solana's block reward does not identify the block-building provider, and
-Harmonic does not publish a validator reward API or distinct on-chain tip
-account, so these metrics must not be interpreted as Harmonic-only revenue.
-
-`node_status` is an optional health-mode route intended for an operator-owned validator endpoint. When configured, it collects the active identity, validator client version and feature set, block height, structured catch-up distance, and vote-set classification from that routed connector. Route exhaustion omits the node-local series and marks health mode down without fabricating values.
-
-A Helius connector may be `extended` for the standard Solana methods while also offering DAS, Enhanced Transactions, Sender, WebSocket extensions, or LaserStream. Those are independent provider APIs and transports; `solana_rpc_compatibility = "extended"` does not claim or verify them. A provider-specific API belongs in the capability and endpoint model only when a typed watcher command consumes it.
-
-Route and source metrics expose the connector declaration as `solana_rpc_compatibility` and the command requirement as `required_solana_rpc_compatibility`; Grafana labels both as standard Solana RPC compatibility.
-
-The complete endpoint, header, and timeout settings are nested under each connector's `rpc`, `websocket`, or `provider_api` transport. HTTP transports default to a 30-second total request deadline and a 10-second DNS/TCP/TLS connection deadline; `connect_timeout_sec` cannot exceed `request_timeout_sec`. HTTP clients do not follow redirects, preventing connector headers from being replayed to another endpoint. WebSocket probes default to a 10-second DNS/TCP/TLS/upgrade handshake deadline. Custom header names are normalized and validated; protocol-owned `Host`, framing, and WebSocket upgrade headers cannot be overridden. Header values and endpoint URLs are redacted from debug and transport errors, and TOML diagnostics omit expanded source lines so credentials are not echoed. Environment expansion happens before TOML decoding, so interpolated header values must remain valid TOML strings and single-line HTTP header values.
-
-HTTPS and WSS use Rustls with bundled WebPKI roots, SNI, certificate-chain verification, and hostname verification. HTTP clients require TLS 1.2 or newer; WebSocket clients use Rustls safe protocol defaults. There is no certificate-verification bypass, custom-CA, client-certificate, or gRPC configuration. The flat `rpc_url`, `rpc_timeout_sec`, `ws_url`, `ws_timeout_sec`, `provider_api_url`, and `provider_api_timeout_sec` fields are rejected.
-
-RPC and provider-API URLs must use HTTP(S) with an explicit host; WebSocket URLs must use WS(S) with an explicit host. A present transport table requires a nonempty URL; omit the table to disable that transport. An `rpc` transport also requires `solana_rpc_compatibility`, while a `provider_api` route must satisfy the command's declared provider feature. Provider names are provenance labels, not capability inference. To enable a WebSocket probe in the Compose validator profile, add its `connectors.websocket` table and the same connector name to `modes.health.commands.ws_health` together.
-
-Array order is the command's sole priority and fallback policy. A connector may be first for one command and last for another. Static validation rejects routes whose connector lacks the required transport, standard Solana RPC compatibility, or provider feature. Before the first poll, the watcher sends bounded valid requests for every method implied by each connector's compatibility declaration and checks configured Jito reward routes against the economics target. A transport, HTTP, payload, JSON-RPC, or missing-method failure exits startup with connector, provider, endpoint kind, capability, and method context while redacting the URL. Changed connectors are probed before a reload replaces the last-known-good runtime. When a required RPC command or configured WebSocket health command exhausts its route, the returned error preserves every failed connector, provider, and causal error in fallback order.
-
-## Readiness, freshness, and transport reliability
-
-`/healthz` reports only that the HTTP process is serving. `/readyz` returns
-`503 Service Unavailable` until five consecutive required polling rounds
-complete without a failed RPC attempt or non-2xx HTTP response. Transport,
-response-read, payload, JSON-RPC, and missing-result failures plus any non-2xx
-response reset the streak; an accepted configuration reload also restarts
-admission for the new runtime.
-
-After startup validation succeeds, a required RPC or collection failure fails
-the whole polling round rather than the process. Required prerequisite calls,
-including `minimumLedgerSlot` for retained reward history, propagate failure
-instead of being converted to absence. The watcher marks affected collection
-modes down, resets readiness, retains the last successful snapshot, does not
-advance the liveness file, and retries after 1, 2, 4, 8, 16, then at most 30
-seconds. A successful round resets the backoff; `/readyz` requires five new
-clean rounds before readmission. Startup capability or configuration contract
-failures remain fatal, while an invalid reload candidate continues to preserve
-the last-known-good runtime.
-
-Every 30 seconds, the watcher logs its readiness, completed and clean polling
-rounds, failed RPC attempts, cumulative response count, response-class counts,
-and exact counts for HTTP 200, 403, 429, and 500. Prometheus exposes the same
-state through `sol_watcher_ready`, `sol_watcher_poll_round_count`,
-`sol_watcher_clean_poll_streak`, `sol_watcher_poll_interval_seconds`,
-`sol_rpc_request_failure_count`, `sol_rpc_http_response_class_count`, and
-`sol_rpc_http_response_status_count`.
-
-`sol_last_successful_snapshot_timestamp_seconds` and
-`sol_snapshot_duration_seconds` distinguish fresh data from a running process;
-the timestamp remains absent until the first complete snapshot.
-`sol_snapshot_failures_total`, `sol_rpc_request_duration_seconds`,
-`sol_rpc_request_failures_total`, and `sol_ws_probe_failures_total` expose
-failed rounds, per-connector/per-method RPC latency and failures, and every
-failed WebSocket reachability probe by connector. The routed
-`recent-performance-samples` command publishes
-`sol_cluster_transactions_per_second`,
-`sol_cluster_vote_transactions_per_second`,
-`sol_cluster_non_vote_transactions_per_second`, and
-`sol_cluster_slots_per_second`; the vote split remains absent when the selected
-endpoint omits it. The consensus dashboard pairs these cluster rates with
-delinquent-stake and network-stake-share trends, while the leadership dashboard
-compares each selected scope's skip rate with the all-network baseline. When
-`node_status` is configured, `sol_node_info`, `sol_node_health`,
-`sol_node_catchup_distance_slots`, and `sol_node_block_height` expose the
-operator-owned node's identity, software, voting classification, cluster
-health, and height. The overview dashboard shows snapshot freshness and these
-node-local signals with warning and critical thresholds.
-When a Jito reward route succeeds, the economics dashboard publishes
-`sol_economics_jito_mev_reward_sol`,
-`sol_economics_jito_mev_commission_pct`, and
-`sol_economics_jito_mev_reward_epoch`. These series remain absent when
-economics mode is disabled, no route is configured, the epoch is not settled,
-or every configured provider-API connector fails.
-
-When a recent block-fee route succeeds, the dashboard publishes
-`sol_economics_block_fee_reward_sol`,
-`sol_economics_block_fee_reward_slot`,
-`sol_economics_recent_block_fee_reward_average_sol`, and
-`sol_economics_recent_block_fee_reward_sample_count`. These series remain
-absent when the route is not configured, no completed assigned slots exist, or
-every configured RPC connector fails.
-
-The dashboard keeps the configured economics validator's Solana protocol
-inflation rewards, recent validator block fees, and Jito MEV rewards in
-adjacent source-specific sections. Recent block fees include Harmonic priority
-fees when Harmonic built a sampled block, but cannot attribute any amount to
-Harmonic independently. Jito provider rewards are not merged into protocol
-inflation rewards or recent block fees; any future attributable provider
-integration requires its own typed command, metrics, and dashboard section.
-Each source section includes history graphs over the selected Grafana time
-range. Protocol and Jito values are epoch-sampled and held until a newer sample
-or settlement. Block-fee graphs show the latest produced block and bounded
-recent-sample average observed by each poll.
-
-The local Prometheus scrapes only the watcher profiles selected by
-`just stack up <target>` and evaluates baseline target-down, readiness,
-freshness, RPC- and WebSocket-failure, node-behind, node-not-voting, validator
-delinquency/vote-lag, upcoming-leader, and VAT-funding alerts. Snapshot
-freshness uses the greater of 120 seconds or four configured poll intervals.
-Notification routing requires an external Alertmanager. Run
-`just stack check` to validate the Prometheus configuration and execute its
-alert rule tests.
-
-## Contributing
-
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [module changelog index](CHANGELOG.md). Every change updates the changelog of each affected module and passes:
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [module changelog index](CHANGELOG.md).
 
 ```bash
+just rust doctor
 just ci verify
+just ci full
 ```
+
+Every change updates the `Unreleased` section of each affected module changelog.
 
 ## License
 
