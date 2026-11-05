@@ -329,6 +329,58 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
 }
 
 #[test]
+fn scheduled_frequency_requires_a_valid_epoch_duration() -> Result<()> {
+    let metrics = Metrics::new()?;
+    let validator = WatchedValidatorMetrics {
+        identity: "id-1".to_string(),
+        vote_account: "vote-1".to_string(),
+        status: ValidatorStatus::Current,
+        scopes: vec!["scope:watched".to_string()],
+        activated_stake_lamports: 1,
+        latest_epoch_vote_credits: None,
+        vote_efficiency_pct: None,
+        last_vote_slot_lag: 0,
+        root_slot_lag: 0,
+        commission_pct: 0,
+        latest_epoch_reward_lamports: 0,
+        latest_epoch_rewarded_blocks_produced: 0,
+        blocks_produced: 0,
+        blocks_missed: 0,
+        block_production_rate: 0.0,
+        current_epoch_scheduled_leader_slots: Some(10),
+        future_leader_slots: 0,
+        next_leader_slot: None,
+        slots_until_next_leader: None,
+        seconds_until_next_leader: None,
+        upcoming_leader_slots: vec![],
+    };
+    let snapshot = |epoch_slots, average_slot_time_seconds| Snapshot {
+        network: "mainnet-beta".to_string(),
+        epoch_slots,
+        cluster_performance: Some(ClusterPerformanceMetrics {
+            average_slot_time_seconds: Some(average_slot_time_seconds),
+            transactions_per_second: 0.0,
+            vote_transactions_per_second: None,
+            non_vote_transactions_per_second: None,
+            slots_per_second: 0.0,
+        }),
+        watched_validators: vec![validator.clone()],
+        ..Snapshot::default()
+    };
+
+    metrics.update_snapshot(&snapshot(0, 0.4));
+    let zero_epoch = metrics.render()?;
+    assert!(zero_epoch
+        .contains("sol_watched_validator_current_epoch_scheduled_leader_slots{identity=\"id-1\""));
+    assert!(!zero_epoch.contains("sol_watched_validator_scheduled_leader_slots_per_hour{"));
+
+    metrics.update_snapshot(&snapshot(100, f64::NAN));
+    let invalid_slot_time = metrics.render()?;
+    assert!(!invalid_slot_time.contains("sol_watched_validator_scheduled_leader_slots_per_hour{"));
+    Ok(())
+}
+
+#[test]
 fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
     let metrics = Metrics::new()?;
     metrics.update_snapshot(&Snapshot {

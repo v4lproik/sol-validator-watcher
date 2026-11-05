@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Raised local and CI line and region coverage gates to 90 percent and aligned the Codecov project target.
 - Reworked the README into a concise setup, configuration, operations, and contribution guide while retaining implementation details in module changelogs and repository guidance.
 - Documented bounded recent block-fee collection, identity validation, connector fallback, Harmonic attribution limits, and the required RPC boundary proofs.
 - Documented nested connector transport ownership, sensitive-header and parse-error redaction, protocol-owned header validation, secure TLS defaults, bounded connect/request/handshake deadlines, and the required local boundary proofs.

@@ -1,4 +1,4 @@
-use super::{check_health, readiness_handler, AppState};
+use super::{bind_http_listener, check_health, readiness_handler, run_http_server, AppState};
 use crate::{
     metrics::Metrics,
     tasks::{TaskExit, TaskManager},
@@ -41,6 +41,49 @@ async fn readiness_handler_tracks_actor_admission() -> Result<()> {
             format!(
                 "ready: {ADMISSION_CLEAN_POLL_ROUNDS}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
             )
+        );
+        Ok(TaskExit::ShutdownRequested)
+    });
+
+    tasks.run().await
+}
+
+#[tokio::test]
+async fn production_server_serves_metrics_health_and_readiness() -> Result<()> {
+    let mailbox = WatcherStateMailbox::new();
+    let metrics = Arc::new(Metrics::new()?);
+    metrics.set_watcher_up("http-test", true);
+    let (watcher_state, actor) = mailbox.start("http-test", Arc::clone(&metrics));
+    let listener = bind_http_listener("127.0.0.1:0".parse()?).await?;
+    let address = listener.local_addr()?;
+    let app_state = AppState::new(metrics, watcher_state);
+    let mut tasks = TaskManager::new();
+    tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
+    tasks.spawn(
+        "metrics-http-server",
+        run_http_server(app_state, listener, tasks.shutdown_handle()),
+    );
+    tasks.spawn("http-boundary-scenario", async move {
+        check_health(address).await?;
+        let client = reqwest::Client::new();
+        let metrics_response = client
+            .get(format!("http://{address}/metrics"))
+            .send()
+            .await?
+            .error_for_status()?;
+        assert!(metrics_response
+            .text()
+            .await?
+            .contains("sol_watcher_up{network=\"http-test\"} 1"));
+
+        let readiness_response = client
+            .get(format!("http://{address}/readyz"))
+            .send()
+            .await?;
+        assert_eq!(readiness_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            readiness_response.text().await?,
+            format!("warming up: 0/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds")
         );
         Ok(TaskExit::ShutdownRequested)
     });

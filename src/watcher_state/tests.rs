@@ -9,7 +9,7 @@ use std::sync::Arc;
 #[test]
 fn response_counts_classify_bounded_statuses() {
     let mut responses = RpcResponseCounts::default();
-    for status in [200, 204, 307, 403, 429, 500, 502] {
+    for status in [99, 200, 204, 307, 403, 429, 500, 502] {
         responses.record_response(status);
     }
     responses.record_failure();
@@ -17,17 +17,64 @@ fn response_counts_classify_bounded_statuses() {
     assert_eq!(
         responses,
         RpcResponseCounts {
-            total: 7,
+            total: 8,
             successful_2xx: 2,
             redirection_3xx: 1,
             client_error_4xx: 2,
             server_error_5xx: 2,
+            other: 1,
             status_200: 1,
             status_403: 1,
             status_429: 1,
             status_500: 1,
             failed_attempts: 1,
-            ..RpcResponseCounts::default()
+        }
+    );
+}
+
+#[test]
+fn response_count_deltas_are_fieldwise_and_saturating() {
+    let current = RpcResponseCounts {
+        total: 9,
+        successful_2xx: 8,
+        redirection_3xx: 7,
+        client_error_4xx: 6,
+        server_error_5xx: 5,
+        other: 4,
+        status_200: 3,
+        status_403: 2,
+        status_429: 1,
+        status_500: 0,
+        failed_attempts: 10,
+    };
+    let previous = RpcResponseCounts {
+        total: 1,
+        successful_2xx: 2,
+        redirection_3xx: 3,
+        client_error_4xx: 4,
+        server_error_5xx: 5,
+        other: 6,
+        status_200: 7,
+        status_403: 8,
+        status_429: 9,
+        status_500: 10,
+        failed_attempts: 3,
+    };
+
+    assert_eq!(
+        current.delta_since(previous),
+        RpcResponseCounts {
+            total: 8,
+            successful_2xx: 6,
+            redirection_3xx: 4,
+            client_error_4xx: 2,
+            server_error_5xx: 0,
+            other: 0,
+            status_200: 0,
+            status_403: 0,
+            status_429: 0,
+            status_500: 0,
+            failed_attempts: 7,
         }
     );
 }
