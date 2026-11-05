@@ -630,6 +630,27 @@ impl Metrics {
             ),
             &["network", "identity", "vote_account", "status"],
         )?;
+        let sol_watched_validator_current_epoch_scheduled_leader_slots = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_current_epoch_scheduled_leader_slots",
+                "Total scheduled leader slots in the current epoch for each watched validator",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_scheduled_leader_slots_per_hour = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_scheduled_leader_slots_per_hour",
+                "Average scheduled block-production opportunities per hour in the current epoch",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_upcoming_leader_slot = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_upcoming_leader_slot",
+                "Absolute slot for each bounded upcoming watched-validator leader assignment",
+            ),
+            &["network", "identity", "vote_account", "status", "position"],
+        )?;
         let sol_watched_validator_next_leader_slot = IntGaugeVec::new(
             Opts::new(
                 "sol_watched_validator_next_leader_slot",
@@ -748,6 +769,15 @@ impl Metrics {
         register(&registry, &sol_watched_validator_blocks_missed)?;
         register(&registry, &sol_watched_validator_block_production_rate)?;
         register(&registry, &sol_watched_validator_future_leader_slots)?;
+        register(
+            &registry,
+            &sol_watched_validator_current_epoch_scheduled_leader_slots,
+        )?;
+        register(
+            &registry,
+            &sol_watched_validator_scheduled_leader_slots_per_hour,
+        )?;
+        register(&registry, &sol_watched_validator_upcoming_leader_slot)?;
         register(&registry, &sol_watched_validator_next_leader_slot)?;
         register(&registry, &sol_watched_validator_slots_until_next_leader)?;
         register(&registry, &sol_watched_validator_seconds_until_next_leader)?;
@@ -838,6 +868,9 @@ impl Metrics {
             sol_watched_validator_blocks_missed,
             sol_watched_validator_block_production_rate,
             sol_watched_validator_future_leader_slots,
+            sol_watched_validator_current_epoch_scheduled_leader_slots,
+            sol_watched_validator_scheduled_leader_slots_per_hour,
+            sol_watched_validator_upcoming_leader_slot,
             sol_watched_validator_next_leader_slot,
             sol_watched_validator_slots_until_next_leader,
             sol_watched_validator_seconds_until_next_leader,

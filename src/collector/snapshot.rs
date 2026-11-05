@@ -309,6 +309,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         current_slot,
         &records,
     );
+    snapshot.epoch_slots = epoch_info.value.slots_in_epoch;
     snapshot.epoch_progress_pct =
         ratio(epoch_info.value.slot_index, epoch_info.value.slots_in_epoch);
     snapshot.epoch_slots_remaining = epoch_info

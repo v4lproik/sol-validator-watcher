@@ -24,6 +24,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         network: "mainnet-beta".to_string(),
         epoch: 42,
         slot: 1234,
+        epoch_slots: 100,
         epoch_progress_pct: 34.5,
         epoch_slots_remaining: 65,
         cluster_performance: Some(ClusterPerformanceMetrics {
@@ -76,10 +77,12 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
             blocks_produced: 3,
             blocks_missed: 1,
             block_production_rate: 75.0,
+            current_epoch_scheduled_leader_slots: Some(10),
             future_leader_slots: 2,
             next_leader_slot: Some(1300),
             slots_until_next_leader: Some(66),
             seconds_until_next_leader: Some(26.4),
+            upcoming_leader_slots: vec![1300, 1320],
         }],
         data_sources: vec![
             SnapshotDataSource {
@@ -307,6 +310,10 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_watched_validator_epoch_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 6"));
     assert!(rendered.contains("sol_watched_validator_reward_per_block_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 2"));
     assert!(rendered.contains("sol_watched_validator_block_production_rate{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 75"));
+    assert!(rendered.contains("sol_watched_validator_current_epoch_scheduled_leader_slots{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 10"));
+    assert!(rendered.contains("sol_watched_validator_scheduled_leader_slots_per_hour{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 900"));
+    assert!(rendered.contains("sol_watched_validator_upcoming_leader_slot{identity=\"id-1\",network=\"mainnet-beta\",position=\"01\",status=\"current\",vote_account=\"vote-1\"} 1300"));
+    assert!(rendered.contains("sol_watched_validator_upcoming_leader_slot{identity=\"id-1\",network=\"mainnet-beta\",position=\"02\",status=\"current\",vote_account=\"vote-1\"} 1320"));
     assert!(rendered.contains("sol_watched_validator_next_leader_slot{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1300"));
     assert!(rendered.contains("sol_watched_validator_slots_until_next_leader{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 66"));
     assert!(rendered.contains("sol_watched_validator_seconds_until_next_leader{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 26.4"));
@@ -403,6 +410,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         network: network.to_string(),
         epoch: 1,
         slot: 1,
+        epoch_slots: 100,
         epoch_progress_pct: 10.0,
         epoch_slots_remaining: 90,
         cluster_performance: Some(ClusterPerformanceMetrics {
@@ -432,10 +440,12 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             blocks_produced: 1,
             blocks_missed: 0,
             block_production_rate: 100.0,
+            current_epoch_scheduled_leader_slots: Some(1),
             future_leader_slots: 0,
             next_leader_slot: Some(10),
             slots_until_next_leader: Some(9),
             seconds_until_next_leader: Some(3.6),
+            upcoming_leader_slots: vec![10],
         }],
         data_sources: vec![SnapshotDataSource {
             mode: ModeId::Consensus,
@@ -485,6 +495,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         network: network.to_string(),
         epoch: 2,
         slot: 2,
+        epoch_slots: 100,
         epoch_progress_pct: 20.0,
         epoch_slots_remaining: 80,
         cluster_performance: None,
@@ -508,10 +519,12 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             blocks_produced: 0,
             blocks_missed: 0,
             block_production_rate: 0.0,
+            current_epoch_scheduled_leader_slots: Some(1),
             future_leader_slots: 0,
             next_leader_slot: None,
             slots_until_next_leader: None,
             seconds_until_next_leader: None,
+            upcoming_leader_slots: vec![],
         }],
         data_sources: vec![],
         mode_statuses: vec![],
@@ -531,6 +544,12 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_reward_sample_epoch{"));
     assert!(!rendered.contains("sol_watched_validator_vote_credits_latest_epoch{"));
     assert!(!rendered.contains("sol_watched_validator_vote_efficiency_pct{"));
+    assert!(rendered.contains("sol_watched_validator_current_epoch_scheduled_leader_slots{identity=\"current-id\",network=\"mainnet-beta\",status=\"current\",vote_account=\"current-vote\"} 1"));
+    assert!(!rendered
+        .contains("sol_watched_validator_scheduled_leader_slots_per_hour{identity=\"current-id\""));
+    assert!(
+        !rendered.contains("sol_watched_validator_upcoming_leader_slot{identity=\"current-id\"")
+    );
     assert!(!rendered.contains("sol_average_slot_time_seconds{"));
     assert!(!rendered.contains("sol_cluster_transactions_per_second{"));
     assert!(!rendered.contains("sol_cluster_vote_transactions_per_second{"));

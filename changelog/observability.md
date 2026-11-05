@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added watched-validator scheduled leader-slot count, slots-per-hour frequency, and bounded upcoming-schedule metrics plus leadership panels for producer frequency, schedule, and share of all activated network stake.
 - Added recent validator block-fee reward, slot, bounded-sample average, and sample-count metrics plus current-value and time-range economics panels that include Harmonic priority fees without claiming unavailable provider attribution.
 - Separated the configured economics validator's Solana protocol inflation reward and sample epoch from Jito MEV reward and settled epoch in adjacent current-value and time-range history sections.
 - Added economics-target Jito MEV reward, commission, and settled-epoch metrics plus mode-gated economics dashboard panels and provider-API connector inventory metadata.

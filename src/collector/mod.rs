@@ -19,6 +19,7 @@ pub use snapshot::{collect_snapshot, ensure_economics_supported};
 
 use aggregate::reward_epoch_block_range;
 pub(crate) use jito::JitoClient;
+pub(crate) use model::MAX_UPCOMING_LEADER_SLOTS;
 pub(crate) use model::{AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample};
 #[cfg(test)]
 pub(crate) use model::{

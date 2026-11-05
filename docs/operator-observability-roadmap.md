@@ -75,6 +75,9 @@ The exporter and mode dashboards now publish:
 - `sol_watched_validator_next_leader_slot`,
   `sol_watched_validator_slots_until_next_leader`, and
   `sol_watched_validator_seconds_until_next_leader`
+- `sol_watched_validator_current_epoch_scheduled_leader_slots`,
+  `sol_watched_validator_scheduled_leader_slots_per_hour`, and the bounded
+  `sol_watched_validator_upcoming_leader_slot` schedule
 - economics-target identity and vote-account balances, vote-account rent
   exemption, VAT reserve, complete funded VAT epochs, next-epoch VAT funding
   status, `sol_economics_jito_mev_reward_sol`,
@@ -85,8 +88,12 @@ Timing and throughput use the latest routed `getRecentPerformanceSamples`
 result. Missing samples produce no rate or estimate series rather than a
 healthy-looking zero. Vote and non-vote rates remain absent when an endpoint
 omits the transaction split. The consensus dashboard also derives delinquent
-stake ratio and selected-scope share of all network stake; the leadership
-dashboard compares selected-scope skip rate with the all-network baseline.
+stake ratio and selected-scope share of all network stake. The leadership
+dashboard shows each watched validator's scheduled production frequency,
+earliest 16 current- or next-epoch assignments, share of all activated network
+stake, and selected-scope skip-rate gap against the all-network baseline.
+Schedule rows remain absent unless both leader schedules succeed; frequency
+remains absent without the current schedule or a valid slot-duration sample.
 VAT runway is the current vote-account balance above rent exemption divided by
 the current 0.8 SOL epoch charge; it excludes future rewards and transfers. If
 an RPC omits the vote account's data size, account balances remain available

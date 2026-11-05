@@ -44,6 +44,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     assert_eq!(snapshot.network, "devnet");
     assert_eq!(snapshot.epoch, 9);
     assert_eq!(snapshot.slot, 810);
+    assert_eq!(snapshot.epoch_slots, 100);
     let node = snapshot
         .node
         .as_ref()
@@ -74,6 +75,14 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     );
     assert_eq!(snapshot.watched_validators[0].blocks_produced, 4);
     assert_eq!(snapshot.watched_validators[0].future_leader_slots, 3);
+    assert_eq!(
+        snapshot.watched_validators[0].current_epoch_scheduled_leader_slots,
+        Some(4)
+    );
+    assert_eq!(
+        snapshot.watched_validators[0].upcoming_leader_slots,
+        vec![810, 901, 950]
+    );
 
     assert_eq!(snapshot.epoch_progress_pct, 10.0);
     assert_eq!(snapshot.epoch_slots_remaining, 90);
