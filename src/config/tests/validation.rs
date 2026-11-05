@@ -139,6 +139,41 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
 }
 
 #[test]
+fn rejects_invalid_connector_transport_urls() -> Result<()> {
+    let cases = [
+        (
+            ConnectorConfig {
+                name: "rpc".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some("ftp://rpc.example".to_string()),
+                ..ConnectorConfig::default()
+            },
+            "rpc_url must use http:// or https:// with a host",
+        ),
+        (
+            ConnectorConfig {
+                name: "websocket".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                ws_url: Some("ws://".to_string()),
+                ..ConnectorConfig::default()
+            },
+            "ws_url must be a valid URL",
+        ),
+    ];
+
+    for (mut connector, expected) in cases {
+        let Err(error) = connector.validate(0) else {
+            anyhow::bail!("invalid connector transport URL should fail");
+        };
+        assert!(error.to_string().contains(expected), "{error:#}");
+    }
+    Ok(())
+}
+
+#[test]
 fn provider_features_deserialize_and_export_stable_labels() -> Result<()> {
     let connector: ConnectorConfig = toml::from_str(
         r#"
@@ -292,7 +327,7 @@ fn rejects_invalid_ws_scheme() -> Result<()> {
         Ok(()) => anyhow::bail!("invalid websocket URL should be rejected"),
         Err(error) => assert!(error
             .to_string()
-            .contains("ws_url must start with ws:// or wss://")),
+            .contains("ws_url must use ws:// or wss:// with a host")),
     }
     Ok(())
 }

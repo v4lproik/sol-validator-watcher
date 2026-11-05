@@ -55,17 +55,22 @@ liveness files, signals, and shutdown.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
   Optional extended routes may be empty in a core-only profile.
-- Treat each connector's `rpc_url`, `ws_url`, and `provider_api_url` as its
-  transport configuration. Do not duplicate transports in `features` or add
-  transport toggles.
+- Treat each connector's `rpc_url`, `ws_url`, and `provider_api_url` plus their
+  timeouts as its transport configuration. Do not duplicate transports in
+  `features` or add transport toggles.
+- Do not add an endpoint or client configuration for a transport without a
+  typed command that consumes it and a startup verification boundary. In
+  particular, no gRPC configuration exists until the watcher consumes a
+  concrete gRPC service.
 - Normalize names, URLs, commitments, labels, and public keys once, then validate
   the normalized value.
 - Reject unknown fields, missing providers or feature arrays, missing or
   misplaced Solana RPC compatibility declarations, duplicate features, zero
   ports/timeouts/intervals, duplicate connector names, unsupported commitments,
-  invalid websocket schemes, missing required routes, unknown or duplicate route
-  entries, and routes whose connector lacks the required transport, Solana RPC
-  compatibility, or provider feature before client construction.
+  malformed or hostless transport URLs, unsupported URL schemes, missing
+  required routes, unknown or duplicate route entries, and routes whose
+  connector lacks the required transport, Solana RPC compatibility, or provider
+  feature before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
   `ws_url` is empty; expose them as unavailable and skip them at execution.
 - Removed split-config and single-connection fields stay unsupported. Do not

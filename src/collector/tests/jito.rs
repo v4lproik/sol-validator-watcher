@@ -42,7 +42,7 @@ async fn jito_client_selects_and_caches_one_reward_epoch() -> Result<()> {
         ]"#,
     )
     .await?;
-    let client = JitoClient::new(&api_url, Duration::from_secs(5))?;
+    let client = JitoClient::try_new(&api_url, Duration::from_secs(5))?;
 
     let reward = client
         .get_mev_reward("vote-1", 8)

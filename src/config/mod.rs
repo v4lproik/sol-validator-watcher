@@ -173,7 +173,7 @@ pub struct WatchedValidatorConfig {
     pub labels: Vec<String>,
 }
 
-/// One RPC and/or WebSocket connector declaration.
+/// One connector-local RPC, WebSocket, and/or provider-API declaration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectorConfig {
@@ -337,11 +337,14 @@ impl ConnectorConfig {
         }
 
         self.commitment_config()?;
+        if let Some(rpc_url) = self.rpc_url.as_deref() {
+            validate_http_url("rpc_url", rpc_url)?;
+        }
         if let Some(ws_url) = self.ws_url.as_deref() {
             validate_ws_url(ws_url)?;
         }
         if let Some(provider_api_url) = self.provider_api_url.as_deref() {
-            validate_provider_api_url(provider_api_url)?;
+            validate_http_url("provider_api_url", provider_api_url)?;
         }
 
         Ok(())
@@ -742,18 +745,19 @@ fn validate_label(label: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_ws_url(url: &str) -> Result<()> {
-    if url.starts_with("ws://") || url.starts_with("wss://") {
-        return Ok(());
+fn validate_http_url(field: &str, url: &str) -> Result<()> {
+    let parsed =
+        reqwest::Url::parse(url).with_context(|| format!("{field} must be a valid URL"))?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        bail!("{field} must use http:// or https:// with a host");
     }
-
-    bail!("ws_url must start with ws:// or wss://");
+    Ok(())
 }
 
-fn validate_provider_api_url(url: &str) -> Result<()> {
-    let parsed = reqwest::Url::parse(url).context("provider_api_url must be a valid URL")?;
-    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-        bail!("provider_api_url must use http:// or https:// with a host");
+fn validate_ws_url(url: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(url).context("ws_url must be a valid URL")?;
+    if !matches!(parsed.scheme(), "ws" | "wss") || parsed.host_str().is_none() {
+        bail!("ws_url must use ws:// or wss:// with a host");
     }
     Ok(())
 }

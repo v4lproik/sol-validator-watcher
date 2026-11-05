@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added an optional routed Jito provider-API command that publishes one economics target's settled prior-epoch MEV reward and commission, uses ordered connector fallback, bounds response size, and caches settled or briefly absent epoch results.
+- Made RPC, WebSocket, and Jito API client construction reject malformed or unsupported connector-local URLs before polling while retaining redacted transport failures.
 - Expanded the routed recent-performance command with total, vote, and non-vote transaction rates plus slot throughput, preserving omitted transaction splits as absent and falling back when a sample is internally inconsistent.
 - Simplified route-exhaustion diagnostics with composable typed formatting and deferred failure-buffer allocation until a connector actually fails.
 - Preserved every connector and causal error when a configured WebSocket health route is exhausted instead of returning only the final probe failure.

@@ -139,10 +139,10 @@ impl Connector {
     fn from_config(config: &ConnectorConfig, telemetry: RpcTelemetry) -> Result<Self> {
         let rpc_client = config
             .rpc_url
-            .as_ref()
+            .as_deref()
             .map(|url| {
-                RpcClient::new(
-                    url.clone(),
+                RpcClient::try_new(
+                    url,
                     Duration::from_secs(config.rpc_timeout_sec),
                     config.commitment_config()?,
                     telemetry.for_connector(&config.name),
@@ -152,10 +152,12 @@ impl Connector {
             .with_context(|| {
                 format!("failed to build RPC client for connector {:?}", config.name)
             })?;
-        let provider_api_client = config
+        let jito_client = config
             .provider_api_url
             .as_deref()
-            .map(|url| JitoClient::new(url, Duration::from_secs(config.provider_api_timeout_sec)))
+            .map(|url| {
+                JitoClient::try_new(url, Duration::from_secs(config.provider_api_timeout_sec))
+            })
             .transpose()
             .with_context(|| {
                 format!(
@@ -163,20 +165,30 @@ impl Connector {
                     config.name
                 )
             })?;
-        let ws_client = config.ws_url.as_ref().map(|url| {
-            WebsocketProbeClient::new(
-                url.clone(),
-                Duration::from_secs(config.ws_timeout_sec),
-                telemetry.for_websocket_connector(&config.name),
-            )
-        });
+        let ws_client = config
+            .ws_url
+            .as_deref()
+            .map(|url| {
+                WebsocketProbeClient::try_new(
+                    url,
+                    Duration::from_secs(config.ws_timeout_sec),
+                    telemetry.for_websocket_connector(&config.name),
+                )
+            })
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "failed to build WebSocket client for connector {:?}",
+                    config.name
+                )
+            })?;
 
         Ok(Self {
             name: Arc::from(config.name.as_str()),
             provider: Arc::from(config.provider.as_str()),
             solana_rpc_compatibility: config.solana_rpc_compatibility,
             features: config.features.clone(),
-            command_clients: CommandClients::new(rpc_client, provider_api_client),
+            command_clients: CommandClients::new(rpc_client, jito_client),
             ws_client,
         })
     }
@@ -200,7 +212,7 @@ impl Connector {
         let transport_available = match requirement.transport {
             Transport::Rpc => self.command_clients.rpc().is_some(),
             Transport::Websocket => self.ws_client.is_some(),
-            Transport::ProviderApi => self.command_clients.provider_api().is_some(),
+            Transport::ProviderApi => self.command_clients.jito_api().is_some(),
         };
         let solana_rpc_compatible = requirement.solana_rpc_compatibility.is_none_or(|required| {
             self.solana_rpc_compatibility

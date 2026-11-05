@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Documented connector-local client endpoint and timeout ownership and kept gRPC configuration absent until a typed, verified gRPC command exists.
 - Documented typed provider-API transport ownership, bounded Jito reward collection and caching, optional polling semantics, metric absence, and local HTTP boundary proof.
 - Documented the node-local dashboard's unconfigured, unavailable, missing-distance, and multi-network display invariants.
 - Clarified that complete required-route error aggregation includes configured WebSocket health fallback.

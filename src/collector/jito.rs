@@ -20,7 +20,6 @@ pub(crate) struct JitoClient {
     cache: Mutex<Option<CachedReward>>,
 }
 
-#[derive(Clone)]
 struct CachedReward {
     vote_account: String,
     epoch: u64,
@@ -45,8 +44,11 @@ struct RewardForEpochVisitor {
 
 impl JitoClient {
     /// Builds one reusable HTTP client for a validated Jito API base URL.
-    pub(crate) fn new(base_url: &str, timeout: Duration) -> Result<Self> {
+    pub(crate) fn try_new(base_url: &str, timeout: Duration) -> Result<Self> {
         let base_url = Url::parse(base_url).context("invalid Jito API URL")?;
+        if !matches!(base_url.scheme(), "http" | "https") || base_url.host_str().is_none() {
+            bail!("Jito API URL must use http:// or https:// with a host");
+        }
         let http = Client::builder()
             .timeout(timeout)
             .build()

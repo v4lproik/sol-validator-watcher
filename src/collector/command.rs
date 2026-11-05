@@ -10,16 +10,17 @@ use super::{
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-/// Transport clients constructed once for one configured connector.
+
+/// Typed command clients constructed once for one configured connector.
 pub(crate) struct CommandClients {
     rpc: Option<RpcClient>,
-    provider_api: Option<JitoClient>,
+    jito_api: Option<JitoClient>,
 }
 
 impl CommandClients {
-    /// Groups the connector's available command clients.
-    pub(crate) fn new(rpc: Option<RpcClient>, provider_api: Option<JitoClient>) -> Self {
-        Self { rpc, provider_api }
+    /// Groups the connector's available typed command clients.
+    pub(crate) fn new(rpc: Option<RpcClient>, jito_api: Option<JitoClient>) -> Self {
+        Self { rpc, jito_api }
     }
 
     /// Returns the connector's standard Solana RPC client.
@@ -27,9 +28,9 @@ impl CommandClients {
         self.rpc.as_ref()
     }
 
-    /// Returns the connector's provider-specific API client.
-    pub(crate) fn provider_api(&self) -> Option<&JitoClient> {
-        self.provider_api.as_ref()
+    /// Returns the connector's Jito validator-API client.
+    pub(crate) fn jito_api(&self) -> Option<&JitoClient> {
+        self.jito_api.as_ref()
     }
 }
 
@@ -53,14 +54,14 @@ impl CommandTransport for RpcCommandTransport {
     }
 }
 
-/// Provider-specific Jito HTTP API command transport.
-pub(crate) enum ProviderApiCommandTransport {}
+/// Jito validator HTTP API command transport.
+pub(crate) enum JitoApiCommandTransport {}
 
-impl CommandTransport for ProviderApiCommandTransport {
+impl CommandTransport for JitoApiCommandTransport {
     type Client = JitoClient;
 
     fn client(clients: &CommandClients) -> Option<&Self::Client> {
-        clients.provider_api.as_ref()
+        clients.jito_api.as_ref()
     }
 }
 
@@ -295,7 +296,7 @@ pub(crate) struct GetJitoMevReward<'a> {
 
 impl SourceCommand for GetJitoMevReward<'_> {
     const ID: CommandId = CommandId::JitoMevRewards;
-    type Transport = ProviderApiCommandTransport;
+    type Transport = JitoApiCommandTransport;
     type Output = Option<JitoMevReward>;
 
     async fn execute(&self, client: &JitoClient) -> Result<Self::Output> {

@@ -11,7 +11,7 @@ use crate::{
     watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
 };
 use anyhow::{bail, Context, Result};
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::{
@@ -27,19 +27,23 @@ const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
 #[derive(Clone)]
 pub struct RpcClient {
     http: Client,
-    url: String,
+    url: Url,
     commitment: String,
     telemetry: ConnectorRpcTelemetry,
 }
 
 impl RpcClient {
-    /// Builds a client for one endpoint, timeout, and commitment level.
-    pub fn new(
-        url: String,
+    /// Builds a client for one validated endpoint, timeout, and commitment level.
+    pub fn try_new(
+        url: &str,
         timeout: Duration,
         commitment: String,
         telemetry: ConnectorRpcTelemetry,
     ) -> Result<Self> {
+        let url = Url::parse(url).context("invalid Solana RPC URL")?;
+        if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+            bail!("Solana RPC URL must use http:// or https:// with a host");
+        }
         let http = Client::builder()
             .timeout(timeout)
             .build()
@@ -647,7 +651,7 @@ impl RpcClient {
     {
         let response = self
             .http
-            .post(&self.url)
+            .post(self.url.clone())
             .json(&JsonRpcRequest::new(method, params))
             .send()
             .await

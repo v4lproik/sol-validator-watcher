@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rejected malformed, hostless, or unsupported-scheme connector RPC, WebSocket, and provider-API URLs before client construction while keeping every endpoint and timeout connector-local.
 - Added validated provider-API connector URLs and timeouts, the `jito-mev-rewards` provider feature, and the optional economics `jito_mev_rewards` command route without inferring either from provider names or standard Solana RPC compatibility.
 - Added an optional ordered `health.commands.node_status` route to local and Compose validator profiles for operator-owned node diagnostics.
 - Added a typed `metrics_host` setting that defaults omitted profiles to loopback while container-loaded profiles explicitly bind their private-network listener.

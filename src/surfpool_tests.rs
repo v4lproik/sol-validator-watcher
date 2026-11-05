@@ -184,8 +184,8 @@ impl SurfpoolHarness {
     fn wait_until_ready(&mut self, timeout: Duration) -> Result<()> {
         let deadline = Instant::now() + timeout;
         let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-        let client = RpcClient::new(
-            self.rpc_url(),
+        let client = RpcClient::try_new(
+            &self.rpc_url(),
             Duration::from_secs(2),
             "confirmed".to_string(),
             crate::watcher_state::RpcTelemetry::unobserved().for_connector("surfpool"),
