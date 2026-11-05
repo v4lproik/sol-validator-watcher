@@ -386,7 +386,7 @@
       },
       "id": 5,
       "panels": [],
-      "title": "Validator Economics",
+      "title": "Solana Protocol Inflation Rewards",
       "type": "row"
     },
     {
@@ -425,24 +425,16 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(sum(sol_epoch_reward_sol{scope=\"scope:network\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_epoch_reward_sol{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "Network",
+          "legendFormat": "{{network}} · protocol inflation",
           "range": false,
           "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "(sum(sol_epoch_reward_sol{scope=\"scope:watched\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
         }
       ],
-      "title": "Latest Epoch Reward",
+      "title": "Latest Protocol Inflation Reward",
       "type": "stat",
-      "description": "Latest completed epoch reward in SOL for the network slice and the watched set."
+      "description": "Latest Solana protocol inflation reward for the configured economics validator."
     },
     {
       "datasource": {
@@ -451,8 +443,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: SOL",
-          "decimals": 4
+          "unit": "locale",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -480,24 +472,16 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(avg(sol_reward_per_block_sol{scope=\"scope:network\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_reward_sample_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "Network",
+          "legendFormat": "{{network}} · protocol sample epoch",
           "range": false,
           "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "(avg(sol_reward_per_block_sol{scope=\"scope:watched\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
         }
       ],
-      "title": "Reward / Produced Block",
+      "title": "Protocol Sample Epoch",
       "type": "stat",
-      "description": "Latest completed epoch reward divided by produced blocks."
+      "description": "Epoch represented by the latest Solana protocol inflation reward sample. This is independent of each provider's settled reward epoch."
     },
     {
       "datasource": {
@@ -535,24 +519,106 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:network\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_rewarded_blocks_latest_epoch{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
-          "legendFormat": "Network",
+          "legendFormat": "{{network}} · produced blocks",
           "range": false,
           "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "(sum(sol_rewarded_blocks_latest_epoch{scope=\"scope:watched\",network=~\"$network\"})) and on() (max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "instant": true,
-          "legendFormat": "Watched",
-          "range": false,
-          "refId": "B"
         }
       ],
-      "title": "Rewarded Blocks",
+      "title": "Produced Blocks in Protocol Sample",
       "type": "stat",
-      "description": "Produced blocks counted in the sampled reward epoch."
+      "description": "Blocks produced by the configured economics validator during the Solana protocol reward sample epoch."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Latest sampled Solana protocol inflation reward over observation time for the configured economics validator. The value is held until a new protocol sample epoch is collected; it is not intraday accrual.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_epoch_reward_sol{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "legendFormat": "{{network}} · protocol inflation",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Protocol Inflation Reward History",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Latest sampled Solana protocol inflation reward per produced block over observation time for the configured economics validator. The value changes with the protocol sample epoch, not continuously within an epoch.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_reward_per_block_sol{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "legendFormat": "{{network}} · protocol reward / block",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Protocol Reward / Produced Block History",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -560,7 +626,258 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 23
+      },
+      "id": 12,
+      "panels": [],
+      "title": "Jito MEV Rewards",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Post-commission Jito MEV reward paid to the configured economics validator and its stakers. No data means no Jito route is configured, the selected epoch is not settled, or the route is unavailable.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 4,
+          "unit": "suffix: SOL"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · MEV reward",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Settled Jito Reward",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Validator MEV commission for the same settled epoch as the Jito reward.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
+      "id": 14,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · Commission",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Jito MEV Commission",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Epoch represented by the latest settled Jito MEV reward.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_jito_mev_reward_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · Reward epoch",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Jito Reward Epoch",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Latest settled Jito MEV reward over observation time for the configured economics validator. The value is held until Jito publishes another settled epoch; it is not intraday accrual.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "legendFormat": "{{network}} · Jito MEV reward",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Jito MEV Reward History",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Jito MEV commission associated with each latest settled reward over observation time for the configured economics validator.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "legendFormat": "{{network}} · Jito commission",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Jito MEV Commission History",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
       },
       "id": 9,
       "panels": [],
@@ -774,7 +1091,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 39
       },
       "id": 10,
       "options": {
@@ -937,7 +1254,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 47
       },
       "id": 11,
       "options": {
@@ -991,165 +1308,6 @@
       ],
       "title": "Epoch and Leader Timing",
       "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 32
-      },
-      "id": 12,
-      "panels": [],
-      "title": "Jito MEV Rewards",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Post-commission Jito MEV reward paid to the configured economics validator and its stakers. No data means no Jito route is configured, the selected epoch is not settled, or the route is unavailable.",
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 4,
-          "unit": "suffix: SOL"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 8,
-        "x": 0,
-        "y": 33
-      },
-      "id": 13,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "instant": true,
-          "legendFormat": "{{network}} · MEV reward",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Latest Settled Reward",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Validator MEV commission for the same settled epoch as the Jito reward.",
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 2,
-          "max": 100,
-          "min": 0,
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 8,
-        "x": 8,
-        "y": 33
-      },
-      "id": 14,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "instant": true,
-          "legendFormat": "{{network}} · Commission",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "MEV Commission",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Epoch represented by the latest settled Jito MEV reward.",
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "unit": "locale"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 8,
-        "x": 16,
-        "y": 33
-      },
-      "id": 15,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sol_economics_jito_mev_reward_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
-          "instant": true,
-          "legendFormat": "{{network}} · Reward epoch",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Reward Epoch",
-      "type": "stat"
     }
   ],
   "refresh": "15s",
@@ -1191,13 +1349,13 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 3,
+  "version": 6,
   "weekStart": ""
 }
