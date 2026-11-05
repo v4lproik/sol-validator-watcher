@@ -154,13 +154,24 @@ fn rejects_invalid_connector_transport_urls() -> Result<()> {
         ),
         (
             ConnectorConfig {
+                name: "rpc".to_string(),
+                provider: "solana-validator".to_string(),
+                features: Vec::new(),
+                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
+                rpc_url: Some("http:///rpc".to_string()),
+                ..ConnectorConfig::default()
+            },
+            "rpc_url must use http:// or https:// with a host",
+        ),
+        (
+            ConnectorConfig {
                 name: "websocket".to_string(),
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
-                ws_url: Some("ws://".to_string()),
+                ws_url: Some("ws:///socket".to_string()),
                 ..ConnectorConfig::default()
             },
-            "ws_url must be a valid URL",
+            "ws_url must use ws:// or wss:// with a host",
         ),
     ];
 

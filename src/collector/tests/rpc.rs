@@ -1,4 +1,36 @@
 use super::*;
+
+#[test]
+fn rpc_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<()> {
+    let secret = "rpc-constructor-secret";
+    for (url, expected) in [
+        (
+            format!("ftp://rpc.example/?api-key={secret}"),
+            "Solana RPC URL must use http:// or https:// with a host",
+        ),
+        (
+            format!("http:///?api-key={secret}"),
+            "invalid Solana RPC URL",
+        ),
+    ] {
+        let Err(error) = RpcClient::try_new(
+            &url,
+            Duration::from_secs(1),
+            "confirmed".to_string(),
+            crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        ) else {
+            anyhow::bail!("invalid RPC URL should fail during client construction");
+        };
+        let message = format!("{error:#}");
+        assert!(message.contains(expected), "{message}");
+        assert!(
+            !message.contains(secret),
+            "RPC constructor errors must redact secret URL query parameters"
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;

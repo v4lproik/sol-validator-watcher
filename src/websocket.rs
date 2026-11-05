@@ -78,15 +78,30 @@ mod tests {
     }
 
     #[test]
-    fn constructor_rejects_invalid_url() -> Result<()> {
-        let Err(error) = WebsocketProbeClient::try_new(
-            "not-a-websocket-url",
-            Duration::from_secs(1),
-            telemetry(),
-        ) else {
-            anyhow::bail!("invalid WebSocket URL should fail during construction");
-        };
-        assert!(error.to_string().contains("WebSocket URL must use"));
+    fn constructor_rejects_invalid_urls_without_exposing_queries() -> Result<()> {
+        let secret = "websocket-constructor-secret";
+        for (url, expected) in [
+            (
+                format!("ftp://websocket.example/?api-key={secret}"),
+                "WebSocket URL must use ws:// or wss:// with a host",
+            ),
+            (
+                format!("ws:///socket?api-key={secret}"),
+                "invalid WebSocket URL",
+            ),
+        ] {
+            let Err(error) =
+                WebsocketProbeClient::try_new(&url, Duration::from_secs(1), telemetry())
+            else {
+                anyhow::bail!("invalid WebSocket URL should fail during construction");
+            };
+            let message = format!("{error:#}");
+            assert!(message.contains(expected), "{message}");
+            assert!(
+                !message.contains(secret),
+                "WebSocket constructor errors must redact secret URL query parameters"
+            );
+        }
         Ok(())
     }
 

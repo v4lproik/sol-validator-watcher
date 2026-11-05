@@ -32,6 +32,29 @@ struct MockJitoState {
     requests: Arc<AtomicUsize>,
 }
 
+#[test]
+fn jito_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<()> {
+    let secret = "jito-constructor-secret";
+    for (url, expected) in [
+        (
+            format!("ftp://jito.example/?api-key={secret}"),
+            "Jito API URL must use http:// or https:// with a host",
+        ),
+        (format!("http:///?api-key={secret}"), "invalid Jito API URL"),
+    ] {
+        let Err(error) = JitoClient::try_new(&url, Duration::from_secs(1)) else {
+            anyhow::bail!("invalid Jito API URL should fail during client construction");
+        };
+        let message = format!("{error:#}");
+        assert!(message.contains(expected), "{message}");
+        assert!(
+            !message.contains(secret),
+            "Jito constructor errors must redact secret URL query parameters"
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn jito_client_selects_and_caches_one_reward_epoch() -> Result<()> {
     let (api_url, server, requests) = start_mock_jito_server(

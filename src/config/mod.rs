@@ -745,10 +745,18 @@ fn validate_label(label: &str) -> Result<()> {
     Ok(())
 }
 
+fn has_explicit_authority(url: &str) -> bool {
+    url.split_once("://")
+        .is_some_and(|(_, authority)| !authority.is_empty() && !authority.starts_with('/'))
+}
+
 fn validate_http_url(field: &str, url: &str) -> Result<()> {
     let parsed =
         reqwest::Url::parse(url).with_context(|| format!("{field} must be a valid URL"))?;
-    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().filter(|host| !host.is_empty()).is_none()
+        || !has_explicit_authority(url)
+    {
         bail!("{field} must use http:// or https:// with a host");
     }
     Ok(())
@@ -756,7 +764,10 @@ fn validate_http_url(field: &str, url: &str) -> Result<()> {
 
 fn validate_ws_url(url: &str) -> Result<()> {
     let parsed = reqwest::Url::parse(url).context("ws_url must be a valid URL")?;
-    if !matches!(parsed.scheme(), "ws" | "wss") || parsed.host_str().is_none() {
+    if !matches!(parsed.scheme(), "ws" | "wss")
+        || parsed.host_str().filter(|host| !host.is_empty()).is_none()
+        || !has_explicit_authority(url)
+    {
         bail!("ws_url must use ws:// or wss:// with a host");
     }
     Ok(())
