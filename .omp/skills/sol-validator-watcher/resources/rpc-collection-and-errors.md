@@ -74,6 +74,20 @@ probes, and economics collection.
 - `historical-data` is a separate provider feature on an `extended` endpoint.
   Compatibility probes prove method availability; the feature additionally
   promises retained prior-epoch rewards and block production used by economics.
+- `block-fee-rewards` is a separate provider feature on an `extended` endpoint
+  with `confirmed` or `finalized` commitment. Its capability probe sends one
+  bounded `getBlock` rewards request; never infer support from the provider
+  name or from unrelated extended methods.
+- The optional economics recent-block-fee command derives at most 32 latest
+  completed current-epoch assignments from the successfully collected leader
+  schedule and sends one transaction-free `getBlock` batch. JSON `null` means a
+  skipped slot. Every produced block must contain exactly one non-negative
+  `Fee` reward for the target identity; malformed or mismatched results fail
+  that connector so ordered fallback can continue.
+- A validator `Fee` reward includes transaction and priority fees. It can
+  include Harmonic priority fees when Harmonic built the block, but the Solana
+  result does not identify the block-building provider. Do not publish the
+  sample as Harmonic-only revenue without a separate attributable protocol.
 - `jito-mev-rewards` is independent of Solana RPC compatibility. It requires a
   provider-API endpoint and is consumed only by the optional economics command.
   A configured route is checked against the resolved target during startup and
@@ -112,6 +126,8 @@ probes, and economics collection.
 
 - Keep block-production slot ranges and inflation-reward address batches within
   their production constants.
+- Keep recent block-fee request batches at or below the production slot-count
+  constant and reject duplicate request or response identifiers.
 - Merge batches with saturating arithmetic where provider totals can approach
   integer limits.
 - Avoid duplicate prerequisite RPCs inside one collection cycle unless the

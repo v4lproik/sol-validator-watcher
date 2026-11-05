@@ -11,7 +11,7 @@ liveness_file = "/tmp/sol-validator-watcher.liveness"
 [[connectors]]
 name = "mainnet-rpc"
 provider = "helius"
-features = ["historical-data"]
+features = ["historical-data", "block-fee-rewards"]
 solana_rpc_compatibility = "extended"
 [connectors.rpc]
 url = "${SOL_MAINNET_RPC_URL}"
@@ -74,6 +74,7 @@ enabled = false
 # account_balances = ["mainnet-rpc"]
 # inflation_rewards = ["mainnet-rpc"]
 # reward_epoch_block_production = ["mainnet-rpc"]
+# recent_block_fee_rewards = ["mainnet-rpc"]
 # jito_mev_rewards = ["jito-api"]
 #
 # [modes.economics.validator]

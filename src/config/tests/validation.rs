@@ -684,6 +684,7 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
                     account_balances: vec!["primary".to_string()],
                     inflation_rewards: vec!["primary".to_string()],
                     reward_epoch_block_production: vec!["primary".to_string()],
+                    recent_block_fee_rewards: vec![],
                     jito_mev_rewards: vec![],
                 },
             },
@@ -699,6 +700,56 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
             .contains("modes.economics.enabled requires modes.economics.validator")),
     }
     Ok(())
+}
+
+#[test]
+fn validates_block_fee_reward_feature_commitment_and_route() -> Result<()> {
+    let mut block_rewards_on_core = rpc_connector("block-rewards");
+    block_rewards_on_core.features = vec![ProviderFeature::BlockFeeRewards];
+    block_rewards_on_core.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+    let Err(error) = block_rewards_on_core.validate(0) else {
+        anyhow::bail!("block fee rewards on core Solana RPC should fail");
+    };
+    assert!(error.to_string().contains(
+        "features entry \"block-fee-rewards\" requires solana_rpc_compatibility = \"extended\""
+    ));
+
+    let mut processed = rpc_connector("block-rewards");
+    processed.features.push(ProviderFeature::BlockFeeRewards);
+    processed
+        .rpc
+        .as_mut()
+        .ok_or_else(|| anyhow::anyhow!("missing test RPC transport"))?
+        .commitment = "processed".to_string();
+    let Err(error) = processed.validate(0) else {
+        anyhow::bail!("processed commitment for block fee rewards should fail");
+    };
+    assert!(error.to_string().contains(
+        "features entry \"block-fee-rewards\" requires rpc.commitment = \"confirmed\" or \"finalized\""
+    ));
+
+    let mut config = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    config.modes.economics.validator = Some(WatchedValidatorConfig {
+        identity: Some("id-1".to_string()),
+        vote_account: Some("vote-1".to_string()),
+        labels: vec![],
+    });
+    config.modes.economics.commands.recent_block_fee_rewards = vec!["primary".to_string()];
+    let Err(error) = config.validate() else {
+        anyhow::bail!("block fee reward route without declared feature should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("requires provider feature \"block-fee-rewards\""));
+
+    config.connectors[0]
+        .features
+        .push(ProviderFeature::BlockFeeRewards);
+    config.validate()
 }
 
 #[test]

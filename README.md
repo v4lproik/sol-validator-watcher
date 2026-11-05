@@ -100,7 +100,7 @@ commitment = "confirmed"
 [[connectors]]
 name = "helius-devnet"
 provider = "helius"
-features = ["historical-data"]
+features = ["historical-data", "block-fee-rewards"]
 solana_rpc_compatibility = "extended"
 
 [connectors.rpc]
@@ -144,6 +144,7 @@ enabled = true
 account_balances = ["helius-devnet"]
 inflation_rewards = ["helius-devnet"]
 reward_epoch_block_production = ["helius-devnet"]
+recent_block_fee_rewards = ["helius-devnet"]
 jito_mev_rewards = ["jito-api"]
 
 [modes.economics.validator]
@@ -158,6 +159,7 @@ Command requirements are independent of the provider name:
 | `ws-health` | WebSocket | None | None |
 | `recent-performance-samples`, `current-block-production`, `account-balances` | RPC | `extended` | None |
 | `inflation-rewards`, `reward-epoch-block-production` | RPC | `extended` | `historical-data` |
+| `recent-block-fee-rewards` | RPC | `extended` | `block-fee-rewards` |
 | `jito-mev-rewards` | Provider API | None | `jito-mev-rewards` |
 
 `core` and `extended` are watcher-defined compatibility profiles for standard Solana JSON-RPC methods, not provider product tiers. `core` covers health, identity, version, block-height, epoch, vote-account, and leader-schedule reads. `extended` adds performance samples, block production, account reads, rent exemption, inflation rewards, and minimum-ledger-slot reads; it corresponds to Agave's `--full-rpc-api` surface, while a hosted provider may expose equivalent methods differently. An `extended` connector can serve `core` commands. `historical-data` is an independent promise that prior-epoch data required by economics collection remains available.

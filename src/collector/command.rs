@@ -5,7 +5,8 @@
 
 use super::{
     AccountBalances, BlockProduction, ClusterPerformanceMetrics, EpochInfo, JitoClient,
-    JitoMevReward, NodeHealth, NodeRpcStatus, RewardSample, RpcClient, VoteAccounts,
+    JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards, RewardSample, RpcClient,
+    VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
@@ -304,5 +305,26 @@ impl SourceCommand for GetJitoMevReward<'_> {
             .get_mev_reward(self.vote_account, self.epoch)
             .await
             .context("Jito MEV reward collection failed")
+    }
+}
+
+/// Optional recent confirmed validator block-fee reward command.
+pub(crate) struct GetRecentBlockFeeRewards<'a> {
+    /// Recent assigned absolute slots, bounded by the RPC client contract.
+    pub slots: &'a [u64],
+    /// Validator identity expected to receive each produced block's fee reward.
+    pub identity: &'a str,
+}
+
+impl SourceCommand for GetRecentBlockFeeRewards<'_> {
+    const ID: CommandId = CommandId::RecentBlockFeeRewards;
+    type Transport = RpcCommandTransport;
+    type Output = Option<RecentBlockFeeRewards>;
+
+    async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
+        client
+            .get_recent_block_fee_rewards(self.slots, self.identity)
+            .await
+            .context("recent validator block-fee reward collection failed")
     }
 }
