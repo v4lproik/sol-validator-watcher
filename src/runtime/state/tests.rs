@@ -40,13 +40,13 @@ name = "primary"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://primary.example"
+rpc = { url = "https://primary.example" }
 
 [[connectors]]
 name = "fallback"
 provider = "helius"
 features = []
-ws_url = "wss://fallback.example"
+websocket = { url = "wss://fallback.example" }
 
 [modes.health.commands]
 rpc_health = ["primary"]
@@ -86,15 +86,15 @@ name = "fallback"
 provider = "helius"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
-ws_url = "wss://fallback.example"
+rpc = {{ url = "{rpc_url}" }}
+websocket = {{ url = "wss://fallback.example" }}
 
 [[connectors]]
 name = "replacement"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["replacement", "fallback"]
@@ -160,7 +160,7 @@ name = "primary"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://primary.example"
+rpc = { url = "https://primary.example" }
 
 [modes.health.commands]
 rpc_health = ["primary"]
@@ -197,7 +197,7 @@ network = "testnet"
 name = "ws-only"
 provider = "helius"
 features = []
-ws_url = "wss://ws-only.example"
+websocket = { url = "wss://ws-only.example" }
 "#,
     )
     .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -209,7 +209,7 @@ ws_url = "wss://ws-only.example"
 
     assert!(error
         .to_string()
-        .contains("at least one connector with rpc_url is required"));
+        .contains("at least one connector with an rpc transport is required"));
     assert_eq!(runtime.config.network, "mainnet-beta");
     assert_eq!(runtime.config.connectors.len(), 1);
     assert_eq!(runtime.config.connectors[0].name, "primary");
@@ -246,7 +246,7 @@ name = "current"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://current.example"
+rpc = { url = "https://current.example" }
 
 [modes.health.commands]
 rpc_health = ["current"]
@@ -280,7 +280,7 @@ name = "candidate"
 provider = "mock-provider"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}/?api-key={secret}"
+rpc = {{ url = "{rpc_url}/?api-key={secret}" }}
 
 [modes.health.commands]
 rpc_health = ["candidate"]
@@ -340,7 +340,7 @@ name = "current"
 provider = "solana"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://current.example"
+rpc = { url = "https://current.example" }
 
 [modes.health.commands]
 rpc_health = ["current"]
@@ -374,7 +374,7 @@ name = "candidate"
 provider = "mock-provider"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["candidate"]
@@ -449,7 +449,7 @@ name = "primary"
 provider = "mock-provider"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "{rpc_url}"
+rpc = {{ url = "{rpc_url}" }}
 
 [modes.health.commands]
 rpc_health = ["primary"]

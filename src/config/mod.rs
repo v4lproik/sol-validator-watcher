@@ -7,10 +7,11 @@ use crate::mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Tr
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
-    env, fs,
+    collections::{BTreeMap, HashSet},
+    env, fmt, fs,
     net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 /// Reserved label that identifies the validator used for economics collection.
@@ -173,79 +174,186 @@ pub struct WatchedValidatorConfig {
     pub labels: Vec<String>,
 }
 
-/// One connector-local RPC, WebSocket, and/or provider-API declaration.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConnectorConfig {
-    /// Stable name referenced by command routes.
-    pub name: String,
-    /// Operator-facing provider name used in metrics and diagnostics.
-    pub provider: String,
-    /// Explicit non-standard provider capabilities.
-    pub features: Vec<ProviderFeature>,
-    #[serde(default)]
-    /// Standard Solana RPC method profile, required when `rpc_url` is present.
-    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
-    #[serde(default)]
-    /// HTTP JSON-RPC endpoint.
-    pub rpc_url: Option<String>,
-    #[serde(default = "default_rpc_timeout_sec")]
-    /// HTTP JSON-RPC request timeout in seconds.
-    pub rpc_timeout_sec: u64,
-    #[serde(default)]
-    /// Base URL for provider-specific HTTP API commands.
-    pub provider_api_url: Option<String>,
-    #[serde(default = "default_provider_api_timeout_sec")]
-    /// Provider-specific HTTP API request timeout in seconds.
-    pub provider_api_timeout_sec: u64,
-    #[serde(default)]
-    /// WebSocket endpoint used only for connectivity probes.
-    pub ws_url: Option<String>,
-    #[serde(default = "default_ws_timeout_sec")]
-    /// WebSocket connection timeout in seconds.
-    pub ws_timeout_sec: u64,
-    #[serde(default = "default_commitment")]
+/// Custom request headers whose values are always redacted from debug output.
+#[derive(Clone, Default, Deserialize, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct TransportHeaders {
+    values: BTreeMap<String, String>,
+}
+
+struct Redacted;
+
+impl fmt::Debug for Redacted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
+}
+
+impl fmt::Debug for TransportHeaders {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut map = formatter.debug_map();
+        for name in self.values.keys() {
+            map.entry(name, &Redacted);
+        }
+        map.finish()
+    }
+}
+
+impl TransportHeaders {
+    /// Returns configured header names and values for transport construction.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.values
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+    }
+
+    fn normalize_and_validate(&mut self, path: &str, reserved: &[&str]) -> Result<()> {
+        let mut normalized = BTreeMap::new();
+        for (name, value) in std::mem::take(&mut self.values) {
+            let name = name.trim().to_ascii_lowercase();
+            reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                .with_context(|| format!("{path} contains invalid header name {name:?}"))?;
+            value
+                .parse::<reqwest::header::HeaderValue>()
+                .with_context(|| format!("{path}.{name} contains an invalid header value"))?;
+            if reserved.contains(&name.as_str()) {
+                bail!("{path} must not override protocol-owned header {name:?}");
+            }
+            if normalized.insert(name.clone(), value).is_some() {
+                bail!("{path} contains duplicate header name {name:?}");
+            }
+        }
+        self.values = normalized;
+        Ok(())
+    }
+}
+
+/// Connector-local HTTP transport settings shared by RPC and provider APIs.
+#[derive(Clone, Deserialize, Eq, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct HttpTransportConfig {
+    /// Complete HTTP(S) endpoint URL, including provider path and authentication query.
+    pub url: String,
+    /// Total request deadline from connection through response body completion.
+    pub request_timeout_sec: u64,
+    /// DNS, TCP, and TLS connection deadline.
+    pub connect_timeout_sec: u64,
+    /// Request headers applied to every request made by this transport.
+    pub headers: TransportHeaders,
+}
+
+impl Default for HttpTransportConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            request_timeout_sec: default_http_request_timeout_sec(),
+            connect_timeout_sec: default_http_connect_timeout_sec(),
+            headers: TransportHeaders::default(),
+        }
+    }
+}
+
+impl fmt::Debug for HttpTransportConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HttpTransportConfig")
+            .field("url", &Redacted)
+            .field("request_timeout_sec", &self.request_timeout_sec)
+            .field("connect_timeout_sec", &self.connect_timeout_sec)
+            .field("headers", &self.headers)
+            .finish()
+    }
+}
+
+impl HttpTransportConfig {
+    #[cfg(test)]
+    /// Creates an HTTP transport with secure defaults and no custom headers.
+    pub fn new(url: String) -> Self {
+        Self {
+            url,
+            ..Self::default()
+        }
+    }
+
+    /// Builds a reusable Rustls-backed client with bounded connection and request deadlines.
+    pub(crate) fn build_client(&self) -> Result<reqwest::Client> {
+        build_http_client(
+            self.request_timeout_sec,
+            self.connect_timeout_sec,
+            &self.headers,
+        )
+    }
+
+    fn normalize(&mut self) {
+        self.url = self.url.trim().to_string();
+    }
+
+    fn validate(&mut self, path: &str) -> Result<()> {
+        validate_http_timeouts(self.request_timeout_sec, self.connect_timeout_sec, path)?;
+        validate_http_url(&format!("{path}.url"), &self.url)?;
+        self.headers
+            .normalize_and_validate(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)
+    }
+}
+
+/// Connector-local Solana JSON-RPC transport and protocol settings.
+#[derive(Clone, Deserialize, Eq, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct RpcTransportConfig {
+    /// Complete HTTP(S) JSON-RPC endpoint URL.
+    pub url: String,
+    /// Total request deadline from connection through response body completion.
+    pub request_timeout_sec: u64,
+    /// DNS, TCP, and TLS connection deadline.
+    pub connect_timeout_sec: u64,
+    /// Request headers applied to every JSON-RPC request.
+    pub headers: TransportHeaders,
     /// Solana commitment level sent with compatible RPC requests.
     pub commitment: String,
 }
 
-impl Default for ConnectorConfig {
+impl Default for RpcTransportConfig {
     fn default() -> Self {
         Self {
-            name: String::new(),
-            provider: String::new(),
-            features: Vec::new(),
-            solana_rpc_compatibility: None,
-            rpc_url: None,
-            rpc_timeout_sec: default_rpc_timeout_sec(),
-            provider_api_url: None,
-            provider_api_timeout_sec: default_provider_api_timeout_sec(),
-            ws_url: None,
-            ws_timeout_sec: default_ws_timeout_sec(),
+            url: String::new(),
+            request_timeout_sec: default_http_request_timeout_sec(),
+            connect_timeout_sec: default_http_connect_timeout_sec(),
+            headers: TransportHeaders::default(),
             commitment: default_commitment(),
         }
     }
 }
 
-impl ConnectorConfig {
-    /// Reports whether this connector has an HTTP RPC endpoint.
-    pub fn has_rpc(&self) -> bool {
-        self.rpc_url.is_some()
+impl fmt::Debug for RpcTransportConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RpcTransportConfig")
+            .field("url", &Redacted)
+            .field("request_timeout_sec", &self.request_timeout_sec)
+            .field("connect_timeout_sec", &self.connect_timeout_sec)
+            .field("headers", &self.headers)
+            .field("commitment", &self.commitment)
+            .finish()
+    }
+}
+
+impl RpcTransportConfig {
+    #[cfg(test)]
+    /// Creates an RPC transport with secure defaults and no custom headers.
+    pub fn new(url: String) -> Self {
+        Self {
+            url,
+            ..Self::default()
+        }
     }
 
-    /// Reports whether this connector has a provider-specific HTTP API endpoint.
-    pub fn has_provider_api(&self) -> bool {
-        self.provider_api_url.is_some()
-    }
-
-    /// Reports whether this connector has a WebSocket endpoint.
-    pub fn has_ws(&self) -> bool {
-        self.ws_url.is_some()
-    }
-
-    /// Reports whether this connector declares a provider feature.
-    pub fn supports(&self, feature: ProviderFeature) -> bool {
-        self.features.contains(&feature)
+    /// Builds a reusable Rustls-backed JSON-RPC client.
+    pub(crate) fn build_client(&self) -> Result<reqwest::Client> {
+        build_http_client(
+            self.request_timeout_sec,
+            self.connect_timeout_sec,
+            &self.headers,
+        )
     }
 
     /// Returns a validated Solana commitment string.
@@ -260,24 +368,195 @@ impl ConnectorConfig {
     }
 
     fn normalize(&mut self) {
+        self.url = self.url.trim().to_string();
+        self.commitment = self.commitment.trim().to_lowercase();
+    }
+
+    fn validate(&mut self, path: &str) -> Result<()> {
+        validate_http_timeouts(self.request_timeout_sec, self.connect_timeout_sec, path)?;
+        validate_http_url(&format!("{path}.url"), &self.url)?;
+        self.headers
+            .normalize_and_validate(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)?;
+        self.commitment_config()?;
+        Ok(())
+    }
+}
+
+fn build_http_client(
+    request_timeout_sec: u64,
+    connect_timeout_sec: u64,
+    configured_headers: &TransportHeaders,
+) -> Result<reqwest::Client> {
+    validate_http_timeouts(request_timeout_sec, connect_timeout_sec, "HTTP transport")?;
+    let mut headers = reqwest::header::HeaderMap::with_capacity(configured_headers.values.len());
+    for (name, value) in configured_headers.iter() {
+        let name = reqwest::header::HeaderName::from_bytes(name.trim().as_bytes())
+            .context("invalid HTTP header name")?;
+        if HTTP_RESERVED_HEADERS.contains(&name.as_str()) {
+            bail!(
+                "custom HTTP headers must not override protocol-owned header {:?}",
+                name.as_str()
+            );
+        }
+        let mut value = value
+            .parse::<reqwest::header::HeaderValue>()
+            .with_context(|| format!("invalid value for HTTP header {:?}", name.as_str()))?;
+        value.set_sensitive(true);
+        if headers.insert(name.clone(), value).is_some() {
+            bail!("duplicate HTTP header name {:?}", name.as_str());
+        }
+    }
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+        .connect_timeout(Duration::from_secs(connect_timeout_sec))
+        .timeout(Duration::from_secs(request_timeout_sec))
+        .build()
+        .context("failed to build HTTP client")
+}
+
+fn validate_http_timeouts(
+    request_timeout_sec: u64,
+    connect_timeout_sec: u64,
+    path: &str,
+) -> Result<()> {
+    if request_timeout_sec == 0 {
+        bail!("{path}.request_timeout_sec must be greater than 0");
+    }
+    if connect_timeout_sec == 0 {
+        bail!("{path}.connect_timeout_sec must be greater than 0");
+    }
+    if connect_timeout_sec > request_timeout_sec {
+        bail!("{path}.connect_timeout_sec must not exceed request_timeout_sec");
+    }
+    Ok(())
+}
+
+/// Connector-local WebSocket handshake settings.
+#[derive(Clone, Deserialize, Eq, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct WebsocketTransportConfig {
+    /// Complete WS(S) endpoint URL, including provider path and authentication query.
+    pub url: String,
+    /// DNS, TCP, TLS, and WebSocket handshake deadline.
+    pub handshake_timeout_sec: u64,
+    /// Headers added to the generated WebSocket upgrade request.
+    pub headers: TransportHeaders,
+}
+
+impl Default for WebsocketTransportConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            handshake_timeout_sec: default_ws_handshake_timeout_sec(),
+            headers: TransportHeaders::default(),
+        }
+    }
+}
+
+impl fmt::Debug for WebsocketTransportConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WebsocketTransportConfig")
+            .field("url", &Redacted)
+            .field("handshake_timeout_sec", &self.handshake_timeout_sec)
+            .field("headers", &self.headers)
+            .finish()
+    }
+}
+
+impl WebsocketTransportConfig {
+    #[cfg(test)]
+    /// Creates a WebSocket transport with secure defaults and no custom headers.
+    pub fn new(url: String) -> Self {
+        Self {
+            url,
+            ..Self::default()
+        }
+    }
+
+    fn normalize(&mut self) {
+        self.url = self.url.trim().to_string();
+    }
+
+    fn validate(&mut self, path: &str) -> Result<()> {
+        if self.handshake_timeout_sec == 0 {
+            bail!("{path}.handshake_timeout_sec must be greater than 0");
+        }
+        validate_ws_url(&format!("{path}.url"), &self.url)?;
+        self.headers
+            .normalize_and_validate(&format!("{path}.headers"), WEBSOCKET_RESERVED_HEADERS)
+    }
+}
+
+const HTTP_RESERVED_HEADERS: &[&str] = &["content-length", "host", "transfer-encoding"];
+pub(crate) const WEBSOCKET_RESERVED_HEADERS: &[&str] = &[
+    "connection",
+    "content-length",
+    "host",
+    "sec-websocket-key",
+    "sec-websocket-version",
+    "transfer-encoding",
+    "upgrade",
+];
+
+/// One connector-local RPC, WebSocket, and/or provider-API declaration.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorConfig {
+    /// Stable name referenced by command routes.
+    pub name: String,
+    /// Operator-facing provider name used in metrics and diagnostics.
+    pub provider: String,
+    /// Explicit non-standard provider capabilities.
+    pub features: Vec<ProviderFeature>,
+    #[serde(default)]
+    /// Standard Solana RPC method profile, required when `rpc` is present.
+    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
+    #[serde(default)]
+    /// Standard Solana JSON-RPC transport and protocol settings.
+    pub rpc: Option<RpcTransportConfig>,
+    #[serde(default)]
+    /// Provider-specific HTTP API transport.
+    pub provider_api: Option<HttpTransportConfig>,
+    #[serde(default)]
+    /// WebSocket transport used only for connectivity probes.
+    pub websocket: Option<WebsocketTransportConfig>,
+}
+
+impl ConnectorConfig {
+    /// Reports whether this connector has an HTTP RPC endpoint.
+    pub fn has_rpc(&self) -> bool {
+        self.rpc.is_some()
+    }
+
+    /// Reports whether this connector has a provider-specific HTTP API endpoint.
+    pub fn has_provider_api(&self) -> bool {
+        self.provider_api.is_some()
+    }
+
+    /// Reports whether this connector has a WebSocket endpoint.
+    pub fn has_ws(&self) -> bool {
+        self.websocket.is_some()
+    }
+
+    /// Reports whether this connector declares a provider feature.
+    pub fn supports(&self, feature: ProviderFeature) -> bool {
+        self.features.contains(&feature)
+    }
+
+    fn normalize(&mut self) {
         self.name = self.name.trim().to_string();
         self.provider = self.provider.trim().to_string();
-        self.rpc_url = self
-            .rpc_url
-            .as_ref()
-            .map(|url| url.trim().to_string())
-            .filter(|url| !url.is_empty());
-        self.provider_api_url = self
-            .provider_api_url
-            .as_ref()
-            .map(|url| url.trim().to_string())
-            .filter(|url| !url.is_empty());
-        self.commitment = self.commitment.trim().to_lowercase();
-        self.ws_url = self
-            .ws_url
-            .as_ref()
-            .map(|url| url.trim().to_string())
-            .filter(|url| !url.is_empty());
+        if let Some(rpc) = &mut self.rpc {
+            rpc.normalize();
+        }
+        if let Some(provider_api) = &mut self.provider_api {
+            provider_api.normalize();
+        }
+        if let Some(websocket) = &mut self.websocket {
+            websocket.normalize();
+        }
     }
 
     fn validate(&mut self, index: usize) -> Result<()> {
@@ -298,12 +577,12 @@ impl ConnectorConfig {
                 );
             }
         }
-        match (self.rpc_url.is_some(), self.solana_rpc_compatibility) {
+        match (self.rpc.is_some(), self.solana_rpc_compatibility) {
             (true, None) => bail!(
-                "connectors[{index}].solana_rpc_compatibility is required when rpc_url is configured"
+                "connectors[{index}].solana_rpc_compatibility is required when rpc is configured"
             ),
             (false, Some(_)) => bail!(
-                "connectors[{index}].solana_rpc_compatibility requires a configured rpc_url"
+                "connectors[{index}].solana_rpc_compatibility requires a configured rpc transport"
             ),
             _ => {}
         }
@@ -319,32 +598,22 @@ impl ConnectorConfig {
         }
         if self.supports(ProviderFeature::JitoMevRewards) && !self.has_provider_api() {
             bail!(
-                "connectors[{index}].features entry {:?} requires provider_api_url",
+                "connectors[{index}].features entry {:?} requires provider_api",
                 ProviderFeature::JitoMevRewards.as_str()
             );
         }
-        if self.rpc_url.is_none() && self.ws_url.is_none() && self.provider_api_url.is_none() {
-            bail!("connectors[{index}] must define rpc_url, ws_url, and/or provider_api_url");
-        }
-        if self.rpc_timeout_sec == 0 {
-            bail!("connectors[{index}].rpc_timeout_sec must be greater than 0");
-        }
-        if self.provider_api_timeout_sec == 0 {
-            bail!("connectors[{index}].provider_api_timeout_sec must be greater than 0");
-        }
-        if self.ws_timeout_sec == 0 {
-            bail!("connectors[{index}].ws_timeout_sec must be greater than 0");
+        if self.rpc.is_none() && self.websocket.is_none() && self.provider_api.is_none() {
+            bail!("connectors[{index}] must define rpc, websocket, and/or provider_api");
         }
 
-        self.commitment_config()?;
-        if let Some(rpc_url) = self.rpc_url.as_deref() {
-            validate_http_url("rpc_url", rpc_url)?;
+        if let Some(rpc) = &mut self.rpc {
+            rpc.validate(&format!("connectors[{index}].rpc"))?;
         }
-        if let Some(ws_url) = self.ws_url.as_deref() {
-            validate_ws_url(ws_url)?;
+        if let Some(websocket) = &mut self.websocket {
+            websocket.validate(&format!("connectors[{index}].websocket"))?;
         }
-        if let Some(provider_api_url) = self.provider_api_url.as_deref() {
-            validate_http_url("provider_api_url", provider_api_url)?;
+        if let Some(provider_api) = &mut self.provider_api {
+            provider_api.validate(&format!("connectors[{index}].provider_api"))?;
         }
 
         Ok(())
@@ -395,15 +664,15 @@ fn default_network() -> String {
     "mainnet-beta".to_string()
 }
 
-fn default_rpc_timeout_sec() -> u64 {
+fn default_http_request_timeout_sec() -> u64 {
     30
 }
 
-fn default_provider_api_timeout_sec() -> u64 {
-    30
+fn default_http_connect_timeout_sec() -> u64 {
+    10
 }
 
-fn default_ws_timeout_sec() -> u64 {
+fn default_ws_handshake_timeout_sec() -> u64 {
     10
 }
 
@@ -421,6 +690,18 @@ fn default_poll_interval_sec() -> u64 {
 
 fn default_commitment() -> String {
     "confirmed".to_string()
+}
+
+fn line_and_column(input: &str, offset: usize) -> (usize, usize) {
+    let prefix = &input[..offset];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix
+        .rsplit_once('\n')
+        .map_or(prefix, |(_, current_line)| current_line)
+        .chars()
+        .count()
+        + 1;
+    (line, column)
 }
 
 impl Config {
@@ -448,8 +729,17 @@ impl Config {
                 path.display()
             )
         })?;
-        let mut config = toml::from_str::<Self>(&expanded)
-            .with_context(|| format!("failed to parse TOML config {}", path.display()))?;
+        let mut config = toml::from_str::<Self>(&expanded).map_err(|error| {
+            let location = error.span().map_or_else(String::new, |span| {
+                let (line, column) = line_and_column(&expanded, span.start);
+                format!(" at line {line}, column {column}")
+            });
+            anyhow::anyhow!(
+                "failed to parse TOML config {}{location}: {}",
+                path.display(),
+                error.message()
+            )
+        })?;
 
         config.validate()?;
         Ok(config)
@@ -561,6 +851,10 @@ impl Config {
                         "{path} references connector {:?}, which has no configured RPC endpoint",
                         connector.name
                     ),
+                    Transport::Websocket if !connector.has_ws() => bail!(
+                        "{path} references connector {:?}, which has no configured WebSocket endpoint",
+                        connector.name
+                    ),
                     Transport::ProviderApi if !connector.has_provider_api() => bail!(
                         "{path} references connector {:?}, which has no configured provider API endpoint",
                         connector.name
@@ -618,7 +912,7 @@ impl Config {
         }
 
         if !self.connectors.iter().any(ConnectorConfig::has_rpc) {
-            bail!("at least one connector with rpc_url is required");
+            bail!("at least one connector with an rpc transport is required");
         }
 
         Ok(())
@@ -756,6 +1050,9 @@ pub(crate) fn has_explicit_authority(url: &str) -> bool {
 }
 
 fn validate_http_url(field: &str, url: &str) -> Result<()> {
+    if url.is_empty() {
+        bail!("{field} must not be empty");
+    }
     let parsed =
         reqwest::Url::parse(url).with_context(|| format!("{field} must be a valid URL"))?;
     if !matches!(parsed.scheme(), "http" | "https")
@@ -767,13 +1064,17 @@ fn validate_http_url(field: &str, url: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_ws_url(url: &str) -> Result<()> {
-    let parsed = reqwest::Url::parse(url).context("ws_url must be a valid URL")?;
+fn validate_ws_url(field: &str, url: &str) -> Result<()> {
+    if url.is_empty() {
+        bail!("{field} must not be empty");
+    }
+    let parsed =
+        reqwest::Url::parse(url).with_context(|| format!("{field} must be a valid URL"))?;
     if !matches!(parsed.scheme(), "ws" | "wss")
         || parsed.host_str().filter(|host| !host.is_empty()).is_none()
         || !has_explicit_authority(url)
     {
-        bail!("ws_url must use ws:// or wss:// with a host");
+        bail!("{field} must use ws:// or wss:// with a host");
     }
     Ok(())
 }

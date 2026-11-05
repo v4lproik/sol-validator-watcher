@@ -8,8 +8,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
             name: "primary".to_string(),
             provider: "mock-solana".to_string(),
             features: vec![ProviderFeature::HistoricalData],
-            rpc_url: Some(rpc_url.clone()),
-            rpc_timeout_sec: 5,
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url.clone())),
             ..ConnectorConfig::default()
         }],
         modes: modes_for(&["primary"], true),
@@ -26,9 +25,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         labels: vec!["focus:economics".to_string()],
     });
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        config.connectors[0].commitment_config()?,
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -123,8 +120,7 @@ async fn missing_performance_samples_omit_time_estimates_without_failing_collect
             name: "primary".to_string(),
             provider: "mock-solana".to_string(),
             features: Vec::new(),
-            rpc_url: Some(rpc_url),
-            rpc_timeout_sec: 5,
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
             ..ConnectorConfig::default()
         }],
         modes: modes_for(&["primary"], false),
@@ -167,16 +163,14 @@ async fn malformed_performance_sample_falls_back_to_the_next_connector() -> Resu
                 name: "primary".to_string(),
                 provider: "primary-provider".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(primary_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(primary_rpc_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "fallback".to_string(),
                 provider: "fallback-provider".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(fallback_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(fallback_rpc_url)),
                 ..ConnectorConfig::default()
             },
         ],
@@ -219,16 +213,14 @@ async fn collect_snapshot_with_connectors_uses_fallback_connector_for_missing_op
                 name: "local-validator".to_string(),
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(primary_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(primary_rpc_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "helius-fallback".to_string(),
                 provider: "helius".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(fallback_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(fallback_rpc_url)),
                 ..ConnectorConfig::default()
             },
         ],
@@ -290,16 +282,14 @@ async fn collect_snapshot_with_connectors_uses_fallback_connector_for_missing_re
                 name: "local-validator".to_string(),
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(primary_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(primary_rpc_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "helius-fallback".to_string(),
                 provider: "helius".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(fallback_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(fallback_rpc_url)),
                 ..ConnectorConfig::default()
             },
         ],
@@ -346,16 +336,14 @@ async fn collect_snapshot_resolves_each_command_from_its_own_route() -> Result<(
                 name: "first".to_string(),
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(first_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(first_rpc_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "second".to_string(),
                 provider: "helius".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(second_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(second_rpc_url)),
                 ..ConnectorConfig::default()
             },
         ],
@@ -400,16 +388,14 @@ async fn required_command_preserves_every_failed_route_connector() -> Result<()>
                 name: "first".to_string(),
                 provider: "solana-validator".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(first_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(first_rpc_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "second".to_string(),
                 provider: "helius".to_string(),
                 features: Vec::new(),
-                rpc_url: Some(second_rpc_url),
-                rpc_timeout_sec: 5,
+                rpc: Some(crate::config::RpcTransportConfig::new(second_rpc_url)),
                 ..ConnectorConfig::default()
             },
         ],
@@ -442,8 +428,7 @@ async fn reward_history_propagates_minimum_ledger_slot_failure() -> Result<()> {
             name: "historical-rpc".to_string(),
             provider: "mock-solana".to_string(),
             features: vec![ProviderFeature::HistoricalData],
-            rpc_url: Some(rpc_url),
-            rpc_timeout_sec: 5,
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
             ..ConnectorConfig::default()
         }],
         modes: modes_for(&["historical-rpc"], true),
@@ -475,8 +460,7 @@ async fn economics_succeeds_when_optional_leadership_command_is_unavailable() ->
             name: "primary".to_string(),
             provider: "mock-solana".to_string(),
             features: vec![ProviderFeature::HistoricalData],
-            rpc_url: Some(rpc_url),
-            rpc_timeout_sec: 5,
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
             ..ConnectorConfig::default()
         }],
         modes: modes_for(&["primary"], true),

@@ -14,11 +14,15 @@ name = "helius-devnet"
 provider = "helius"
 features = ["historical-data"]
 solana_rpc_compatibility = "extended"
-rpc_url = "${SOL_DEVNET_RPC_URL}"
-rpc_timeout_sec = 30
-ws_url = "${SOL_DEVNET_WS_URL}"
-ws_timeout_sec = 10
+[connectors.rpc]
+url = "${SOL_DEVNET_RPC_URL}"
+request_timeout_sec = 30
+connect_timeout_sec = 10
 commitment = "confirmed"
+
+[connectors.websocket]
+url = "${SOL_DEVNET_WS_URL}"
+handshake_timeout_sec = 10
 
 [[watched_validators]]
 vote_account = "FwR3PbjS5iyqzLiLugrBqKSa5EKZ4vK9SKs7eQXtT59f"

@@ -20,13 +20,13 @@ async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
             ConnectorConfig {
                 name: "rejected-ws".to_string(),
                 provider: "mock".to_string(),
-                ws_url: Some(rejected_url),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(rejected_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "accepted-ws".to_string(),
                 provider: "mock".to_string(),
-                ws_url: Some(accepted_url),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(accepted_url)),
                 ..ConnectorConfig::default()
             },
         ],
@@ -82,13 +82,13 @@ async fn websocket_route_exhaustion_preserves_every_connector_failure() -> Resul
             ConnectorConfig {
                 name: "first-ws".to_string(),
                 provider: "first-provider".to_string(),
-                ws_url: Some(first_url),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(first_url)),
                 ..ConnectorConfig::default()
             },
             ConnectorConfig {
                 name: "second-ws".to_string(),
                 provider: "second-provider".to_string(),
-                ws_url: Some(second_url),
+                websocket: Some(crate::config::WebsocketTransportConfig::new(second_url)),
                 ..ConnectorConfig::default()
             },
         ],

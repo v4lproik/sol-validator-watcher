@@ -81,11 +81,8 @@ name = "connector-{index}"
 provider = "benchmark-provider"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://rpc-{index}.example"
-rpc_timeout_sec = 30
-ws_url = "wss://rpc-{index}.example"
-ws_timeout_sec = 10
-commitment = "confirmed"
+rpc = {{ url = "https://rpc-{index}.example", request_timeout_sec = 30, connect_timeout_sec = 10, commitment = "confirmed" }}
+websocket = {{ url = "wss://rpc-{index}.example", handshake_timeout_sec = 10 }}
 "#
         )
         .expect("writing to a String cannot fail");

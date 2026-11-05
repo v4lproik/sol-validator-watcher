@@ -7,7 +7,7 @@ use super::model::{
     AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus, RewardSample,
 };
 use crate::{
-    config::has_explicit_authority,
+    config::{has_explicit_authority, RpcTransportConfig},
     mode::{ProviderFeature, SolanaRpcCompatibility},
     watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
 };
@@ -15,10 +15,7 @@ use anyhow::{bail, Context, Result};
 use reqwest::{Client, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, time::Instant};
 use tracing::warn;
 
 /// Largest inclusive slot range sent in one `getBlockProduction` request.
@@ -34,29 +31,24 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
-    /// Builds a client for one validated endpoint, timeout, and commitment level.
+    /// Builds a client for one validated RPC transport.
     pub fn try_new(
-        url: &str,
-        timeout: Duration,
-        commitment: String,
+        transport: &RpcTransportConfig,
         telemetry: ConnectorRpcTelemetry,
     ) -> Result<Self> {
-        if !has_explicit_authority(url) {
+        if !has_explicit_authority(&transport.url) {
             bail!("Solana RPC URL must use http:// or https:// with a host");
         }
-        let url = Url::parse(url).context("invalid Solana RPC URL")?;
+        let url = Url::parse(&transport.url).context("invalid Solana RPC URL")?;
         if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
             bail!("Solana RPC URL must use http:// or https:// with a host");
         }
-        let http = Client::builder()
-            .timeout(timeout)
-            .build()
-            .context("failed to build HTTP client")?;
+        let http = transport.build_client()?;
 
         Ok(Self {
             http,
             url,
-            commitment,
+            commitment: transport.commitment_config()?,
             telemetry,
         })
     }

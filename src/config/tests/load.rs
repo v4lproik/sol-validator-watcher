@@ -15,20 +15,20 @@ name = "local-validator"
 provider = "solana-validator"
 features = []
 solana_rpc_compatibility = "core"
-rpc_url = "http://127.0.0.1:8899"
+rpc = { url = "http://127.0.0.1:8899" }
 
 [[connectors]]
 name = "helius-rpc"
 provider = "helius"
 features = []
 solana_rpc_compatibility = "extended"
-rpc_url = "https://rpc.helius.example"
+rpc = { url = "https://rpc.helius.example" }
 
 [[connectors]]
 name = "helius-ws"
 provider = "helius"
 features = []
-ws_url = "wss://ws.helius.example"
+websocket = { url = "wss://ws.helius.example" }
 
 [[watched_validators]]
 identity = "11111111111111111111111111111111"
@@ -215,11 +215,17 @@ fn loads_every_committed_profile() -> Result<()> {
 
         if relative_path == "config/remote/devnet.toml" {
             assert_eq!(
-                config.connectors[0].rpc_url.as_deref(),
+                config.connectors[0]
+                    .rpc
+                    .as_ref()
+                    .map(|rpc| rpc.url.as_str()),
                 Some("https://devnet.example/custom/rpc?api-key=test-key&region=us")
             );
             assert_eq!(
-                config.connectors[0].ws_url.as_deref(),
+                config.connectors[0]
+                    .websocket
+                    .as_ref()
+                    .map(|websocket| websocket.url.as_str()),
                 Some("wss://devnet.example/custom/ws?api-key=test-key&region=us")
             );
             assert!(config.modes.economics.enabled);
@@ -242,7 +248,10 @@ fn loads_every_committed_profile() -> Result<()> {
             assert!(config.connectors[1].has_provider_api());
             assert!(config.connectors[1].supports(ProviderFeature::JitoMevRewards));
             assert_eq!(
-                config.connectors[1].provider_api_url.as_deref(),
+                config.connectors[1]
+                    .provider_api
+                    .as_ref()
+                    .map(|provider_api| provider_api.url.as_str()),
                 Some("https://kobe.mainnet.jito.network/api/v1")
             );
         }

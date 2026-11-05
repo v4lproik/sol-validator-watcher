@@ -14,9 +14,7 @@ fn rpc_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<
         ),
     ] {
         let Err(error) = RpcClient::try_new(
-            &url,
-            Duration::from_secs(1),
-            "confirmed".to_string(),
+            &rpc_transport(&url, 1),
             crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
         ) else {
             anyhow::bail!("invalid RPC URL should fail during client construction");
@@ -35,9 +33,7 @@ fn rpc_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<
 async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -55,9 +51,7 @@ async fn missing_transaction_breakdown_preserves_total_performance_rates() -> Re
         start_mock_rpc_server_with_profile(MockRpcProfile::MissingPerformanceTransactionSplit)
             .await?;
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -83,9 +77,7 @@ async fn malformed_performance_samples_fail_instead_of_exporting_rates() -> Resu
     ] {
         let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
         let client = RpcClient::try_new(
-            &rpc_url,
-            Duration::from_secs(5),
-            "confirmed".to_string(),
+            &rpc_transport(&rpc_url, 5),
             crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
         )?;
 
@@ -103,9 +95,7 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
     let metrics = Arc::new(Metrics::new()?);
     let (state, actor) = mailbox.start("rpc-telemetry-test", Arc::clone(&metrics));
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         telemetry.for_connector("mock-rpc"),
     )?;
     drop(telemetry);
@@ -155,9 +145,7 @@ async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
 async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
     let addresses = (0..205)
@@ -192,9 +180,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::NoAccountSpace).await?;
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -221,9 +207,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
 async fn node_health_preserves_structured_catchup_distance() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server_with_profile(MockRpcProfile::Behind).await?;
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -242,9 +226,7 @@ async fn node_health_classifies_behind_error_before_http_status() -> Result<()> 
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::BehindHttp503).await?;
     let client = RpcClient::try_new(
-        &rpc_url,
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&rpc_url, 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -264,9 +246,7 @@ async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()>
         start_mock_rpc_server_with_profile(MockRpcProfile::Unhealthy).await?;
     let secret = "do-not-expose-this-api-key";
     let client = RpcClient::try_new(
-        &format!("{rpc_url}/?api-key={secret}"),
-        Duration::from_secs(5),
-        "confirmed".to_string(),
+        &rpc_transport(&format!("{rpc_url}/?api-key={secret}"), 5),
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
@@ -285,6 +265,58 @@ async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()>
 }
 
 #[tokio::test]
+async fn rpc_transport_applies_custom_headers_without_exposing_credentials() -> Result<()> {
+    let (rpc_url, server_task, _, authorization_headers) =
+        start_header_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let secret = "rpc-header-secret";
+    let transport: crate::config::RpcTransportConfig = toml::from_str(&format!(
+        r#"
+url = "{rpc_url}"
+request_timeout_sec = 5
+connect_timeout_sec = 5
+headers = {{ authorization = "Bearer {secret}" }}
+"#
+    ))?;
+    let debug = format!("{transport:?}");
+    assert!(debug.contains("authorization"));
+    assert!(!debug.contains(secret));
+    assert!(!debug.contains(&rpc_url));
+    let client = RpcClient::try_new(
+        &transport,
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("header-rpc"),
+    )?;
+
+    assert!(client.node_health().await?.is_healthy());
+    server_task.abort();
+    assert_eq!(
+        authorization_headers.lock().await.as_slice(),
+        &[Some(format!("Bearer {secret}"))]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn rpc_transport_enforces_total_request_timeout() -> Result<()> {
+    let (rpc_url, server_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::Delayed).await?;
+    let client = RpcClient::try_new(
+        &rpc_transport(&rpc_url, 1),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("delayed-rpc"),
+    )?;
+    let started = std::time::Instant::now();
+
+    let result = client.node_health().await;
+    server_task.abort();
+
+    assert!(result.is_err(), "delayed RPC request must time out");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "request deadline did not bound the delayed RPC call"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn connector_capability_probe_rejects_extended_profile_without_exposing_endpoint_secrets(
 ) -> Result<()> {
     let (rpc_url, server_task) =
@@ -296,7 +328,9 @@ async fn connector_capability_probe_rejects_extended_profile_without_exposing_en
             provider: "mock-provider".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some(format!("{rpc_url}/?api-key={secret}")),
+            rpc: Some(crate::config::RpcTransportConfig::new(format!(
+                "{rpc_url}/?api-key={secret}"
+            ))),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
@@ -335,7 +369,7 @@ async fn connector_capability_probe_uses_only_declared_core_methods() -> Result<
             provider: "mock-provider".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-            rpc_url: Some(rpc_url),
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
@@ -358,7 +392,7 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
             provider: "mock-provider".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-            rpc_url: Some(core_url),
+            rpc: Some(crate::config::RpcTransportConfig::new(core_url)),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
@@ -393,7 +427,7 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
             provider: "mock-provider".to_string(),
             features: Vec::new(),
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some(extended_url),
+            rpc: Some(crate::config::RpcTransportConfig::new(extended_url)),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
@@ -441,7 +475,7 @@ async fn connector_capability_probe_validates_method_specific_payloads() -> Resu
             provider: "mock-provider".to_string(),
             features: vec![ProviderFeature::HistoricalData],
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some(rpc_url),
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
@@ -467,7 +501,7 @@ async fn connector_capability_probe_checks_every_extended_rpc_method() -> Result
                 provider: "mock-provider".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                rpc_url: Some(rpc_url),
+                rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
                 ..ConnectorConfig::default()
             }],
             ..Config::default()
@@ -510,7 +544,7 @@ async fn connector_capability_probe_rejects_empty_required_results() -> Result<(
                 provider: "mock-provider".to_string(),
                 features: Vec::new(),
                 solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                rpc_url: Some(rpc_url),
+                rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
                 ..ConnectorConfig::default()
             }],
             ..Config::default()
@@ -541,7 +575,7 @@ async fn connector_capability_probe_reports_declared_historical_data_feature() -
             provider: "mock-provider".to_string(),
             features: vec![ProviderFeature::HistoricalData],
             solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            rpc_url: Some(rpc_url),
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
             ..ConnectorConfig::default()
         }],
         ..Config::default()

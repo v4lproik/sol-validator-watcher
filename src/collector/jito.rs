@@ -1,7 +1,7 @@
 //! Bounded Jito validator-reward API client and epoch-stable response cache.
 
 use super::JitoMevReward;
-use crate::config::has_explicit_authority;
+use crate::config::{has_explicit_authority, HttpTransportConfig};
 use anyhow::{bail, Context, Result};
 use reqwest::{Client, Url};
 use serde::{
@@ -44,18 +44,17 @@ struct RewardForEpochVisitor {
 }
 
 impl JitoClient {
-    /// Builds one reusable HTTP client for a validated Jito API base URL.
-    pub(crate) fn try_new(base_url: &str, timeout: Duration) -> Result<Self> {
-        if !has_explicit_authority(base_url) {
+    /// Builds one reusable HTTP client for a validated Jito API transport.
+    pub(crate) fn try_new(transport: &HttpTransportConfig) -> Result<Self> {
+        if !has_explicit_authority(&transport.url) {
             bail!("Jito API URL must use http:// or https:// with a host");
         }
-        let base_url = Url::parse(base_url).context("invalid Jito API URL")?;
+        let base_url = Url::parse(&transport.url).context("invalid Jito API URL")?;
         if !matches!(base_url.scheme(), "http" | "https") || base_url.host_str().is_none() {
             bail!("Jito API URL must use http:// or https:// with a host");
         }
-        let http = Client::builder()
-            .timeout(timeout)
-            .build()
+        let http = transport
+            .build_client()
             .context("failed to build Jito API HTTP client")?;
 
         Ok(Self {

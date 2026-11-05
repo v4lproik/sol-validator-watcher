@@ -188,8 +188,12 @@ fn build_record_uses_block_production_schedules_and_labels() {
             name: "primary".to_string(),
             provider: "solana-validator".to_string(),
             features: Vec::new(),
-            rpc_url: Some("https://rpc.example".to_string()),
-            ws_url: Some("wss://rpc.example".to_string()),
+            rpc: Some(crate::config::RpcTransportConfig::new(
+                "https://rpc.example".to_string(),
+            )),
+            websocket: Some(crate::config::WebsocketTransportConfig::new(
+                "wss://rpc.example".to_string(),
+            )),
             ..ConnectorConfig::default()
         }],
         delinquent_slot_distance: Some(128),
@@ -280,7 +284,9 @@ fn build_record_defaults_missing_block_data_to_zero() {
             name: "primary".to_string(),
             provider: "solana-validator".to_string(),
             features: Vec::new(),
-            rpc_url: Some("https://rpc.example".to_string()),
+            rpc: Some(crate::config::RpcTransportConfig::new(
+                "https://rpc.example".to_string(),
+            )),
             ..ConnectorConfig::default()
         }],
         ..Config::default()
