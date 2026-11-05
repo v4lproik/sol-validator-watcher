@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added an optional routed recent-block-fee command that selects at most 32 completed current-epoch leader slots, batches confirmed `getBlock` reward reads without transaction bodies, validates target identity fee rewards, and preserves ordered connector fallback and source provenance.
 - Applied each connector's custom headers and bounded connect/request/handshake deadlines to reusable RPC, provider-API, and WebSocket clients, with HTTP redirects disabled, Rustls certificate and hostname verification, HTTP TLS 1.2 minimums, and no insecure override.
 - Added local RPC, Jito, and WebSocket boundary coverage proving credential header delivery and redaction, redirect rejection, and enforced HTTP request and WebSocket handshake deadlines.
 - Added an optional routed Jito provider-API command that publishes one economics target's settled prior-epoch MEV reward and commission, uses ordered connector fallback, bounds response size, and caches settled or briefly absent epoch results.

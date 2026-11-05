@@ -476,6 +476,34 @@ impl Metrics {
             ),
             economics_labels,
         )?;
+        let sol_economics_block_fee_reward_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_block_fee_reward_sol",
+                "Validator fee reward in SOL for the latest sampled confirmed block",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_block_fee_reward_slot = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_block_fee_reward_slot",
+                "Absolute slot of the latest sampled confirmed validator fee reward",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_recent_block_fee_reward_average_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_recent_block_fee_reward_average_sol",
+                "Average validator fee reward in SOL across recent sampled produced blocks",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_recent_block_fee_reward_sample_count = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_recent_block_fee_reward_sample_count",
+                "Produced blocks represented by the recent validator fee reward sample",
+            ),
+            economics_labels,
+        )?;
         let sol_economics_jito_mev_reward_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_jito_mev_reward_sol",
@@ -689,6 +717,16 @@ impl Metrics {
         register(&registry, &sol_economics_vat_reserve_sol)?;
         register(&registry, &sol_economics_vat_epochs_available)?;
         register(&registry, &sol_economics_vat_next_epoch_funded)?;
+        register(&registry, &sol_economics_block_fee_reward_sol)?;
+        register(&registry, &sol_economics_block_fee_reward_slot)?;
+        register(
+            &registry,
+            &sol_economics_recent_block_fee_reward_average_sol,
+        )?;
+        register(
+            &registry,
+            &sol_economics_recent_block_fee_reward_sample_count,
+        )?;
         register(&registry, &sol_economics_jito_mev_reward_sol)?;
         register(&registry, &sol_economics_jito_mev_commission_pct)?;
         register(&registry, &sol_economics_jito_mev_reward_epoch)?;
@@ -778,6 +816,10 @@ impl Metrics {
             sol_economics_vat_reserve_sol,
             sol_economics_vat_epochs_available,
             sol_economics_vat_next_epoch_funded,
+            sol_economics_block_fee_reward_sol,
+            sol_economics_block_fee_reward_slot,
+            sol_economics_recent_block_fee_reward_average_sol,
+            sol_economics_recent_block_fee_reward_sample_count,
             sol_economics_jito_mev_reward_sol,
             sol_economics_jito_mev_commission_pct,
             sol_economics_jito_mev_reward_epoch,

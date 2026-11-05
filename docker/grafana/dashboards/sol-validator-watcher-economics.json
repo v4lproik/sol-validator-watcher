@@ -628,6 +628,301 @@
         "x": 0,
         "y": 23
       },
+      "id": 20,
+      "panels": [],
+      "title": "Recent Validator Block Fees",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Validator fee reward in the latest sampled confirmed block. This includes Solana transaction fees and priority fees delivered by Harmonic when Harmonic built that block; the chain does not attribute the amount to a block-building provider.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 4,
+          "unit": "suffix: SOL"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 24
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_block_fee_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · latest block fee",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Block Fee Reward",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Average validator fee reward across the recent produced blocks sampled from the configured economics validator's leader schedule.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 4,
+          "unit": "suffix: SOL"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 24
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_recent_block_fee_reward_average_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · recent average",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Block Fee Average",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Absolute slot of the latest confirmed produced block represented by the fee-reward sample.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_block_fee_reward_slot{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · latest sampled slot",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Sampled Block Slot",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Produced blocks represented by the current bounded fee-reward sample. Missed leader slots are omitted.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_recent_block_fee_reward_sample_count{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{network}} · sampled blocks",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Produced Blocks Sampled",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Fee reward from the latest sampled confirmed produced block at each polling observation. Harmonic priority fees are included when Harmonic built the block, but are not separately attributable on-chain.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_block_fee_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "legendFormat": "{{network}} · latest block fee",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Block Fee Reward History",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Average validator fee reward across each bounded recent-block sample over the selected time range.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: SOL",
+          "decimals": 4,
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_recent_block_fee_reward_average_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "legendFormat": "{{network}} · recent block fee average",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Block Fee Average History",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
       "id": 12,
       "panels": [],
       "title": "Jito MEV Rewards",
@@ -650,7 +945,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 24
+        "y": 39
       },
       "id": 13,
       "options": {
@@ -700,7 +995,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 24
+        "y": 39
       },
       "id": 14,
       "options": {
@@ -748,7 +1043,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 24
+        "y": 39
       },
       "id": 15,
       "options": {
@@ -799,7 +1094,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 30
+        "y": 45
       },
       "id": 18,
       "options": {
@@ -846,7 +1141,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 30
+        "y": 45
       },
       "id": 19,
       "options": {
@@ -877,7 +1172,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 53
       },
       "id": 9,
       "panels": [],
@@ -1091,7 +1386,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 54
       },
       "id": 10,
       "options": {
@@ -1254,7 +1549,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 62
       },
       "id": 11,
       "options": {
@@ -1356,6 +1651,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 6,
+  "version": 7,
   "weekStart": ""
 }

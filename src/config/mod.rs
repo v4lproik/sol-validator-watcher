@@ -63,6 +63,8 @@ pub struct EconomicsCommands {
     pub inflation_rewards: Vec<String>,
     /// Connector names used for prior-epoch block production.
     pub reward_epoch_block_production: Vec<String>,
+    /// Connector names used for recent confirmed block-fee rewards.
+    pub recent_block_fee_rewards: Vec<String>,
     /// Connector names used for settled Jito MEV rewards.
     pub jito_mev_rewards: Vec<String>,
 }
@@ -149,6 +151,7 @@ impl ModesConfig {
                 &self.economics.commands.reward_epoch_block_production
             }
             CommandId::JitoMevRewards => &self.economics.commands.jito_mev_rewards,
+            CommandId::RecentBlockFeeRewards => &self.economics.commands.recent_block_fee_rewards,
         }
     }
 
@@ -597,6 +600,27 @@ impl ConnectorConfig {
                     .map(SolanaRpcCompatibility::as_str)
             );
         }
+        if self.supports(ProviderFeature::BlockFeeRewards)
+            && self.solana_rpc_compatibility != Some(SolanaRpcCompatibility::Extended)
+        {
+            bail!(
+                "connectors[{index}].features entry {:?} requires solana_rpc_compatibility = \"extended\", got {:?}",
+                ProviderFeature::BlockFeeRewards.as_str(),
+                self.solana_rpc_compatibility
+                    .map(SolanaRpcCompatibility::as_str)
+            );
+        }
+        if self.supports(ProviderFeature::BlockFeeRewards)
+            && self
+                .rpc
+                .as_ref()
+                .is_some_and(|rpc| rpc.commitment == "processed")
+        {
+            bail!(
+                "connectors[{index}].features entry {:?} requires rpc.commitment = \"confirmed\" or \"finalized\"",
+                ProviderFeature::BlockFeeRewards.as_str()
+            );
+        }
         if self.supports(ProviderFeature::JitoMevRewards) && !self.has_provider_api() {
             bail!(
                 "connectors[{index}].features entry {:?} requires provider_api",
@@ -818,7 +842,8 @@ impl Config {
                 | CommandId::CurrentBlockProduction
                 | CommandId::CurrentLeaderSchedule
                 | CommandId::NextLeaderSchedule
-                | CommandId::JitoMevRewards => false,
+                | CommandId::JitoMevRewards
+                | CommandId::RecentBlockFeeRewards => false,
                 CommandId::AccountBalances
                 | CommandId::InflationRewards
                 | CommandId::RewardEpochBlockProduction => self.modes.economics.enabled,

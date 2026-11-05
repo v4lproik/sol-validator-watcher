@@ -47,13 +47,16 @@ liveness files, signals, and shutdown.
   Provider-specific APIs and transports require their own typed command,
   capability, endpoint, and verification when the watcher starts consuming
   them.
-- Provider features are `historical-data` and `jito-mev-rewards`; `rpc`,
-  `websocket`, and `provider-api` are transports, not features.
+- Provider features are `historical-data`, `block-fee-rewards`, and
+  `jito-mev-rewards`; `rpc`, `websocket`, and `provider-api` are transports,
+  not features.
 - Core commands are RPC health, node-local status, epoch info, vote accounts,
   and current/next leader schedules. Recent performance samples, current block
   production, account balances, and rent exemption require extended
   compatibility. Prior-epoch inflation rewards and block production additionally
-  require `historical-data`; Jito rewards use provider API independently.
+  require `historical-data`. Recent block-fee rewards require an extended RPC
+  connector with the `block-fee-rewards` feature and `confirmed` or `finalized`
+  commitment. Jito rewards use provider API independently.
 - Each `modes.<mode>.commands.<command>` array is that command's exact priority
   and fallback order; connector declaration order is not execution policy.
   Optional extended routes may be empty in a core-only profile.

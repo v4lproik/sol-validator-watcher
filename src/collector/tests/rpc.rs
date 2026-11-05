@@ -45,6 +45,55 @@ async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn get_recent_block_fee_rewards_batches_slots_and_skips_missed_blocks() -> Result<()> {
+    let (rpc_url, server_task, requests) =
+        start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let client = RpcClient::try_new(
+        &rpc_transport(&rpc_url, 5),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("block-reward-rpc"),
+    )?;
+
+    let rewards = client
+        .get_recent_block_fee_rewards(&[805, 802, 800], "id-1")
+        .await?
+        .ok_or_else(|| anyhow!("missing recent block fee rewards"))?;
+    server_task.abort();
+
+    assert_eq!(
+        rewards,
+        RecentBlockFeeRewards {
+            latest_slot: 805,
+            latest_reward_lamports: 3_000_000,
+            total_reward_lamports: 4_000_000,
+            sampled_block_count: 2,
+        }
+    );
+    let recorded = requests.lock().await;
+    let batch = recorded
+        .first()
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("getBlock requests were not sent as one JSON-RPC batch"))?;
+    assert_eq!(batch.len(), 3);
+    assert_eq!(
+        batch[0],
+        json!({
+            "jsonrpc": "2.0",
+            "id": 805,
+            "method": "getBlock",
+            "params": [
+                805,
+                {
+                    "commitment": "confirmed",
+                    "transactionDetails": "none",
+                    "rewards": true
+                }
+            ]
+        })
+    );
+    Ok(())
+}
 #[tokio::test]
 async fn missing_transaction_breakdown_preserves_total_performance_rates() -> Result<()> {
     let (rpc_url, server_task) =
@@ -196,6 +245,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
             vote_account: "vote-1".to_string(),
         },
         balances,
+        None,
         None,
     );
     assert_eq!(metrics.vat_reserve_lamports, None);
@@ -543,6 +593,40 @@ async fn connector_capability_probe_validates_method_specific_payloads() -> Resu
         .verify_capabilities()
         .await?;
     server_task.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn connector_capability_probe_checks_declared_block_fee_rewards() -> Result<()> {
+    let (rpc_url, server_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::NoBlockFeeRewards).await?;
+    let config = Config {
+        connectors: vec![ConnectorConfig {
+            name: "block-reward-rpc".to_string(),
+            provider: "mock-provider".to_string(),
+            features: vec![ProviderFeature::BlockFeeRewards],
+            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
+            rpc: Some(crate::config::RpcTransportConfig::new(rpc_url)),
+            ..ConnectorConfig::default()
+        }],
+        ..Config::default()
+    };
+
+    let Err(error) =
+        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
+            .verify_capabilities()
+            .await
+    else {
+        anyhow::bail!("missing getBlock support must fail the declared block-fee capability");
+    };
+    server_task.abort();
+
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("provider feature \"block-fee-rewards\""),
+        "{message}"
+    );
+    assert!(message.contains("getBlock"), "{message}");
     Ok(())
 }
 

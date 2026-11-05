@@ -84,6 +84,10 @@ pub struct Metrics {
     sol_economics_vat_reserve_sol: GaugeVec,
     sol_economics_vat_epochs_available: IntGaugeVec,
     sol_economics_vat_next_epoch_funded: IntGaugeVec,
+    sol_economics_block_fee_reward_sol: GaugeVec,
+    sol_economics_block_fee_reward_slot: IntGaugeVec,
+    sol_economics_recent_block_fee_reward_average_sol: GaugeVec,
+    sol_economics_recent_block_fee_reward_sample_count: IntGaugeVec,
     sol_economics_jito_mev_reward_sol: GaugeVec,
     sol_economics_jito_mev_commission_pct: GaugeVec,
     sol_economics_jito_mev_reward_epoch: IntGaugeVec,
@@ -501,6 +505,25 @@ impl Metrics {
                     .with_label_values(&labels)
                     .set(i64::from(vat_next_epoch_funded));
             }
+            if let Some(block_rewards) = economics.recent_block_fee_rewards {
+                self.sol_economics_block_fee_reward_sol
+                    .with_label_values(&labels)
+                    .set(lamports_to_sol(block_rewards.latest_reward_lamports));
+                self.sol_economics_block_fee_reward_slot
+                    .with_label_values(&labels)
+                    .set(metric_count(block_rewards.latest_slot));
+                self.sol_economics_recent_block_fee_reward_sample_count
+                    .with_label_values(&labels)
+                    .set(metric_count(block_rewards.sampled_block_count));
+                if block_rewards.sampled_block_count > 0 {
+                    self.sol_economics_recent_block_fee_reward_average_sol
+                        .with_label_values(&labels)
+                        .set(
+                            lamports_to_sol(block_rewards.total_reward_lamports)
+                                / block_rewards.sampled_block_count as f64,
+                        );
+                }
+            }
             if let Some(jito_reward) = economics.jito_mev_reward {
                 self.sol_economics_jito_mev_reward_sol
                     .with_label_values(&labels)
@@ -610,6 +633,12 @@ impl Metrics {
         self.sol_economics_vat_reserve_sol.reset();
         self.sol_economics_vat_epochs_available.reset();
         self.sol_economics_vat_next_epoch_funded.reset();
+        self.sol_economics_block_fee_reward_sol.reset();
+        self.sol_economics_block_fee_reward_slot.reset();
+        self.sol_economics_recent_block_fee_reward_average_sol
+            .reset();
+        self.sol_economics_recent_block_fee_reward_sample_count
+            .reset();
         self.sol_economics_jito_mev_reward_sol.reset();
         self.sol_economics_jito_mev_commission_pct.reset();
         self.sol_economics_jito_mev_reward_epoch.reset();
