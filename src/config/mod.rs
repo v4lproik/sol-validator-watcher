@@ -745,9 +745,14 @@ fn validate_label(label: &str) -> Result<()> {
     Ok(())
 }
 
-fn has_explicit_authority(url: &str) -> bool {
-    url.split_once("://")
-        .is_some_and(|(_, authority)| !authority.is_empty() && !authority.starts_with('/'))
+/// Returns whether the endpoint text declares a non-empty authority after its scheme.
+pub(crate) fn has_explicit_authority(url: &str) -> bool {
+    url.split_once("://").is_some_and(|(_, remainder)| {
+        remainder
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|authority| !authority.is_empty())
+    })
 }
 
 fn validate_http_url(field: &str, url: &str) -> Result<()> {

@@ -7,6 +7,7 @@ use super::model::{
     AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus, RewardSample,
 };
 use crate::{
+    config::has_explicit_authority,
     mode::{ProviderFeature, SolanaRpcCompatibility},
     watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
 };
@@ -40,6 +41,9 @@ impl RpcClient {
         commitment: String,
         telemetry: ConnectorRpcTelemetry,
     ) -> Result<Self> {
+        if !has_explicit_authority(url) {
+            bail!("Solana RPC URL must use http:// or https:// with a host");
+        }
         let url = Url::parse(url).context("invalid Solana RPC URL")?;
         if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
             bail!("Solana RPC URL must use http:// or https:// with a host");

@@ -3,7 +3,7 @@
 //! A successful probe proves transport reachability only; failed attempts emit
 //! connector-bound telemetry without exposing endpoint URLs.
 
-use crate::watcher_state::ConnectorWebsocketTelemetry;
+use crate::{config::has_explicit_authority, watcher_state::ConnectorWebsocketTelemetry};
 use anyhow::{bail, Context, Result};
 use std::time::Duration;
 use tokio::time::timeout;
@@ -24,6 +24,9 @@ impl WebsocketProbeClient {
         timeout: Duration,
         telemetry: ConnectorWebsocketTelemetry,
     ) -> Result<Self> {
+        if !has_explicit_authority(url) {
+            bail!("WebSocket URL must use ws:// or wss:// with a host");
+        }
         let url = url.parse::<Uri>().context("invalid WebSocket URL")?;
         if !matches!(url.scheme_str(), Some("ws" | "wss")) || url.host().is_none() {
             bail!("WebSocket URL must use ws:// or wss:// with a host");
@@ -87,7 +90,7 @@ mod tests {
             ),
             (
                 format!("ws:///socket?api-key={secret}"),
-                "invalid WebSocket URL",
+                "WebSocket URL must use ws:// or wss:// with a host",
             ),
         ] {
             let Err(error) =

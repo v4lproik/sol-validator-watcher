@@ -9,8 +9,8 @@ fn rpc_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<
             "Solana RPC URL must use http:// or https:// with a host",
         ),
         (
-            format!("http:///?api-key={secret}"),
-            "invalid Solana RPC URL",
+            format!("http:///rpc?api-key={secret}"),
+            "Solana RPC URL must use http:// or https:// with a host",
         ),
     ] {
         let Err(error) = RpcClient::try_new(
