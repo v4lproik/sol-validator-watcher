@@ -23,10 +23,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install repository toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v5
 
       - name: Audit Rust dependency policy
         run: just security dependencies
