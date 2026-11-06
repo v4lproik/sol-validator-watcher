@@ -1,3 +1,66 @@
+const THEME_PREFERENCE_KEY = "sol-validator-watcher-theme";
+const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const themeColor = document.querySelector('meta[name="theme-color"]');
+const themeToggles = Array.from(document.querySelectorAll("[data-theme-toggle]"));
+
+function readStoredTheme() {
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_PREFERENCE_KEY);
+    return storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+  } catch (error) {
+    console.warn("Unable to read the saved theme preference; using the system theme.", error);
+    return null;
+  }
+}
+
+function storeTheme(theme) {
+  try {
+    window.localStorage.setItem(THEME_PREFERENCE_KEY, theme);
+  } catch (error) {
+    console.warn("Unable to save the theme preference; keeping it for this page.", error);
+  }
+}
+
+function applyTheme(theme) {
+  const selectedTheme = theme === "dark" ? "dark" : "light";
+  const isDark = selectedTheme === "dark";
+  const nextTheme = isDark ? "light" : "dark";
+  const actionLabel = `Switch to ${nextTheme} theme`;
+
+  document.documentElement.dataset.theme = selectedTheme;
+  document.documentElement.style.colorScheme = selectedTheme;
+  themeColor?.setAttribute("content", isDark ? "#0d1117" : "#f4f1e8");
+
+  themeToggles.forEach((toggle) => {
+    toggle.setAttribute("aria-label", actionLabel);
+    toggle.setAttribute("aria-pressed", String(isDark));
+    toggle.setAttribute("title", actionLabel);
+  });
+}
+
+const storedTheme = readStoredTheme();
+let hasExplicitTheme = storedTheme !== null;
+applyTheme(
+  storedTheme ??
+    document.documentElement.dataset.theme ??
+    (themeMediaQuery.matches ? "dark" : "light"),
+);
+
+themeToggles.forEach((toggle) => {
+  toggle.addEventListener("click", () => {
+    const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    hasExplicitTheme = true;
+    applyTheme(nextTheme);
+    storeTheme(nextTheme);
+  });
+});
+
+themeMediaQuery.addEventListener("change", (event) => {
+  if (!hasExplicitTheme) {
+    applyTheme(event.matches ? "dark" : "light");
+  }
+});
+
 const dashboardTabs = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
 const dashboardPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
 

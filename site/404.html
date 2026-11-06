@@ -4,7 +4,28 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Page Not Found | Solana Validator Watcher</title>
-    <meta name="theme-color" content="#08131f">
+    <meta name="theme-color" content="#f4f1e8">
+    <script>
+      (() => {
+        const preferenceKey = "sol-validator-watcher-theme";
+        let theme;
+
+        try {
+          const storedTheme = window.localStorage.getItem(preferenceKey);
+          if (storedTheme === "light" || storedTheme === "dark") {
+            theme = storedTheme;
+          }
+        } catch (error) {
+          console.warn("Unable to read the saved theme preference; using the system theme.", error);
+        }
+
+        theme ??= window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]').content =
+          theme === "dark" ? "#0d1117" : "#f4f1e8";
+      })();
+    </script>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -12,8 +33,25 @@
       rel="stylesheet"
     >
     <link rel="stylesheet" href="styles.css">
+    <script defer src="app.js"></script>
   </head>
   <body class="not-found-page">
+    <button
+      class="theme-toggle theme-toggle-standalone"
+      type="button"
+      data-theme-toggle
+      aria-label="Switch to dark theme"
+      aria-pressed="false"
+      title="Switch to dark theme"
+    >
+      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20.2 15.2A8.5 8.5 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z"></path>
+      </svg>
+      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.5"></circle>
+        <path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"></path>
+      </svg>
+    </button>
     <main class="not-found-shell">
       <img src="assets/logo.svg" alt="Solana Validator Watcher logo" width="80" height="80">
       <p class="eyebrow">404</p>
