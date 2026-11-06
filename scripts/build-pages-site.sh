@@ -62,5 +62,6 @@ app_asset="$(fingerprint_asset "app.js")"
 replace_asset_reference "${output_dir}/index.html" "styles.css" "${styles_asset}"
 replace_asset_reference "${output_dir}/404.html" "styles.css" "${styles_asset}"
 replace_asset_reference "${output_dir}/index.html" "app.js" "${app_asset}"
+replace_asset_reference "${output_dir}/404.html" "app.js" "${app_asset}"
 
 touch "${output_dir}/.nojekyll"

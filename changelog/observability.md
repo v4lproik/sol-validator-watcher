@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a persistent light/dark Pages theme with system-default initialization, pre-paint application, accessible controls, and responsive homepage and 404 surfaces.
 - Published content-fingerprinted Pages styles and interactions so the dashboard-led homepage remains coherent across browser and CDN cache boundaries.
 - Rebuilt the Pages homepage as a responsive dashboard-led product story with real Overview, Leadership, Consensus, and Economics captures, accessible gallery controls, operator workflow guidance, and a repository-owned local quick start.
 - Added build, active-configuration, reload-outcome, command-fallback, block-fee cache, and provider-method request metrics plus tested alerts for rejected reloads, sustained failover, and ineffective block-fee caching.
