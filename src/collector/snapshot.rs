@@ -288,41 +288,25 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         next_schedule: next_schedule.as_ref(),
         latest_epoch_rewards: &inflation_rewards,
     };
-    let mut records = Vec::with_capacity(
-        vote_accounts.value.current.len() + vote_accounts.value.delinquent.len(),
-    );
+    let records = vote_accounts
+        .value
+        .current
+        .into_iter()
+        .map(|info| build_record(info, ValidatorStatus::Current, &build_context))
+        .chain(
+            vote_accounts
+                .value
+                .delinquent
+                .into_iter()
+                .map(|info| build_record(info, ValidatorStatus::Delinquent, &build_context)),
+        )
+        .collect::<Vec<_>>();
 
-    for info in vote_accounts.value.current {
-        records.push(build_record(info, ValidatorStatus::Current, &build_context));
-    }
-    for info in vote_accounts.value.delinquent {
-        records.push(build_record(
-            info,
-            ValidatorStatus::Delinquent,
-            &build_context,
-        ));
-    }
-
-    let mut snapshot = aggregate_records(
-        config.network.clone(),
-        epoch_info.value.epoch,
-        current_slot,
-        &records,
-    );
-    snapshot.epoch_slots = epoch_info.value.slots_in_epoch;
-    snapshot.epoch_progress_pct =
-        ratio(epoch_info.value.slot_index, epoch_info.value.slots_in_epoch);
-    snapshot.epoch_slots_remaining = epoch_info
+    let epoch_slots_remaining = epoch_info
         .value
         .slots_in_epoch
         .saturating_sub(epoch_info.value.slot_index);
-    snapshot.cluster_performance = cluster_performance;
-    snapshot.estimated_epoch_end_unixtime =
-        estimated_epoch_end_unixtime(snapshot.epoch_slots_remaining, average_slot_time_seconds);
-    snapshot.data_sources = data_sources;
-    snapshot.economics = economics;
-    snapshot.node = node;
-    snapshot.mode_statuses = vec![
+    let mode_statuses = [
         ModeStatus {
             mode: ModeId::Consensus,
             up: true,
@@ -331,14 +315,35 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
             mode: ModeId::Leadership,
             up: leadership_up,
         },
-    ];
-    if economics_enabled {
-        snapshot.mode_statuses.push(ModeStatus {
-            mode: ModeId::Economics,
-            up: true,
-        });
-    }
-    Ok(snapshot)
+    ]
+    .into_iter()
+    .chain(economics_enabled.then_some(ModeStatus {
+        mode: ModeId::Economics,
+        up: true,
+    }))
+    .collect();
+    let snapshot = aggregate_records(
+        config.network.clone(),
+        epoch_info.value.epoch,
+        current_slot,
+        &records,
+    );
+
+    Ok(Snapshot {
+        epoch_slots: epoch_info.value.slots_in_epoch,
+        epoch_progress_pct: ratio(epoch_info.value.slot_index, epoch_info.value.slots_in_epoch),
+        epoch_slots_remaining,
+        cluster_performance,
+        estimated_epoch_end_unixtime: estimated_epoch_end_unixtime(
+            epoch_slots_remaining,
+            average_slot_time_seconds,
+        ),
+        data_sources,
+        economics,
+        node,
+        mode_statuses,
+        ..snapshot
+    })
 }
 
 fn recent_completed_leader_slots(

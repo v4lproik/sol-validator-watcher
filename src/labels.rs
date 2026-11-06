@@ -26,10 +26,7 @@ impl LabelMatcher {
         let mut matcher = Self::default();
 
         for watched in &config.watched_validators {
-            let mut user_labels = BTreeSet::new();
-            for label in &watched.labels {
-                user_labels.insert(label.clone());
-            }
+            let user_labels = watched.labels.iter().cloned().collect::<BTreeSet<_>>();
 
             if let Some(identity) = &watched.identity {
                 matcher
@@ -52,26 +49,29 @@ impl LabelMatcher {
 
     /// Returns sorted, deduplicated built-in and configured labels for a validator.
     pub fn labels_for(&self, identity: &str, vote_account: &str) -> Vec<String> {
-        let mut labels = BTreeSet::from([LABEL_SCOPE_ALL_NETWORK.to_string()]);
-        let mut watched = false;
-
-        if let Some(extra_labels) = self.by_identity.get(identity) {
-            watched = true;
-            labels.extend(extra_labels.iter().cloned());
-        }
-
-        if let Some(extra_labels) = self.by_vote_account.get(vote_account) {
-            watched = true;
-            labels.extend(extra_labels.iter().cloned());
-        }
-
-        if watched {
-            labels.insert(LABEL_SCOPE_WATCHED.to_string());
+        let identity_labels = self.by_identity.get(identity);
+        let vote_account_labels = self.by_vote_account.get(vote_account);
+        let scope = if identity_labels.is_some() || vote_account_labels.is_some() {
+            LABEL_SCOPE_WATCHED
         } else {
-            labels.insert(LABEL_SCOPE_NETWORK.to_string());
-        }
+            LABEL_SCOPE_NETWORK
+        };
 
-        labels.into_iter().collect()
+        std::iter::once(LABEL_SCOPE_ALL_NETWORK.to_string())
+            .chain(
+                identity_labels
+                    .into_iter()
+                    .flat_map(|labels| labels.iter().cloned()),
+            )
+            .chain(
+                vote_account_labels
+                    .into_iter()
+                    .flat_map(|labels| labels.iter().cloned()),
+            )
+            .chain(std::iter::once(scope.to_string()))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 }
 
