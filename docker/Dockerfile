@@ -1,6 +1,6 @@
 # Build callers replace this sentinel with the Rust pin from mise.toml.
 ARG RUST_VERSION=required
-FROM rust:${RUST_VERSION}-bookworm@sha256:7085845219c18e7c5b1f34ed9ce89b84f822f2e3d54a02774cedc996ac0f304f AS builder
+FROM rust:${RUST_VERSION}-bookworm AS builder
 ARG SOL_WATCHER_BUILD_REVISION=unknown
 
 WORKDIR /app
