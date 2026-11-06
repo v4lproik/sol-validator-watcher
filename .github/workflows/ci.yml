@@ -27,10 +27,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install toolchain with mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v5
 
       - name: Verify toolchain
         run: just rust doctor
@@ -54,14 +54,14 @@ jobs:
         run: just coverage html
 
       - name: Upload LCOV artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-lcov
           path: lcov.info
           if-no-files-found: error
 
       - name: Upload HTML coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: coverage
@@ -69,7 +69,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ !github.event.repository.private || env.CODECOV_TOKEN != '' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./lcov.info
           flags: unit
