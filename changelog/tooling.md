@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fingerprinted the Pages CSS and JavaScript filenames from their content during site assembly so new HTML cannot reuse stale cached runtime assets after deployment.
 - Added pull-request exact-image build, readiness smoke, and vulnerability scanning; published-digest smoke plus per-architecture scans; scheduled pinned Surfpool compatibility checks; Rust dependency policy, repository and image scanners; Dependabot updates; immutable version-tag releases; and maintained major-version workflow action references.
 - Added repository guidance and `just production`/`just security` command families for versioned, digest-pinned production validation, alert delivery, rollout, rollback, and security gates.
 - Raised local and CI line and region coverage gates to 90 percent and aligned the Codecov project target.
