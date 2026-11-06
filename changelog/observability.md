@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rebuilt the Pages homepage as a responsive dashboard-led product story with real Overview, Leadership, Consensus, and Economics captures, accessible gallery controls, operator workflow guidance, and a repository-owned local quick start.
 - Added build, active-configuration, reload-outcome, command-fallback, block-fee cache, and provider-method request metrics plus tested alerts for rejected reloads, sustained failover, and ineffective block-fee caching.
 - Provisioned the production Prometheus scrape, bounded retention, Alertmanager routing/inhibition, and a synthetic notification-delivery check while retaining operator ownership of the external receiver.
 - Added watched-validator filtering, reward snapshots, data-availability status, and per-validator inflation-reward, reward-epoch block, and reward-per-block history panels to the economics dashboard while separating configured-target panels and rendering absent reward samples as no data.
