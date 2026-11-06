@@ -47,11 +47,13 @@ async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
 }
 
 #[tokio::test]
-async fn get_recent_block_fee_rewards_batches_slots_and_skips_missed_blocks() -> Result<()> {
+async fn finalized_block_fee_rewards_cache_produced_blocks_and_retry_skipped_slots() -> Result<()> {
     let (rpc_url, server_task, requests) =
         start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let mut transport = rpc_transport(&rpc_url, 5);
+    transport.commitment = "finalized".to_string();
     let client = RpcClient::try_new(
-        &rpc_transport(&rpc_url, 5),
+        &transport,
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("block-reward-rpc"),
     )?;
 
@@ -93,7 +95,7 @@ async fn get_recent_block_fee_rewards_batches_slots_and_skips_missed_blocks() ->
             "params": [
                 802,
                 {
-                    "commitment": "confirmed",
+                    "commitment": "finalized",
                     "transactionDetails": "none",
                     "rewards": true
                 }
@@ -109,13 +111,47 @@ async fn get_recent_block_fee_rewards_batches_slots_and_skips_missed_blocks() ->
             "params": [
                 805,
                 {
-                    "commitment": "confirmed",
+                    "commitment": "finalized",
                     "transactionDetails": "none",
                     "rewards": true
                 }
             ]
         })
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn confirmed_block_fee_rewards_are_refetched() -> Result<()> {
+    let (rpc_url, server_task, requests) =
+        start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let client = RpcClient::try_new(
+        &rpc_transport(&rpc_url, 5),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("block-reward-rpc"),
+    )?;
+
+    for _ in 0..2 {
+        client
+            .get_recent_block_fee_rewards(&[805, 802, 800], "id-1")
+            .await?
+            .ok_or_else(|| anyhow!("missing confirmed recent block fee rewards"))?;
+    }
+    server_task.abort();
+
+    let recorded = requests.lock().await;
+    assert_eq!(recorded.len(), 2);
+    for request in recorded.iter() {
+        let batch = request
+            .as_array()
+            .ok_or_else(|| anyhow!("getBlock requests were not sent as a JSON-RPC batch"))?;
+        assert_eq!(batch.len(), 3);
+        assert!(batch.iter().all(|request| {
+            request
+                .pointer("/params/1/commitment")
+                .and_then(Value::as_str)
+                == Some("confirmed")
+        }));
+    }
     Ok(())
 }
 #[tokio::test]

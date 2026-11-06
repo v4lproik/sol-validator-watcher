@@ -33,12 +33,24 @@ SOL_WATCHER_IMAGE="$candidate" WATCHER_MAINNET_METRICS_PORT="$metrics_port" \
 curl -fsS --retry 90 --retry-all-errors --retry-delay 3 --retry-max-time 300 \
   "http://127.0.0.1:${metrics_port}/readyz" >/dev/null
 curl -fsS "http://127.0.0.1:${metrics_port}/metrics" | python3 -c '
+import re
 import sys
+
 metrics = sys.stdin.read()
-if "sol_watcher_ready" not in metrics:
-    raise SystemExit("canary metrics omitted watcher readiness")
-if "sol_watcher_build_info" not in metrics or "revision=\"unknown\"" in metrics:
+
+def metric_value(name):
+    match = re.search(rf"^{name}\{{[^}}]*\}} ([0-9]+)$", metrics, re.MULTILINE)
+    if match is None:
+        raise SystemExit(f"canary metrics omitted {name}")
+    return int(match.group(1))
+
+if metric_value("sol_watcher_ready") != 1:
+    raise SystemExit("canary readiness metric did not report admission")
+if metric_value("sol_watcher_clean_poll_streak") < 5:
+    raise SystemExit("canary clean-poll streak did not reach five")
+if "sol_watcher_build_info{" not in metrics or "revision=\"unknown\"" in metrics:
     raise SystemExit("canary image omitted an immutable build revision")
+
 '
 
 container_id=$(SOL_WATCHER_IMAGE="$candidate" WATCHER_MAINNET_METRICS_PORT="$metrics_port" \

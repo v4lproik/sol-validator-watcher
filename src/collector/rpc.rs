@@ -597,9 +597,10 @@ impl RpcClient {
     }
     /// Returns validator fee rewards from a bounded batch of recent assigned slots.
     ///
-    /// Skipped slots are omitted. A produced block must contain exactly one
-    /// non-negative fee reward for `identity`; malformed rewards fail the command so
-    /// the configured connector fallback can run.
+    /// Skipped slots are omitted. Finalized produced blocks are cached by slot;
+    /// confirmed responses are always fetched because they may be rolled back. A
+    /// produced block must contain exactly one non-negative fee reward for
+    /// `identity`; malformed rewards fail the command so connector fallback can run.
     pub(super) async fn get_recent_block_fee_rewards(
         &self,
         slots: &[u64],
@@ -618,13 +619,20 @@ impl RpcClient {
             return Ok(None);
         }
 
+        let cache_enabled = self.block_fee_cache_enabled();
         let plan = self.plan_block_fee_rewards(slots).await;
-        let misses = u64::try_from(plan.missing_slots.len())
-            .context("block-fee cache miss count does not fit u64")?;
-        let hits = u64::try_from(slots.len() - plan.missing_slots.len())
-            .context("block-fee cache hit count does not fit u64")?;
+        let methods_requested = u64::try_from(plan.missing_slots.len())
+            .context("block-fee method request count does not fit u64")?;
+        let (hits, misses) = if cache_enabled {
+            let misses = methods_requested;
+            let hits = u64::try_from(slots.len() - plan.missing_slots.len())
+                .context("block-fee cache hit count does not fit u64")?;
+            (hits, misses)
+        } else {
+            (0, 0)
+        };
         self.telemetry
-            .record_block_fee_cache(hits, misses, misses)?;
+            .record_block_fee_cache(hits, misses, methods_requested)?;
 
         let started_at = Instant::now();
         let result = self.resolve_block_fee_rewards(slots, identity, plan).await;
@@ -633,7 +641,7 @@ impl RpcClient {
         } else {
             RpcRequestOutcome::Failed
         };
-        let telemetry_result = if misses == 0 {
+        let telemetry_result = if methods_requested == 0 {
             if result.is_err() {
                 self.telemetry.record_failure("getBlock")
             } else {
@@ -670,7 +678,18 @@ impl RpcClient {
         Ok(())
     }
 
+    fn block_fee_cache_enabled(&self) -> bool {
+        self.commitment == "finalized"
+    }
+
     async fn plan_block_fee_rewards(&self, slots: &[u64]) -> BlockFeeRewardPlan {
+        if !self.block_fee_cache_enabled() {
+            return BlockFeeRewardPlan {
+                by_slot: HashMap::with_capacity(slots.len()),
+                missing_slots: slots.to_vec(),
+            };
+        }
+
         let cache = self.block_fee_reward_cache.lock().await;
         let mut by_slot = HashMap::with_capacity(slots.len());
         let mut missing_slots = Vec::with_capacity(slots.len());
@@ -781,6 +800,9 @@ impl RpcClient {
     }
 
     async fn cache_block_fee_responses(&self, fetched: &HashMap<u64, CachedBlockResponse>) {
+        if !self.block_fee_cache_enabled() {
+            return;
+        }
         let mut cache = self.block_fee_reward_cache.lock().await;
         for (slot, block) in fetched {
             if let Some(block) = block {

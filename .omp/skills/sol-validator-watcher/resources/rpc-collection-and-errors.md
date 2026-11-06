@@ -142,8 +142,9 @@ probes, and economics collection.
   validator/epoch reward for the source-chain lifetime; cache absence only for
   the upstream cache window so late settlement can appear without per-poll
   history downloads.
-- Cache immutable confirmed `getBlock` fee samples by slot for the client
-  lifetime. Request only cache misses, preserve input ordering, and export
+- Cache immutable finalized `getBlock` fee samples by slot for the client
+  lifetime. Confirmed samples are never cached because they can be rolled back.
+  Request only finalized cache misses, preserve input ordering, and export
   connector-level hit, miss, and requested-method totals so provider load stays
   auditable.
 

@@ -4,8 +4,8 @@ set working-directory := '..'
 _require-cli:
   if ! command -v surfpool >/dev/null 2>&1; then echo "surfpool CLI not found. Run: just surfpool install" >&2; exit 1; fi
 
-install destination="$HOME/.local/bin":
-  scripts/install-surfpool.sh {{quote(destination)}}
+install destination="":
+  destination={{quote(destination)}}; if [[ -n "${destination}" ]]; then scripts/install-surfpool.sh "${destination}"; else scripts/install-surfpool.sh; fi
 
 doctor:
   command -v surfpool >/dev/null 2>&1

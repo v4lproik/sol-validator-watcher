@@ -210,14 +210,14 @@ impl Metrics {
         let sol_rpc_block_fee_cache_accesses_total = IntCounterVec::new(
             Opts::new(
                 "sol_rpc_block_fee_cache_accesses_total",
-                "Confirmed block-fee cache lookups by connector and outcome",
+                "Finalized block-fee cache lookups by connector and outcome",
             ),
             &["network", "connector", "outcome"],
         )?;
         let sol_rpc_block_fee_methods_requested_total = IntCounterVec::new(
             Opts::new(
                 "sol_rpc_block_fee_methods_requested_total",
-                "getBlock methods sent for confirmed block-fee samples",
+                "getBlock methods sent for block-fee samples",
             ),
             &["network", "connector"],
         )?;

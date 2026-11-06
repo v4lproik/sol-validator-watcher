@@ -315,7 +315,7 @@ impl ConnectorRpcTelemetry {
             .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC failure"))
     }
 
-    /// Queues bounded confirmed-block cache and JSON-RPC method counts.
+    /// Queues bounded finalized-block cache and JSON-RPC method counts.
     pub(crate) fn record_block_fee_cache(
         &self,
         hits: u64,

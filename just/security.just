@@ -13,6 +13,6 @@ dependencies:
 repository:
   mise exec -- trivy fs --db-repository ghcr.io/aquasecurity/trivy-db:2 --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress --skip-dirs target --skip-dirs coverage --skip-files docker/Dockerfile.dockerignore .
 
-# Scan the exact locally available container image before publication.
-image image:
-  mise exec -- trivy image --db-repository ghcr.io/aquasecurity/trivy-db:2 --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress {{quote(image)}}
+# Scan an exact local or registry image, optionally for one platform.
+image image platform="":
+  platform={{quote(platform)}}; args=(); if [[ -n "${platform}" ]]; then args+=(--platform "${platform}"); fi; mise exec -- trivy image "${args[@]}" --db-repository ghcr.io/aquasecurity/trivy-db:2 --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress {{quote(image)}}

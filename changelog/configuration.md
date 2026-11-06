@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added a validated connector-local `response_size_limit_bytes` setting with a 32 MiB default and explicit values in every committed RPC profile.
+- Added a validated connector-local `response_size_limit_bytes` setting with a 32 MiB default and explicit values in every committed RPC profile; the Mainnet block-fee source now uses finalized commitment so cached blocks cannot be rolled back.
 - Added the `block-fee-rewards` provider feature and optional economics `recent_block_fee_rewards` route, requiring an extended RPC endpoint with confirmed or finalized commitment and explicit connector capability.
 - Replaced flat connector endpoint fields with nested `rpc`, `websocket`, and `provider_api` transport tables that own URLs, sensitive headers, connect/request/handshake deadlines, and RPC commitment without compatibility aliases.
 - Added case-normalized header validation, protocol-owned header protection, redirect denial, contradictory-timeout rejection, secure TLS-only configuration, redacted transport debug output, and source-free TOML parse diagnostics that retain safe line/column locations for expanded credentials.

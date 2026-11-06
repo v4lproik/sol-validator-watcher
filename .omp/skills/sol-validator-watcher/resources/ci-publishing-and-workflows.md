@@ -71,6 +71,9 @@ checks.
 - Pull requests build one exact `linux/amd64` verification image, run it against
   controlled RPC responses, fetch readiness/build identity, stop it cleanly,
   and scan that same local image before any registry publication.
+- After publication, pull and smoke the pushed multi-architecture digest on
+  `linux/amd64`, then scan both `linux/amd64` and `linux/arm64` manifests. A
+  pre-publication build does not prove the registry digest.
 - `.github/workflows/container.yml` publishes to GHCR only from `main`, version
   tags, or explicit dispatch according to its trigger contract.
 - Preserve branch/tag metadata, full-commit SHA tags, and default-branch

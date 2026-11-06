@@ -105,9 +105,10 @@ Grafana includes overview, consensus, leadership, and economics dashboards. The 
 
 Pull requests build, smoke, and vulnerability-scan the exact `linux/amd64`
 container after repository CI passes. Main-branch and version-tag workflows then
-publish multi-architecture GHCR images for the same revision with provenance,
-an SBOM, and a GitHub artifact attestation. A version tag also creates release
-notes containing the immutable image digest.
+publish multi-architecture GHCR images for the same revision, smoke the pushed
+digest, scan both published architectures, and attach provenance, an SBOM, and a
+GitHub artifact attestation. A version tag also creates release notes containing
+the immutable image digest.
 
 ```bash
 gh attestation verify \

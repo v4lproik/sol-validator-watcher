@@ -198,7 +198,7 @@ impl Metrics {
             .inc();
     }
 
-    /// Records confirmed-block cache lookups and the methods sent in a JSON-RPC batch.
+    /// Records finalized-block cache lookups and the methods sent in a JSON-RPC batch.
     pub fn record_block_fee_cache(
         &self,
         network: &str,

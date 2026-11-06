@@ -170,3 +170,28 @@ groups:
         annotations:
           summary: "{{ $labels.command }} is using fallback connector {{ $labels.connector }}"
           description: "Mode {{ $labels.mode }} has used a non-primary connector for at least ten minutes."
+
+      - alert: SolValidatorWatcherBlockFeeCacheIneffective
+        expr: |
+          sum by (job, instance, deployment, network, connector) (
+            increase(sol_rpc_block_fee_methods_requested_total[15m])
+          ) > 128
+          and on(job, instance, deployment, network, connector)
+          (
+            sum by (job, instance, deployment, network, connector) (
+              increase(sol_rpc_block_fee_cache_accesses_total{outcome="miss"}[15m])
+            )
+            /
+            clamp_min(
+              sum by (job, instance, deployment, network, connector) (
+                increase(sol_rpc_block_fee_cache_accesses_total[15m])
+              ),
+              1
+            )
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Block-fee cache is ineffective for {{ $labels.connector }}"
+          description: "The finalized block-fee route has a sustained cache-miss majority and is sending excessive getBlock methods."

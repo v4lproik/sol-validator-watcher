@@ -322,3 +322,37 @@ tests:
             exp_annotations:
               summary: "epoch-info is using fallback connector backup-rpc"
               description: "Mode consensus has used a non-primary connector for at least ten minutes."
+
+  - name: ineffective finalized block fee cache alert
+    interval: 1m
+    input_series:
+      - series: 'sol_rpc_block_fee_methods_requested_total{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",connector="mainnet-rpc"}'
+        values: '0+20x15'
+      - series: 'sol_rpc_block_fee_cache_accesses_total{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",connector="mainnet-rpc",outcome="miss"}'
+        values: '0+15x15'
+      - series: 'sol_rpc_block_fee_cache_accesses_total{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",connector="mainnet-rpc",outcome="hit"}'
+        values: '0+5x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SolValidatorWatcherBlockFeeCacheIneffective
+        exp_alerts:
+          - exp_labels:
+              connector: mainnet-rpc
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "Block-fee cache is ineffective for mainnet-rpc"
+              description: "The finalized block-fee route has a sustained cache-miss majority and is sending excessive getBlock methods."
+
+  - name: uncacheable confirmed block fee requests do not alert
+    interval: 1m
+    input_series:
+      - series: 'sol_rpc_block_fee_methods_requested_total{job="sol-validator-watcher",instance="watcher:8000",deployment="devnet",network="devnet",connector="devnet-rpc"}'
+        values: '0+32x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SolValidatorWatcherBlockFeeCacheIneffective
+        exp_alerts: []

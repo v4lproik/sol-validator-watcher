@@ -176,11 +176,12 @@ its receiver URL is supplied from the secret file.
 
 ## Release
 
-After a reviewed commit passes required CI, security, exact-image smoke, and
-container scan checks, create an annotated `vMAJOR.MINOR.PATCH` tag. The
-container workflow publishes the digest-pinned multi-architecture image,
-generates its SBOM and provenance attestation, verifies the attestation, and
-creates GitHub-generated release notes containing the immutable image reference.
+After a reviewed commit passes required CI, security, and pull-request
+exact-image checks, create an annotated `vMAJOR.MINOR.PATCH` tag. The container
+workflow publishes the digest-pinned multi-architecture image, smokes the pushed
+digest, scans both published architectures, generates its SBOM and provenance
+attestation, verifies the attestation, and creates GitHub-generated release
+notes containing the immutable image reference.
 Published releases are repository-immutable: their tags and assets cannot be
 changed or deleted. Keep the previous production digest through the observation
 window; never roll back to a mutable tag.

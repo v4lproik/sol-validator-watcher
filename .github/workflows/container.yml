@@ -157,6 +157,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Pull and smoke published digest
+        shell: bash
+        run: |
+          image="${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}"
+          docker pull --platform linux/amd64 "${image}"
+          just container smoke "${image}" "${GITHUB_SHA}"
+
+      - name: Scan every published architecture
+        shell: bash
+        run: |
+          image="${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}"
+          just security image "${image}" linux/amd64
+          just security image "${image}" linux/arm64
+
       - name: Generate artifact attestation
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
