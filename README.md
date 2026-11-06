@@ -4,7 +4,14 @@
 
 <h1 align="center">Solana Validator Watcher</h1>
 
-[![codecov](https://codecov.io/gh/v4lproik/sol-validator-watcher/graph/badge.svg?token=V3PM3PQJ49)](https://codecov.io/gh/v4lproik/sol-validator-watcher)
+<p align="center">
+  <a href="https://github.com/v4lproik/sol-validator-watcher/actions/workflows/ci.yml"><img src="https://github.com/v4lproik/sol-validator-watcher/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
+  <a href="https://github.com/v4lproik/sol-validator-watcher/actions/workflows/security.yml"><img src="https://github.com/v4lproik/sol-validator-watcher/actions/workflows/security.yml/badge.svg?branch=main" alt="Security status"></a>
+  <a href="https://github.com/v4lproik/sol-validator-watcher/actions/workflows/coverage-pages.yml"><img src="https://github.com/v4lproik/sol-validator-watcher/actions/workflows/coverage-pages.yml/badge.svg?branch=main" alt="Pages deployment status"></a>
+  <a href="https://codecov.io/gh/v4lproik/sol-validator-watcher"><img src="https://codecov.io/gh/v4lproik/sol-validator-watcher/graph/badge.svg?token=V3PM3PQJ49" alt="Code coverage"></a>
+  <a href="#published-images"><img src="https://img.shields.io/badge/Docker-multi--arch-2496ED?logo=docker&amp;logoColor=white" alt="Docker images for AMD64 and ARM64"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/v4lproik/sol-validator-watcher" alt="MIT license"></a>
+</p>
 
 <p align="center">
   Prometheus monitoring and Grafana dashboards for Solana validator operators.
