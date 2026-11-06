@@ -740,19 +740,17 @@ fn validates_block_fee_reward_feature_commitment_and_route() -> Result<()> {
         labels: vec![],
     });
     config.modes.economics.commands.recent_block_fee_rewards = vec!["primary".to_string()];
-    config.connectors[0]
-        .features
-        .push(ProviderFeature::BlockFeeRewards);
-    let mut config = config.into_validated()?;
-    config.connectors[0]
-        .features
-        .retain(|feature| *feature != ProviderFeature::BlockFeeRewards);
-    let Err(error) = config.into_validated() else {
+    let Err(error) = config.clone().into_validated() else {
         anyhow::bail!("block fee reward route without declared feature should fail");
     };
     assert!(error
         .to_string()
         .contains("requires provider feature \"block-fee-rewards\""));
+
+    config.connectors[0]
+        .features
+        .push(ProviderFeature::BlockFeeRewards);
+    config.into_validated()?;
     Ok(())
 }
 
