@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-image=${1:?usage: test-alertmanager-delivery.sh <alertmanager-image@sha256:digest>}
-if [[ ! "$image" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
-  echo "Alertmanager smoke image must be pinned by sha256 digest: $image" >&2
+image=${1:?usage: test-alertmanager-delivery.sh <alertmanager-image:vMAJOR.MINOR.PATCH@sha256:digest>}
+if [[ ! "$image" =~ ^[^[:space:]@]+:v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?@sha256:[0-9a-f]{64}$ ]]; then
+  echo "Alertmanager smoke image must include a semantic version tag and immutable sha256 digest: $image" >&2
   exit 1
 fi
 

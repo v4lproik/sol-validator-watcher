@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Added pull-request exact-image build, readiness smoke, and vulnerability scanning; published-digest smoke plus per-architecture scans; scheduled pinned Surfpool compatibility checks; Rust dependency policy, repository and image scanners; Dependabot updates; immutable version-tag releases; and commit-pinned workflow actions.
-- Added repository guidance and `just production`/`just security` command families for production validation, alert delivery, rollout, rollback, and security gates.
+- Added pull-request exact-image build, readiness smoke, and vulnerability scanning; published-digest smoke plus per-architecture scans; scheduled pinned Surfpool compatibility checks; Rust dependency policy, repository and image scanners; Dependabot updates; immutable version-tag releases; and maintained major-version workflow action references.
+- Added repository guidance and `just production`/`just security` command families for versioned, digest-pinned production validation, alert delivery, rollout, rollback, and security gates.
 - Raised local and CI line and region coverage gates to 90 percent and aligned the Codecov project target.
 - Reworked the README into a concise setup, configuration, operations, and contribution guide while retaining implementation details in module changelogs and repository guidance.
 - Documented bounded recent block-fee collection, identity validation, connector fallback, Harmonic attribution limits, and the required RPC boundary proofs.

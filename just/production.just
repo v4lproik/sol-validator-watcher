@@ -1,8 +1,8 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set working-directory := '..'
 
-prometheus_tool_image := "prom/prometheus@sha256:1f0f50f06acaceb0f5670d2c8a658a599affe7b0d8e78b898c1035653849a702"
-alertmanager_tool_image := "prom/alertmanager@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba"
+prometheus_tool_image := "prom/prometheus:v3.9.1@sha256:1f0f50f06acaceb0f5670d2c8a658a599affe7b0d8e78b898c1035653849a702"
+alertmanager_tool_image := "prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba"
 
 # Validate Compose, Prometheus, alert rules, and Alertmanager configuration.
 check env_file=".env.production":
@@ -19,7 +19,7 @@ test-alert-delivery:
 canary env_file candidate:
   scripts/canary-production.sh {{quote(env_file)}} {{quote(candidate)}}
 
-# Persist a canary-approved image digest and roll it out with automatic restore on failure.
+# Persist a canary-approved versioned image digest and roll it out with automatic restore on failure.
 rollout env_file candidate:
   scripts/rollout-production.sh {{quote(env_file)}} {{quote(candidate)}}
 
@@ -27,11 +27,11 @@ rollout env_file candidate:
 rollback env_file=".env.production":
   scripts/rollback-production.sh {{quote(env_file)}}
 
-# Validate and render the digest-pinned production stack.
+# Validate and render the versioned, digest-pinned production stack.
 config env_file=".env.production":
   scripts/production-stack.sh config {{quote(env_file)}}
 
-# Pull and start the digest-pinned production stack, then wait for health.
+# Pull and start the versioned, digest-pinned production stack, then wait for health.
 up env_file=".env.production":
   scripts/production-stack.sh up {{quote(env_file)}}
 

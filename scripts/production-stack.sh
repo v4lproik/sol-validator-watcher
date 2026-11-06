@@ -24,8 +24,8 @@ validate_images() {
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
     found=true
-    if [[ ! "$image" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
-      echo "production image is not pinned by sha256 digest: $image" >&2
+    if [[ ! "$image" =~ ^[^[:space:]@]+:v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?@sha256:[0-9a-f]{64}$ ]]; then
+      echo "production image must include a semantic version tag and immutable sha256 digest: $image" >&2
       exit 1
     fi
   done < <("${compose[@]}" config --images)

@@ -18,8 +18,8 @@ lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 values = [line.split("=", 1)[1].strip() for line in lines if line.startswith("SOL_WATCHER_IMAGE=")]
 if len(values) != 1:
     raise SystemExit("rollback environment must contain exactly one SOL_WATCHER_IMAGE entry")
-if re.fullmatch(r"\S+@sha256:[0-9a-f]{64}", values[0]) is None:
-    raise SystemExit("rollback SOL_WATCHER_IMAGE is not digest-pinned")
+if re.fullmatch(r"\S+:v?\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?@sha256:[0-9a-f]{64}", values[0]) is None:
+    raise SystemExit("rollback SOL_WATCHER_IMAGE must include a semantic version tag and immutable digest")
 print(values[0])
 PY
 )

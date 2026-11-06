@@ -7,8 +7,9 @@ a validator or expose public ports.
 
 ## Production contract
 
-- Deploy only `ghcr.io/v4lproik/sol-validator-watcher@sha256:<digest>` values.
-  Mutable tags such as `latest` are rejected.
+- Deploy only semantically versioned, digest-pinned references such as
+  `ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<digest>`.
+  Mutable aliases such as `latest` and digest-only references are rejected.
 - Run one watcher replica per profile. A second active replica duplicates RPC
   traffic and alert series.
 - Keep `8003`, `9090`, `3001`, and `9093` bound to loopback. Use an SSH tunnel or
@@ -35,14 +36,14 @@ a validator or expose public ports.
      /etc/sol-validator-watcher/watcher.env
    ```
 
-3. Set `SOL_WATCHER_IMAGE` to the immutable image digest, fill the Mainnet RPC
-   URLs, and write the Grafana password and complete alert receiver URL to their
-   secret files. Never put credentials on a command line.
+3. Set `SOL_WATCHER_IMAGE` to the release version bound to its immutable image
+   digest, fill the Mainnet RPC URLs, and write the Grafana password and complete
+   alert receiver URL to their secret files. Never put credentials on a command line.
 4. Verify the image attestation:
 
    ```bash
    gh attestation verify \
-     oci://ghcr.io/v4lproik/sol-validator-watcher@sha256:<digest> \
+     oci://ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<digest> \
      --repo v4lproik/sol-validator-watcher \
      --signer-workflow v4lproik/sol-validator-watcher/.github/workflows/container.yml
    ```
@@ -60,7 +61,7 @@ Use a canary before replacing the production watcher:
 ```bash
 just production canary \
   /etc/sol-validator-watcher/production.env \
-  ghcr.io/v4lproik/sol-validator-watcher@sha256:<candidate-digest>
+  ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<candidate-digest>
 ```
 
 The canary uses the production profile and secrets but does not publish ports or
@@ -72,13 +73,13 @@ Roll out the candidate only after the canary passes:
 ```bash
 just production rollout \
   /etc/sol-validator-watcher/production.env \
-  ghcr.io/v4lproik/sol-validator-watcher@sha256:<candidate-digest>
+  ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<candidate-digest>
 ```
 
 The rollout deliberately repeats the canary so it never relies on stale
 verification. It stores the previous environment as `production.env.rollback`,
-starts the digest-pinned stack, and requires both `/healthz` and `/readyz` to
-succeed. A failed rollout restores the prior digest and revalidates readiness.
+starts the versioned, digest-pinned stack, and requires both `/healthz` and
+`/readyz` to succeed. A failed rollout restores the prior reference and revalidates readiness.
 
 ## Verify
 
@@ -178,10 +179,10 @@ its receiver URL is supplied from the secret file.
 
 After a reviewed commit passes required CI, security, and pull-request
 exact-image checks, create an annotated `vMAJOR.MINOR.PATCH` tag. The container
-workflow publishes the digest-pinned multi-architecture image, smokes the pushed
-digest, scans both published architectures, generates its SBOM and provenance
-attestation, verifies the attestation, and creates GitHub-generated release
-notes containing the immutable image reference.
+workflow publishes a versioned multi-architecture image bound to its immutable
+digest, smokes that pushed digest, scans both published architectures, generates
+its SBOM and provenance attestation, verifies the attestation, and creates
+GitHub-generated release notes containing the immutable image reference.
 Published releases are repository-immutable: their tags and assets cannot be
-changed or deleted. Keep the previous production digest through the observation
+changed or deleted. Keep the previous versioned digest through the observation
 window; never roll back to a mutable tag.

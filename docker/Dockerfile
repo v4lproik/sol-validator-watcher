@@ -10,7 +10,7 @@ COPY src ./src
 COPY benches ./benches
 RUN SOL_WATCHER_BUILD_REVISION="${SOL_WATCHER_BUILD_REVISION}" cargo build --locked --release
 
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+FROM debian:12.15-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \

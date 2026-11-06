@@ -37,9 +37,9 @@ checks.
   read-only build or test job.
 - Concurrency cancellation is acceptable for stale pull-request revisions. A
   completed run must match the exact commit being reviewed.
-- Actions must be pinned to an intentional release reference consistent with
-  repository policy. Review deprecation annotations rather than suppressing
-  them.
+- Actions use maintained major-version release references such as `@v5`.
+  Dependabot owns update proposals; review deprecation annotations rather than
+  suppressing them.
 - Repository security workflows use pinned scanner versions, deny warnings, and
   fail on actionable dependency, image, secret, or configuration findings.
   Dependabot covers Cargo, Docker, and GitHub Actions dependencies.

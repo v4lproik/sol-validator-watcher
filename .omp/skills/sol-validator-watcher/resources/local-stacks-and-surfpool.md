@@ -56,10 +56,10 @@ image builds, stack inspection, and teardown.
   installing a second HTTP client. Recoverable dependency failures affect
   readiness, not container health.
 - `docker/compose.production.yaml` is the supported production stack. Every
-  image is digest-pinned, every published port is loopback-only, credentials
-  use Compose secret files, services have explicit resource/log limits, and
-  Prometheus retention is bounded. Production lifecycle changes go through
-  `just production`, not the development stack recipes.
+  image retains an explicit semantic release tag and is bound to an immutable
+  digest, every published port is loopback-only, credentials use Compose secret
+  files, services have explicit resource/log limits, and Prometheus retention
+  is bounded. Production lifecycle changes go through `just production`, not the development stack recipes.
 - Never commit `.env`, RPC credentials, websocket tokens, private validator
   material, or rendered secret values.
 

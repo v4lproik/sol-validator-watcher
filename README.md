@@ -69,18 +69,18 @@ Use `just stack ps <target>` and `just stack logs <target>` to inspect a stack. 
 
 ## Production
 
-The supported single-host Mainnet deployment uses only immutable image digests,
-keeps every published port on loopback, applies service resource and log limits,
-and includes Prometheus, Grafana, and Alertmanager.
+The supported single-host Mainnet deployment uses explicit image versions
+bound to immutable manifest digests, keeps every published port on loopback,
+applies service resource and log limits, and includes Prometheus, Grafana, and Alertmanager.
 
 ```bash
 cp .env.production.example /etc/sol-validator-watcher/production.env
 cp .env.production.watcher.example /etc/sol-validator-watcher/watcher.env
 just production check /etc/sol-validator-watcher/production.env
 just production canary /etc/sol-validator-watcher/production.env \
-  ghcr.io/v4lproik/sol-validator-watcher@sha256:<digest>
+  ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<digest>
 just production rollout /etc/sol-validator-watcher/production.env \
-  ghcr.io/v4lproik/sol-validator-watcher@sha256:<digest>
+  ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<digest>
 ```
 
 Read the [production runbook](docs/production-runbook.md) before deployment. It
@@ -107,12 +107,12 @@ Pull requests build, smoke, and vulnerability-scan the exact `linux/amd64`
 container after repository CI passes. Main-branch and version-tag workflows then
 publish multi-architecture GHCR images for the same revision, smoke the pushed
 digest, scan both published architectures, and attach provenance, an SBOM, and a
-GitHub artifact attestation. A version tag also creates release notes containing
-the immutable image digest.
+GitHub artifact attestation. Production references retain the release version
+for review while binding it to the immutable image digest.
 
 ```bash
 gh attestation verify \
-  oci://ghcr.io/v4lproik/sol-validator-watcher:sha-<commit> \
+  oci://ghcr.io/v4lproik/sol-validator-watcher:vMAJOR.MINOR.PATCH@sha256:<digest> \
   --repo v4lproik/sol-validator-watcher \
   --signer-workflow v4lproik/sol-validator-watcher/.github/workflows/container.yml
 ```

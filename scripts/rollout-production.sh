@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-env_file=${1:?usage: rollout-production.sh <production-env-file> <candidate-image@sha256:digest>}
-candidate=${2:?usage: rollout-production.sh <production-env-file> <candidate-image@sha256:digest>}
-if [[ ! "$candidate" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]]; then
-  echo "rollout image must be pinned by sha256 digest: $candidate" >&2
+env_file=${1:?usage: rollout-production.sh <production-env-file> <candidate-image:vMAJOR.MINOR.PATCH@sha256:digest>}
+candidate=${2:?usage: rollout-production.sh <production-env-file> <candidate-image:vMAJOR.MINOR.PATCH@sha256:digest>}
+if [[ ! "$candidate" =~ ^[^[:space:]@]+:v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?@sha256:[0-9a-f]{64}$ ]]; then
+  echo "rollout image must include a semantic version tag and immutable sha256 digest: $candidate" >&2
   exit 1
 fi
 [[ -f "$env_file" ]] || {
@@ -32,8 +32,8 @@ if len(indices) != 1:
     raise SystemExit("production environment must contain exactly one SOL_WATCHER_IMAGE entry")
 index = indices[0]
 previous = lines[index].split("=", 1)[1].strip()
-if re.fullmatch(r"\S+@sha256:[0-9a-f]{64}", previous) is None:
-    raise SystemExit("current SOL_WATCHER_IMAGE is not digest-pinned")
+if re.fullmatch(r"\S+:v?\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?@sha256:[0-9a-f]{64}", previous) is None:
+    raise SystemExit("current SOL_WATCHER_IMAGE must include a semantic version tag and immutable digest")
 shutil.copy2(env_path, backup_path)
 lines[index] = f"SOL_WATCHER_IMAGE={candidate}\n"
 fd, temporary = tempfile.mkstemp(prefix=f".{env_path.name}.", dir=env_path.parent)
