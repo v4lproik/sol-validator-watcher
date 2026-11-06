@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Published content-fingerprinted Pages styles and interactions so the dashboard-led homepage remains coherent across browser and CDN cache boundaries.
 - Rebuilt the Pages homepage as a responsive dashboard-led product story with real Overview, Leadership, Consensus, and Economics captures, accessible gallery controls, operator workflow guidance, and a repository-owned local quick start.
 - Added build, active-configuration, reload-outcome, command-fallback, block-fee cache, and provider-method request metrics plus tested alerts for rejected reloads, sustained failover, and ineffective block-fee caching.
 - Provisioned the production Prometheus scrape, bounded retention, Alertmanager routing/inhibition, and a synthetic notification-delivery check while retaining operator ownership of the external receiver.
