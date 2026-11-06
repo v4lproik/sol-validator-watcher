@@ -214,9 +214,9 @@ impl TransportHeaders {
             .map(|(name, value)| (name.as_str(), value.as_str()))
     }
 
-    fn normalize_and_validate(&mut self, path: &str, reserved: &[&str]) -> Result<()> {
-        let mut normalized = BTreeMap::new();
-        for (name, value) in std::mem::take(&mut self.values) {
+    fn into_normalized(self, path: &str, reserved: &[&str]) -> Result<Self> {
+        let mut values = BTreeMap::new();
+        for (name, value) in self.values {
             let name = name.trim().to_ascii_lowercase();
             reqwest::header::HeaderName::from_bytes(name.as_bytes())
                 .with_context(|| format!("{path} contains invalid header name {name:?}"))?;
@@ -226,12 +226,11 @@ impl TransportHeaders {
             if reserved.contains(&name.as_str()) {
                 bail!("{path} must not override protocol-owned header {name:?}");
             }
-            if normalized.insert(name.clone(), value).is_some() {
+            if values.insert(name.clone(), value).is_some() {
                 bail!("{path} contains duplicate header name {name:?}");
             }
         }
-        self.values = normalized;
-        Ok(())
+        Ok(Self { values })
     }
 }
 
@@ -291,15 +290,29 @@ impl HttpTransportConfig {
         )
     }
 
-    fn normalize(&mut self) {
-        self.url = self.url.trim().to_string();
+    fn normalized(self) -> Self {
+        Self {
+            url: self.url.trim().to_string(),
+            ..self
+        }
     }
 
-    fn validate(&mut self, path: &str) -> Result<()> {
+    fn into_validated(self, path: &str) -> Result<Self> {
         validate_http_timeouts(self.request_timeout_sec, self.connect_timeout_sec, path)?;
         validate_http_url(&format!("{path}.url"), &self.url)?;
-        self.headers
-            .normalize_and_validate(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)
+        let Self {
+            url,
+            request_timeout_sec,
+            connect_timeout_sec,
+            headers,
+        } = self;
+        let headers = headers.into_normalized(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)?;
+        Ok(Self {
+            url,
+            request_timeout_sec,
+            connect_timeout_sec,
+            headers,
+        })
     }
 }
 
@@ -378,12 +391,15 @@ impl RpcTransportConfig {
         }
     }
 
-    fn normalize(&mut self) {
-        self.url = self.url.trim().to_string();
-        self.commitment = self.commitment.trim().to_lowercase();
+    fn normalized(self) -> Self {
+        Self {
+            url: self.url.trim().to_string(),
+            commitment: self.commitment.trim().to_lowercase(),
+            ..self
+        }
     }
 
-    fn validate(&mut self, path: &str) -> Result<()> {
+    fn into_validated(self, path: &str) -> Result<Self> {
         validate_http_timeouts(self.request_timeout_sec, self.connect_timeout_sec, path)?;
         if self.response_size_limit_bytes == 0
             || self.response_size_limit_bytes > MAX_RPC_RESPONSE_SIZE_LIMIT_BYTES
@@ -393,10 +409,25 @@ impl RpcTransportConfig {
             );
         }
         validate_http_url(&format!("{path}.url"), &self.url)?;
-        self.headers
-            .normalize_and_validate(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)?;
-        self.commitment_config()?;
-        Ok(())
+        let Self {
+            url,
+            request_timeout_sec,
+            connect_timeout_sec,
+            response_size_limit_bytes,
+            headers,
+            commitment,
+        } = self;
+        let headers = headers.into_normalized(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)?;
+        let config = Self {
+            url,
+            request_timeout_sec,
+            connect_timeout_sec,
+            response_size_limit_bytes,
+            headers,
+            commitment,
+        };
+        config.commitment_config()?;
+        Ok(config)
     }
 }
 
@@ -494,17 +525,30 @@ impl WebsocketTransportConfig {
         }
     }
 
-    fn normalize(&mut self) {
-        self.url = self.url.trim().to_string();
+    fn normalized(self) -> Self {
+        Self {
+            url: self.url.trim().to_string(),
+            ..self
+        }
     }
 
-    fn validate(&mut self, path: &str) -> Result<()> {
+    fn into_validated(self, path: &str) -> Result<Self> {
         if self.handshake_timeout_sec == 0 {
             bail!("{path}.handshake_timeout_sec must be greater than 0");
         }
         validate_ws_url(&format!("{path}.url"), &self.url)?;
-        self.headers
-            .normalize_and_validate(&format!("{path}.headers"), WEBSOCKET_RESERVED_HEADERS)
+        let Self {
+            url,
+            handshake_timeout_sec,
+            headers,
+        } = self;
+        let headers =
+            headers.into_normalized(&format!("{path}.headers"), WEBSOCKET_RESERVED_HEADERS)?;
+        Ok(Self {
+            url,
+            handshake_timeout_sec,
+            headers,
+        })
     }
 }
 
@@ -564,23 +608,62 @@ impl ConnectorConfig {
         self.features.contains(&feature)
     }
 
-    fn normalize(&mut self) {
-        self.name = self.name.trim().to_string();
-        self.provider = self.provider.trim().to_string();
-        if let Some(rpc) = &mut self.rpc {
-            rpc.normalize();
-        }
-        if let Some(provider_api) = &mut self.provider_api {
-            provider_api.normalize();
-        }
-        if let Some(websocket) = &mut self.websocket {
-            websocket.normalize();
+    fn normalized(self) -> Self {
+        let Self {
+            name,
+            provider,
+            features,
+            solana_rpc_compatibility,
+            rpc,
+            provider_api,
+            websocket,
+        } = self;
+        Self {
+            name: name.trim().to_string(),
+            provider: provider.trim().to_string(),
+            features,
+            solana_rpc_compatibility,
+            rpc: rpc.map(RpcTransportConfig::normalized),
+            provider_api: provider_api.map(HttpTransportConfig::normalized),
+            websocket: websocket.map(WebsocketTransportConfig::normalized),
         }
     }
 
-    fn validate(&mut self, index: usize) -> Result<()> {
-        self.normalize();
+    fn into_validated(self, index: usize) -> Result<Self> {
+        let connector = self.normalized();
+        connector.validate_declaration(index)?;
+        let Self {
+            name,
+            provider,
+            features,
+            solana_rpc_compatibility,
+            rpc,
+            provider_api,
+            websocket,
+        } = connector;
+        let rpc = rpc
+            .map(|rpc| rpc.into_validated(&format!("connectors[{index}].rpc")))
+            .transpose()?;
+        let websocket = websocket
+            .map(|websocket| websocket.into_validated(&format!("connectors[{index}].websocket")))
+            .transpose()?;
+        let provider_api = provider_api
+            .map(|provider_api| {
+                provider_api.into_validated(&format!("connectors[{index}].provider_api"))
+            })
+            .transpose()?;
+        Ok(Self {
+            name,
+            provider,
+            features,
+            solana_rpc_compatibility,
+            rpc,
+            provider_api,
+            websocket,
+        })
+    }
 
+    fn validate_declaration(&self, index: usize) -> Result<()> {
         if self.name.is_empty() {
             bail!("connectors[{index}].name must not be empty");
         }
@@ -645,17 +728,6 @@ impl ConnectorConfig {
         if self.rpc.is_none() && self.websocket.is_none() && self.provider_api.is_none() {
             bail!("connectors[{index}] must define rpc, websocket, and/or provider_api");
         }
-
-        if let Some(rpc) = &mut self.rpc {
-            rpc.validate(&format!("connectors[{index}].rpc"))?;
-        }
-        if let Some(websocket) = &mut self.websocket {
-            websocket.validate(&format!("connectors[{index}].websocket"))?;
-        }
-        if let Some(provider_api) = &mut self.provider_api {
-            provider_api.validate(&format!("connectors[{index}].provider_api"))?;
-        }
-
         Ok(())
     }
 }
@@ -788,7 +860,7 @@ impl Config {
                 path.display()
             )
         })?;
-        let mut config = toml::from_str::<Self>(&expanded).map_err(|error| {
+        let config = toml::from_str::<Self>(&expanded).map_err(|error| {
             let location = error.span().map_or_else(String::new, |span| {
                 let (line, column) = line_and_column(&expanded, span.start);
                 format!(" at line {line}, column {column}")
@@ -799,66 +871,56 @@ impl Config {
                 error.message()
             )
         })?;
-        config.fingerprint = config_fingerprint(&expanded)?;
-
-        config.validate()?;
-        Ok(config)
+        Self {
+            fingerprint: config_fingerprint(&expanded)?,
+            ..config
+        }
+        .into_validated()
     }
 
-    fn validate(&mut self) -> Result<()> {
-        self.network = self.network.trim().to_string();
-        if self.network.is_empty() {
+    fn into_validated(self) -> Result<Self> {
+        let Self {
+            network,
+            connectors,
+            modes,
+            metrics_host,
+            metrics_port,
+            poll_interval_sec,
+            delinquent_slot_distance,
+            liveness_file,
+            watched_validators,
+            fingerprint,
+        } = self;
+        let network = network.trim().to_string();
+        if network.is_empty() {
             bail!("network must not be empty");
         }
-
-        self.validate_connectors()?;
-        if self.metrics_port == 0 {
+        let connectors = validate_connectors(connectors)?;
+        if metrics_port == 0 {
             bail!("metrics_port must be greater than 0");
         }
-        if self.poll_interval_sec == 0 {
+        if poll_interval_sec == 0 {
             bail!("poll_interval_sec must be greater than 0");
         }
-
-        for watched in &mut self.watched_validators {
-            normalize_watched_validator(watched, "watched_validators entry")?;
-        }
-
-        self.validate_economics()?;
-        self.validate_routes()?;
-        Ok(())
-    }
-
-    fn validate_economics(&mut self) -> Result<()> {
-        let economics = &mut self.modes.economics;
-        if !economics.enabled {
-            if economics.validator.is_some() {
-                bail!("modes.economics.validator requires modes.economics.enabled = true");
-            }
-            return Ok(());
-        }
-
-        let validator = economics
-            .validator
-            .as_mut()
-            .context("modes.economics.enabled requires modes.economics.validator")?;
-        normalize_watched_validator(validator, "modes.economics.validator")?;
-        validator.labels.push(ECONOMICS_TARGET_LABEL.to_string());
-        validator.labels.sort();
-        validator.labels.dedup();
-
-        if let Some(existing) = self
-            .watched_validators
-            .iter_mut()
-            .find(|watched| watched_validators_match(watched, validator))
-        {
-            existing.labels.extend(validator.labels.iter().cloned());
-            existing.labels.sort();
-            existing.labels.dedup();
-        } else {
-            self.watched_validators.push(validator.clone());
-        }
-
-        Ok(())
+        let watched_validators = watched_validators
+            .into_iter()
+            .map(|watched| normalize_watched_validator(watched, "watched_validators entry"))
+            .collect::<Result<Vec<_>>>()?;
+        let (modes, watched_validators) = validate_economics(modes, watched_validators)?;
+        let config = Self {
+            network,
+            connectors,
+            modes,
+            metrics_host,
+            metrics_port,
+            poll_interval_sec,
+            delinquent_slot_distance,
+            liveness_file,
+            watched_validators,
+            fingerprint,
+        };
+        config.validate_routes()?;
+        Ok(config)
     }
 
     fn validate_routes(&self) -> Result<()> {
@@ -955,29 +1017,80 @@ impl Config {
 
         Ok(())
     }
+}
 
-    fn validate_connectors(&mut self) -> Result<()> {
-        if self.connectors.is_empty() {
-            bail!("at least one connector is required");
-        }
-
-        for (index, connector) in self.connectors.iter_mut().enumerate() {
-            connector.validate(index)?;
-        }
-
-        let mut seen_names = std::collections::HashSet::new();
-        for connector in &self.connectors {
-            if !seen_names.insert(connector.name.as_str()) {
-                bail!("duplicate connector name {:?}", connector.name);
-            }
-        }
-
-        if !self.connectors.iter().any(ConnectorConfig::has_rpc) {
-            bail!("at least one connector with an rpc transport is required");
-        }
-
-        Ok(())
+fn validate_connectors(connectors: Vec<ConnectorConfig>) -> Result<Vec<ConnectorConfig>> {
+    if connectors.is_empty() {
+        bail!("at least one connector is required");
     }
+    let connectors = connectors
+        .into_iter()
+        .enumerate()
+        .map(|(index, connector)| connector.into_validated(index))
+        .collect::<Result<Vec<_>>>()?;
+    let mut seen_names = HashSet::with_capacity(connectors.len());
+    for connector in &connectors {
+        if !seen_names.insert(connector.name.as_str()) {
+            bail!("duplicate connector name {:?}", connector.name);
+        }
+    }
+    if !connectors.iter().any(ConnectorConfig::has_rpc) {
+        bail!("at least one connector with an rpc transport is required");
+    }
+    Ok(connectors)
+}
+
+fn validate_economics(
+    modes: ModesConfig,
+    mut watched_validators: Vec<WatchedValidatorConfig>,
+) -> Result<(ModesConfig, Vec<WatchedValidatorConfig>)> {
+    if !modes.economics.enabled {
+        if modes.economics.validator.is_some() {
+            bail!("modes.economics.validator requires modes.economics.enabled = true");
+        }
+        return Ok((modes, watched_validators));
+    }
+    let ModesConfig {
+        health,
+        consensus,
+        leadership,
+        economics,
+    } = modes;
+    let EconomicsModeConfig {
+        enabled,
+        validator,
+        commands,
+    } = economics;
+    let mut validator = normalize_watched_validator(
+        validator.context("modes.economics.enabled requires modes.economics.validator")?,
+        "modes.economics.validator",
+    )?;
+    validator.labels.push(ECONOMICS_TARGET_LABEL.to_string());
+    validator.labels.sort();
+    validator.labels.dedup();
+    if let Some(existing) = watched_validators
+        .iter_mut()
+        .find(|watched| watched_validators_match(watched, &validator))
+    {
+        existing.labels.extend(validator.labels.iter().cloned());
+        existing.labels.sort();
+        existing.labels.dedup();
+    } else {
+        watched_validators.push(validator.clone());
+    }
+    Ok((
+        ModesConfig {
+            health,
+            consensus,
+            leadership,
+            economics: EconomicsModeConfig {
+                enabled,
+                validator: Some(validator),
+                commands,
+            },
+        },
+        watched_validators,
+    ))
 }
 
 fn expand_env_vars(input: &str) -> Result<String> {
@@ -1054,32 +1167,33 @@ fn normalize_pubkey(value: &str, field_name: &str) -> Result<String> {
 }
 
 fn normalize_watched_validator(
-    watched: &mut WatchedValidatorConfig,
+    watched: WatchedValidatorConfig,
     field_name: &str,
-) -> Result<()> {
-    if watched.identity.is_none() && watched.vote_account.is_none() {
+) -> Result<WatchedValidatorConfig> {
+    let WatchedValidatorConfig {
+        identity,
+        vote_account,
+        mut labels,
+    } = watched;
+    if identity.is_none() && vote_account.is_none() {
         bail!("{field_name} must define identity and/or vote_account");
     }
-
-    if let Some(identity) = watched.identity.as_ref() {
-        watched.identity = Some(normalize_pubkey(
-            identity,
-            &format!("{field_name}.identity"),
-        )?);
-    }
-    if let Some(vote_account) = watched.vote_account.as_ref() {
-        watched.vote_account = Some(normalize_pubkey(
-            vote_account,
-            &format!("{field_name}.vote_account"),
-        )?);
-    }
-
-    for label in &watched.labels {
+    let identity = identity
+        .map(|identity| normalize_pubkey(&identity, &format!("{field_name}.identity")))
+        .transpose()?;
+    let vote_account = vote_account
+        .map(|vote_account| normalize_pubkey(&vote_account, &format!("{field_name}.vote_account")))
+        .transpose()?;
+    for label in &labels {
         validate_label(label)?;
     }
-    watched.labels.sort();
-    watched.labels.dedup();
-    Ok(())
+    labels.sort();
+    labels.dedup();
+    Ok(WatchedValidatorConfig {
+        identity,
+        vote_account,
+        labels,
+    })
 }
 
 fn watched_validators_match(left: &WatchedValidatorConfig, right: &WatchedValidatorConfig) -> bool {

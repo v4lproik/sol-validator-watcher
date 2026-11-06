@@ -82,11 +82,11 @@ fn rejects_invalid_provider_feature_declarations() -> Result<()> {
     ];
 
     for (connector, expected) in cases {
-        let mut config = Config {
+        let config = Config {
             connectors: vec![connector],
             ..Config::default()
         };
-        let Err(error) = config.validate() else {
+        let Err(error) = config.into_validated() else {
             anyhow::bail!("invalid provider feature declaration should be rejected");
         };
         assert!(error.to_string().contains(expected), "{error:#}");
@@ -96,7 +96,7 @@ fn rejects_invalid_provider_feature_declarations() -> Result<()> {
 
 #[test]
 fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<()> {
-    let mut missing_compatibility = ConnectorConfig {
+    let missing_compatibility = ConnectorConfig {
         name: "rpc".to_string(),
         provider: "solana-validator".to_string(),
         features: Vec::new(),
@@ -105,14 +105,14 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
         )),
         ..ConnectorConfig::default()
     };
-    let Err(error) = missing_compatibility.validate(0) else {
+    let Err(error) = missing_compatibility.into_validated(0) else {
         anyhow::bail!("RPC endpoint without Solana RPC compatibility should fail");
     };
     assert!(error
         .to_string()
         .contains("solana_rpc_compatibility is required when rpc is configured"));
 
-    let mut compatibility_without_endpoint = ConnectorConfig {
+    let compatibility_without_endpoint = ConnectorConfig {
         name: "websocket".to_string(),
         provider: "solana-validator".to_string(),
         features: Vec::new(),
@@ -122,14 +122,14 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
         )),
         ..ConnectorConfig::default()
     };
-    let Err(error) = compatibility_without_endpoint.validate(0) else {
+    let Err(error) = compatibility_without_endpoint.into_validated(0) else {
         anyhow::bail!("Solana RPC compatibility without RPC endpoint should fail");
     };
     assert!(error
         .to_string()
         .contains("solana_rpc_compatibility requires a configured rpc transport"));
 
-    let mut history_on_core = ConnectorConfig {
+    let history_on_core = ConnectorConfig {
         name: "core".to_string(),
         provider: "solana-validator".to_string(),
         features: vec![ProviderFeature::HistoricalData],
@@ -139,7 +139,7 @@ fn validates_solana_rpc_compatibility_against_endpoint_and_features() -> Result<
         )),
         ..ConnectorConfig::default()
     };
-    let Err(error) = history_on_core.validate(0) else {
+    let Err(error) = history_on_core.into_validated(0) else {
         anyhow::bail!("historical data on core Solana RPC should fail");
     };
     assert!(error.to_string().contains(
@@ -224,8 +224,8 @@ fn rejects_invalid_connector_transport_urls() -> Result<()> {
         ),
     ];
 
-    for (mut connector, expected) in cases {
-        let Err(error) = connector.validate(0) else {
+    for (connector, expected) in cases {
+        let Err(error) = connector.into_validated(0) else {
             anyhow::bail!("invalid connector transport URL should fail");
         };
         assert!(error.to_string().contains(expected), "{error:#}");
@@ -341,10 +341,10 @@ rpc = {{ url = "https://rpc.example" }}
 
 #[test]
 fn rejects_missing_connector_list() -> Result<()> {
-    let mut config = Config::default();
+    let config = Config::default();
 
-    match config.validate() {
-        Ok(()) => anyhow::bail!("missing connectors should be rejected"),
+    match config.into_validated() {
+        Ok(_) => anyhow::bail!("missing connectors should be rejected"),
         Err(error) => assert!(error
             .to_string()
             .contains("at least one connector is required")),
@@ -354,7 +354,7 @@ fn rejects_missing_connector_list() -> Result<()> {
 
 #[test]
 fn rejects_ws_only_connector_list() -> Result<()> {
-    let mut config = Config {
+    let config = Config {
         connectors: vec![ConnectorConfig {
             name: "ws-only".to_string(),
             provider: "helius".to_string(),
@@ -367,8 +367,8 @@ fn rejects_ws_only_connector_list() -> Result<()> {
         ..Config::default()
     };
 
-    match config.validate() {
-        Ok(()) => anyhow::bail!("a websocket-only list should be rejected"),
+    match config.into_validated() {
+        Ok(_) => anyhow::bail!("a websocket-only list should be rejected"),
         Err(error) => assert!(error
             .to_string()
             .contains("at least one connector with an rpc transport is required")),
@@ -378,13 +378,13 @@ fn rejects_ws_only_connector_list() -> Result<()> {
 
 #[test]
 fn rejects_duplicate_connector_names() -> Result<()> {
-    let mut config = Config {
+    let config = Config {
         connectors: vec![rpc_connector("primary"), rpc_connector("primary")],
         ..Config::default()
     };
 
-    match config.validate() {
-        Ok(()) => anyhow::bail!("duplicate connector names should be rejected"),
+    match config.into_validated() {
+        Ok(_) => anyhow::bail!("duplicate connector names should be rejected"),
         Err(error) => assert!(error
             .to_string()
             .contains("duplicate connector name \"primary\"")),
@@ -398,13 +398,13 @@ fn rejects_invalid_ws_scheme() -> Result<()> {
     connector.websocket = Some(crate::config::WebsocketTransportConfig::new(
         "https://api.mainnet-beta.solana.com".to_string(),
     ));
-    let mut config = Config {
+    let config = Config {
         connectors: vec![connector],
         ..Config::default()
     };
 
-    match config.validate() {
-        Ok(()) => anyhow::bail!("invalid websocket URL should be rejected"),
+    match config.into_validated() {
+        Ok(_) => anyhow::bail!("invalid websocket URL should be rejected"),
         Err(error) => assert!(error
             .to_string()
             .contains("connectors[0].websocket.url must use ws:// or wss:// with a host")),
@@ -418,7 +418,7 @@ fn rejects_blank_transport_url() -> Result<()> {
     connector.websocket = Some(crate::config::WebsocketTransportConfig::new(
         "   ".to_string(),
     ));
-    let Err(error) = connector.validate(0) else {
+    let Err(error) = connector.into_validated(0) else {
         anyhow::bail!("a declared transport with a blank URL should fail");
     };
 
@@ -430,12 +430,12 @@ fn rejects_blank_transport_url() -> Result<()> {
 
 #[test]
 fn rejects_websocket_route_without_websocket_transport() -> Result<()> {
-    let mut config = Config {
+    let config = Config {
         connectors: vec![rpc_connector("primary")],
         modes: modes_for("primary", Some("primary"), false),
         ..Config::default()
     };
-    let Err(error) = config.validate() else {
+    let Err(error) = config.into_validated() else {
         anyhow::bail!("a WebSocket route requires a WebSocket transport");
     };
 
@@ -453,7 +453,7 @@ fn rejects_unknown_and_duplicate_command_route_connectors() -> Result<()> {
         ..Config::default()
     };
     unknown.modes.consensus.commands.epoch_info = vec!["missing".to_string()];
-    let Err(error) = unknown.validate() else {
+    let Err(error) = unknown.into_validated() else {
         anyhow::bail!("unknown route connector should be rejected");
     };
     assert!(error
@@ -467,7 +467,7 @@ fn rejects_unknown_and_duplicate_command_route_connectors() -> Result<()> {
     };
     duplicate.modes.consensus.commands.epoch_info =
         vec!["primary".to_string(), "primary".to_string()];
-    let Err(error) = duplicate.validate() else {
+    let Err(error) = duplicate.into_validated() else {
         anyhow::bail!("duplicate route connector should be rejected");
     };
     assert!(error
@@ -496,7 +496,7 @@ fn rejects_rpc_command_routed_to_websocket_only_connector() -> Result<()> {
     };
     config.modes.leadership.commands.current_block_production = vec!["ws-only".to_string()];
 
-    let Err(error) = config.validate() else {
+    let Err(error) = config.into_validated() else {
         anyhow::bail!("RPC command without RPC transport should be rejected");
     };
     assert!(error.to_string().contains("has no configured RPC endpoint"));
@@ -508,13 +508,13 @@ fn rejects_extended_rpc_command_routed_to_core_endpoint() -> Result<()> {
     let mut connector = rpc_connector("core");
     connector.features.clear();
     connector.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
-    let mut config = Config {
+    let config = Config {
         connectors: vec![connector],
         modes: modes_for("core", None, false),
         ..Config::default()
     };
 
-    let Err(error) = config.validate() else {
+    let Err(error) = config.into_validated() else {
         anyhow::bail!("extended RPC command on core endpoint should fail");
     };
     let message = error.to_string();
@@ -539,13 +539,13 @@ fn permits_core_rpc_endpoint_when_extended_rpc_commands_are_omitted() -> Result<
     let mut modes = modes_for("core", None, false);
     modes.consensus.commands.recent_performance_samples.clear();
     modes.leadership.commands.current_block_production.clear();
-    let mut config = Config {
+    let config = Config {
         connectors: vec![connector],
         modes,
         ..Config::default()
     };
 
-    config.validate()?;
+    config.into_validated()?;
     Ok(())
 }
 
@@ -564,7 +564,7 @@ fn rejects_economics_route_without_historical_data_feature() -> Result<()> {
         labels: vec![],
     });
 
-    let Err(error) = config.validate() else {
+    let Err(error) = config.into_validated() else {
         anyhow::bail!("economics route without historical data should be rejected");
     };
     assert!(error
@@ -590,7 +590,8 @@ fn permits_economics_balance_route_without_historical_data_feature() -> Result<(
         labels: vec![],
     });
 
-    config.validate()
+    config.into_validated()?;
+    Ok(())
 }
 
 #[test]
@@ -602,7 +603,7 @@ fn rejects_economics_routes_while_mode_is_disabled() -> Result<()> {
     };
     config.modes.economics.commands.inflation_rewards = vec!["primary".to_string()];
 
-    let Err(error) = config.validate() else {
+    let Err(error) = config.into_validated() else {
         anyhow::bail!("disabled economics routes should be rejected");
     };
     assert!(error
@@ -629,7 +630,7 @@ fn economics_single_validator_is_merged_into_watched_validators() -> Result<()> 
         labels: vec!["team:ops".to_string()],
     });
 
-    config.validate()?;
+    let config = config.into_validated()?;
 
     assert_eq!(config.watched_validators.len(), 1);
     assert!(config.watched_validators[0]
@@ -646,7 +647,7 @@ fn economics_single_validator_is_merged_into_watched_validators() -> Result<()> 
 
 #[test]
 fn rejects_economics_validator_without_single_validator_mode() -> Result<()> {
-    let mut config = Config {
+    let config = Config {
         connectors: vec![rpc_connector("primary")],
         modes: ModesConfig {
             economics: EconomicsModeConfig {
@@ -663,8 +664,8 @@ fn rejects_economics_validator_without_single_validator_mode() -> Result<()> {
         ..Config::default()
     };
 
-    match config.validate() {
-        Ok(()) => anyhow::bail!("economics validator should be rejected"),
+    match config.into_validated() {
+        Ok(_) => anyhow::bail!("economics validator should be rejected"),
         Err(error) => assert!(error
             .to_string()
             .contains("modes.economics.validator requires modes.economics.enabled = true")),
@@ -674,7 +675,7 @@ fn rejects_economics_validator_without_single_validator_mode() -> Result<()> {
 
 #[test]
 fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> {
-    let mut config = Config {
+    let config = Config {
         connectors: vec![rpc_connector("primary")],
         modes: ModesConfig {
             economics: EconomicsModeConfig {
@@ -693,8 +694,8 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
         ..Config::default()
     };
 
-    match config.validate() {
-        Ok(()) => anyhow::bail!("missing economics validator should be rejected"),
+    match config.into_validated() {
+        Ok(_) => anyhow::bail!("missing economics validator should be rejected"),
         Err(error) => assert!(error
             .to_string()
             .contains("modes.economics.enabled requires modes.economics.validator")),
@@ -707,7 +708,7 @@ fn validates_block_fee_reward_feature_commitment_and_route() -> Result<()> {
     let mut block_rewards_on_core = rpc_connector("block-rewards");
     block_rewards_on_core.features = vec![ProviderFeature::BlockFeeRewards];
     block_rewards_on_core.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
-    let Err(error) = block_rewards_on_core.validate(0) else {
+    let Err(error) = block_rewards_on_core.into_validated(0) else {
         anyhow::bail!("block fee rewards on core Solana RPC should fail");
     };
     assert!(error.to_string().contains(
@@ -721,7 +722,7 @@ fn validates_block_fee_reward_feature_commitment_and_route() -> Result<()> {
         .as_mut()
         .ok_or_else(|| anyhow::anyhow!("missing test RPC transport"))?
         .commitment = "processed".to_string();
-    let Err(error) = processed.validate(0) else {
+    let Err(error) = processed.into_validated(0) else {
         anyhow::bail!("processed commitment for block fee rewards should fail");
     };
     assert!(error.to_string().contains(
@@ -739,7 +740,7 @@ fn validates_block_fee_reward_feature_commitment_and_route() -> Result<()> {
         labels: vec![],
     });
     config.modes.economics.commands.recent_block_fee_rewards = vec!["primary".to_string()];
-    let Err(error) = config.validate() else {
+    let Err(error) = config.clone().into_validated() else {
         anyhow::bail!("block fee reward route without declared feature should fail");
     };
     assert!(error
@@ -749,12 +750,13 @@ fn validates_block_fee_reward_feature_commitment_and_route() -> Result<()> {
     config.connectors[0]
         .features
         .push(ProviderFeature::BlockFeeRewards);
-    config.validate()
+    config.into_validated()?;
+    Ok(())
 }
 
 #[test]
 fn validates_jito_provider_api_feature_and_route() -> Result<()> {
-    let mut missing_endpoint = ConnectorConfig {
+    let missing_endpoint = ConnectorConfig {
         name: "jito".to_string(),
         provider: "jito".to_string(),
         features: vec![ProviderFeature::JitoMevRewards],
@@ -763,14 +765,14 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
         )),
         ..ConnectorConfig::default()
     };
-    let Err(error) = missing_endpoint.validate(0) else {
+    let Err(error) = missing_endpoint.into_validated(0) else {
         anyhow::bail!("Jito feature without provider API endpoint should fail");
     };
     assert!(error
         .to_string()
         .contains("features entry \"jito-mev-rewards\" requires provider_api"));
 
-    let mut invalid_url = ConnectorConfig {
+    let invalid_url = ConnectorConfig {
         name: "jito".to_string(),
         provider: "jito".to_string(),
         features: vec![ProviderFeature::JitoMevRewards],
@@ -779,14 +781,14 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
         )),
         ..ConnectorConfig::default()
     };
-    let Err(error) = invalid_url.validate(0) else {
+    let Err(error) = invalid_url.into_validated(0) else {
         anyhow::bail!("non-HTTP provider API URL should fail");
     };
     assert!(error
         .to_string()
         .contains("connectors[0].provider_api.url must use http:// or https:// with a host"));
 
-    let mut jito = ConnectorConfig {
+    let jito = ConnectorConfig {
         name: "jito".to_string(),
         provider: "jito".to_string(),
         features: vec![ProviderFeature::JitoMevRewards],
@@ -795,7 +797,7 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
         )),
         ..ConnectorConfig::default()
     };
-    jito.validate(1)?;
+    let jito = jito.into_validated(1)?;
 
     let mut config = Config {
         connectors: vec![rpc_connector("primary"), jito],
@@ -808,10 +810,10 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
         labels: vec![],
     });
     config.modes.economics.commands.jito_mev_rewards = vec!["jito".to_string()];
-    config.validate()?;
+    let mut config = config.into_validated()?;
 
     config.connectors[1].features.clear();
-    let Err(error) = config.validate() else {
+    let Err(error) = config.into_validated() else {
         anyhow::bail!("Jito reward route without declared feature should fail");
     };
     assert!(error
@@ -822,7 +824,7 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
 
 #[test]
 fn normalizes_transport_headers_and_redacts_credentials() -> Result<()> {
-    let mut connector: ConnectorConfig = toml::from_str(
+    let connector: ConnectorConfig = toml::from_str(
         r#"
 name = "primary"
 provider = "solana"
@@ -832,7 +834,7 @@ rpc = { url = "https://rpc.example/?api-key=url-secret", headers = { "X-API-Key"
 "#,
     )?;
 
-    connector.validate(0)?;
+    let connector = connector.into_validated(0)?;
 
     let rpc = connector
         .rpc
