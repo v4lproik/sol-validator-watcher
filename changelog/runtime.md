@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Published the compiled build revision, SHA-256 fingerprint of the active expanded configuration, accepted/rejected reload outcomes, and per-command fallback state without exposing endpoint or credential values.
 - Bound the metrics listener before supervised tasks start and exercised the production health, readiness, metrics, and cooperative-shutdown boundaries.
 - Preserved Solana `getHealth` error `-32005` as a completed degraded snapshot so node catch-up diagnostics remain observable while RPC health and readiness stay down; other dependency failures retain whole-poll recovery behavior.
 - Routed WebSocket probe failures through the watcher-state actor so counters remain ordered with polling transitions while preserving RPC-based readiness admission.

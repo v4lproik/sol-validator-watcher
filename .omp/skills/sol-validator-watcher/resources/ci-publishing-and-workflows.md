@@ -40,6 +40,9 @@ checks.
 - Actions must be pinned to an intentional release reference consistent with
   repository policy. Review deprecation annotations rather than suppressing
   them.
+- Repository security workflows use pinned scanner versions, deny warnings, and
+  fail on actionable dependency, image, secret, or configuration findings.
+  Dependabot covers Cargo, Docker, and GitHub Actions dependencies.
 - Never print secrets, entire environments, authenticated URLs, or token-bearing
   command arguments.
 
@@ -65,6 +68,9 @@ checks.
   attestation bound to the pushed digest.
 - Grant `packages: write`, `attestations: write`, and `id-token: write` only to
   the publish job. Verification remains read-only.
+- Pull requests build one exact `linux/amd64` verification image, run it against
+  controlled RPC responses, fetch readiness/build identity, stop it cleanly,
+  and scan that same local image before any registry publication.
 - `.github/workflows/container.yml` publishes to GHCR only from `main`, version
   tags, or explicit dispatch according to its trigger contract.
 - Preserve branch/tag metadata, full-commit SHA tags, and default-branch
@@ -76,6 +82,8 @@ checks.
   Docker; Dockerfiles and Compose overlays must not duplicate the version.
 - A local `just container build` proves the image builds; it does not authorize
   a registry push.
+- Version tags create release notes only after the pushed image digest has a
+  verified repository-bound artifact attestation.
 
 ## Review Gates
 
@@ -98,7 +106,9 @@ checks.
 - Prometheus configuration and alerts: `just stack check`.
 - Coverage logic: `just coverage check` and applicable artifact generation.
 - Pages: `just site build` and inspect the generated root/coverage links.
-- Container: `just container build` with a local tag.
+- Container: `just container build <tag>`, `just container smoke <tag>
+  <revision>`, and `just security image <tag>`.
+- Security: `just security dependencies` and `just security repository`.
 
 ## Prohibited Shortcuts
 

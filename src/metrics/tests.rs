@@ -1,4 +1,4 @@
-use super::{bool_label, Metrics};
+use super::{bool_label, Metrics, BUILD_REVISION};
 use crate::{
     collector::{
         ClusterPerformanceMetrics, EconomicsMetrics, JitoMevReward, ModeStatus, NodeHealth,
@@ -235,6 +235,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         ),
         ..Config::default()
     };
+    config.fingerprint = "abc123".to_string();
     config.modes.health.commands.ws_health =
         vec!["local-validator".to_string(), "helius-ws".to_string()];
     config.modes.economics.commands.jito_mev_rewards = vec!["jito-api".to_string()];
@@ -243,8 +244,20 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
     metrics.begin_poll(&config, &sources);
     metrics.update_snapshot(&snapshot);
+    metrics.record_config_reload("mainnet-beta", "accepted");
+    metrics.record_config_reload("mainnet-beta", "rejected");
     let rendered = metrics.render()?;
 
+    assert!(rendered.contains(&format!(
+        "sol_watcher_build_info{{revision=\"{BUILD_REVISION}\",version=\"{}\"}} 1",
+        env!("CARGO_PKG_VERSION")
+    )));
+    assert!(rendered.contains("sol_config_info{fingerprint=\"abc123\",network=\"mainnet-beta\"} 1"));
+    assert!(rendered
+        .contains("sol_config_reload_total{network=\"mainnet-beta\",outcome=\"accepted\"} 1"));
+    assert!(rendered
+        .contains("sol_config_reload_total{network=\"mainnet-beta\",outcome=\"rejected\"} 1"));
+    assert!(rendered.contains("sol_mode_command_fallback_active{command=\"inflation-rewards\",connector=\"helius-rpc\",mode=\"economics\",network=\"mainnet-beta\"} 1"));
     assert!(rendered.contains("sol_watcher_config_info{network=\"mainnet-beta\",transport_mode=\"poll-http-and-ws\",ws_configured=\"true\"} 1"));
     assert!(rendered.contains("sol_connector_info{connector=\"local-validator\",declaration_order=\"1\",has_provider_api=\"false\",has_rpc=\"true\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"solana-validator\",solana_rpc_compatibility=\"core\"} 1"));
     assert!(rendered.contains("sol_connector_info{connector=\"helius-ws\",declaration_order=\"3\",has_provider_api=\"false\",has_rpc=\"false\",has_ws=\"true\",network=\"mainnet-beta\",provider=\"helius\",solana_rpc_compatibility=\"\"} 1"));
@@ -686,6 +699,7 @@ fn renders_and_resets_snapshot_freshness_and_rpc_request_metrics() -> Result<()>
     );
     metrics.record_rpc_request_failure("devnet", "primary", "getEpochInfo");
     metrics.record_ws_probe_failure("devnet", "primary-ws");
+    metrics.record_block_fee_cache("devnet", "primary", 3, 2, 2);
 
     let rendered = metrics.render()?;
     for sample in [
@@ -695,6 +709,9 @@ fn renders_and_resets_snapshot_freshness_and_rpc_request_metrics() -> Result<()>
         "sol_snapshot_failures_total{network=\"devnet\"} 1",
         "sol_rpc_request_duration_seconds_count{connector=\"primary\",method=\"getEpochInfo\",network=\"devnet\"} 1",
         "sol_rpc_request_failures_total{connector=\"primary\",method=\"getEpochInfo\",network=\"devnet\"} 1",
+        "sol_rpc_block_fee_cache_accesses_total{connector=\"primary\",network=\"devnet\",outcome=\"hit\"} 3",
+        "sol_rpc_block_fee_cache_accesses_total{connector=\"primary\",network=\"devnet\",outcome=\"miss\"} 2",
+        "sol_rpc_block_fee_methods_requested_total{connector=\"primary\",network=\"devnet\"} 2",
         "sol_ws_probe_failures_total{connector=\"primary-ws\",network=\"devnet\"} 1",
     ] {
         assert!(rendered.contains(sample), "missing metric sample: {sample}");

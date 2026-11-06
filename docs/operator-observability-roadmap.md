@@ -113,15 +113,19 @@ Snapshot and transport reliability are exposed through
 `sol_last_successful_snapshot_timestamp_seconds`,
 `sol_snapshot_duration_seconds`, `sol_snapshot_failures_total`,
 `sol_rpc_request_duration_seconds`, `sol_rpc_request_failures_total`,
-`sol_ws_probe_failures_total`, and `sol_watcher_poll_interval_seconds`. The
-overview dashboard derives snapshot age from the last successful timestamp and
-shows cumulative HTTP, RPC, and connector-attributed WebSocket failures.
+`sol_ws_probe_failures_total`, and `sol_watcher_poll_interval_seconds`. Build,
+configuration, failover, and block-fee request state are exposed through
+`sol_watcher_build_info`, `sol_config_info`, `sol_config_reload_total`,
+`sol_mode_command_fallback_active`, `sol_rpc_block_fee_cache_accesses_total`,
+and `sol_rpc_block_fee_methods_requested_total`. The overview dashboard derives
+snapshot age from the last successful timestamp and shows cumulative HTTP, RPC,
+and connector-attributed WebSocket failures.
 Prometheus evaluates target, readiness, stale-snapshot, RPC- and
 WebSocket-failure, node-behind, node-not-voting, validator-health,
-upcoming-leader, and VAT-funding alerts.
-Snapshot-dependent conditions require data newer than the greater of 120
-seconds or four configured poll intervals. Alertmanager notification routing
-remains an external deployment responsibility.
+upcoming-leader, VAT-funding, rejected-reload, sustained-fallback, and
+ineffective-block-fee-cache alerts. The supported production stack routes these
+alerts through Alertmanager; receiver ownership and escalation policy remain an
+operator responsibility.
 
 Recent validator block-fee economics are exposed through
 `sol_economics_block_fee_reward_sol`,

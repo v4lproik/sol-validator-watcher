@@ -920,6 +920,16 @@ websocket = { url = "wss://rpc.example", headers = { Connection = "ignored" } }"
             "connectors[0].rpc.connect_timeout_sec must not exceed request_timeout_sec",
         ),
         (
+            "zero-rpc-response-limit",
+            r#"rpc = { url = "https://rpc.example", response_size_limit_bytes = 0 }"#,
+            "connectors[0].rpc.response_size_limit_bytes must be between 1 and 134217728",
+        ),
+        (
+            "excessive-rpc-response-limit",
+            r#"rpc = { url = "https://rpc.example", response_size_limit_bytes = 134217729 }"#,
+            "connectors[0].rpc.response_size_limit_bytes must be between 1 and 134217728",
+        ),
+        (
             "invalid-websocket-timeout",
             r#"rpc = { url = "https://rpc.example" }
 websocket = { url = "wss://rpc.example", handshake_timeout_sec = 0 }"#,

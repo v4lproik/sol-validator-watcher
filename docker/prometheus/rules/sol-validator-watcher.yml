@@ -147,3 +147,26 @@ groups:
         annotations:
           summary: "Vote account {{ $labels.vote_account }} lacks next-epoch VAT funding"
           description: "The available reserve is below the 0.8 SOL vote-account charge for the next epoch."
+
+      - alert: SolValidatorWatcherConfigReloadRejected
+        expr: |
+          sum by (job, instance, deployment, network) (
+            increase(sol_config_reload_total{outcome="rejected"}[15m])
+          ) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher rejected a configuration reload for {{ $labels.network }}"
+          description: "The last-known-good profile remains active; inspect watcher logs and the active config fingerprint."
+
+      - alert: SolValidatorWatcherFallbackActive
+        expr: |
+          max by (job, instance, deployment, network, mode, command, connector) (
+            sol_mode_command_fallback_active
+          ) == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.command }} is using fallback connector {{ $labels.connector }}"
+          description: "Mode {{ $labels.mode }} has used a non-primary connector for at least ten minutes."

@@ -84,6 +84,7 @@ async fn run_watcher_loop_with_retry_policy(
         let previous_config_modified = runtime.config_modified;
         match runtime.reload_if_needed().await {
             Ok(()) if runtime.config_modified != previous_config_modified => {
+                metrics.record_config_reload(&runtime.config.network, "accepted");
                 let reset = watcher_state.reset_admission(&runtime.config.network).await;
                 let Some(()) = state_transition_or_shutdown(reset, &shutdown)
                     .context("failed to reset readiness after configuration reload")?
@@ -96,6 +97,7 @@ async fn run_watcher_loop_with_retry_policy(
             }
             Ok(()) => {}
             Err(err) => {
+                metrics.record_config_reload(&runtime.config.network, "rejected");
                 warn!(error = ?err, "failed to reload config, keeping previous configuration");
             }
         }

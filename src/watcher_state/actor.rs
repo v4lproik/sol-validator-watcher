@@ -96,6 +96,12 @@ enum WatcherStateCommand {
     RecordWebsocketProbeFailure {
         connector: Arc<str>,
     },
+    RecordBlockFeeCache {
+        connector: Arc<str>,
+        hits: u64,
+        misses: u64,
+        methods_requested: u64,
+    },
     ResetAdmission {
         network: Arc<str>,
         reply: oneshot::Sender<()>,
@@ -308,6 +314,25 @@ impl ConnectorRpcTelemetry {
             })
             .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC failure"))
     }
+
+    /// Queues bounded confirmed-block cache and JSON-RPC method counts.
+    pub(crate) fn record_block_fee_cache(
+        &self,
+        hits: u64,
+        misses: u64,
+        methods_requested: u64,
+    ) -> Result<()> {
+        self.commands
+            .send(WatcherStateCommand::RecordBlockFeeCache {
+                connector: Arc::clone(&self.connector),
+                hits,
+                misses,
+                methods_requested,
+            })
+            .map_err(|_| {
+                anyhow!("watcher state actor stopped before recording block-fee cache telemetry")
+            })
+    }
 }
 
 impl ConnectorWebsocketTelemetry {
@@ -471,6 +496,20 @@ impl WatcherStateActor {
             WatcherStateCommand::RecordWebsocketProbeFailure { connector } => {
                 self.metrics
                     .record_ws_probe_failure(self.state.network.as_ref(), connector.as_ref());
+            }
+            WatcherStateCommand::RecordBlockFeeCache {
+                connector,
+                hits,
+                misses,
+                methods_requested,
+            } => {
+                self.metrics.record_block_fee_cache(
+                    self.state.network.as_ref(),
+                    connector.as_ref(),
+                    hits,
+                    misses,
+                    methods_requested,
+                );
             }
             WatcherStateCommand::ResetAdmission { network, reply } => {
                 self.state.network = network;

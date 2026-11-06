@@ -4,7 +4,7 @@
 
 Do not open a public GitHub issue for security-sensitive reports.
 
-Use GitHub's private vulnerability reporting for this repository if it is enabled. If private reporting is not available, contact the maintainers out-of-band before disclosing details publicly.
+Use [GitHub private vulnerability reporting](https://github.com/v4lproik/sol-validator-watcher/security/advisories/new). If GitHub is unavailable, contact the maintainers out-of-band before disclosing details publicly.
 
 When reporting, include:
 
@@ -15,4 +15,4 @@ When reporting, include:
 
 ## Supported versions
 
-Security fixes are expected to land on the active default branch.
+Security fixes land on the active default branch and the latest released version. Older version tags are unsupported.

@@ -281,3 +281,44 @@ tests:
             exp_annotations:
               summary: "Watcher snapshot is stale for mainnet-beta"
               description: "No complete snapshot has been published within the configured freshness window."
+
+  - name: rejected configuration reload alert
+    interval: 1m
+    input_series:
+      - series: 'sol_config_reload_total{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",outcome="rejected"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SolValidatorWatcherConfigReloadRejected
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "Watcher rejected a configuration reload for mainnet-beta"
+              description: "The last-known-good profile remains active; inspect watcher logs and the active config fingerprint."
+
+  - name: sustained connector fallback alert
+    interval: 1m
+    input_series:
+      - series: 'sol_mode_command_fallback_active{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",mode="consensus",command="epoch-info",connector="backup-rpc"}'
+        values: '1+0x11'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SolValidatorWatcherFallbackActive
+        exp_alerts:
+          - exp_labels:
+              command: epoch-info
+              connector: backup-rpc
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              mode: consensus
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "epoch-info is using fallback connector backup-rpc"
+              description: "Mode consensus has used a non-primary connector for at least ten minutes."

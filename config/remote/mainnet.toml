@@ -17,6 +17,7 @@ solana_rpc_compatibility = "extended"
 url = "${SOL_MAINNET_RPC_URL}"
 request_timeout_sec = 30
 connect_timeout_sec = 10
+response_size_limit_bytes = ${SOL_WATCHER_RPC_RESPONSE_SIZE_LIMIT_BYTES:-33554432}
 commitment = "confirmed"
 
 [connectors.websocket]

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a supported digest-pinned Mainnet production stack with secret-file injection, loopback-only ingress, resource/PID/file/log/retention limits, deterministic persistent volumes, health-ordered startup, and an operator runbook covering verification, alert response, backup, restore, and shutdown.
+- Added exact-image canary, guarded rollout, and rollback commands that verify five-round readiness and immutable build identity before replacing production and retain the previous image digest for recovery.
 - Updated the external-validator Compose environment contract for connector-local RPC request and connection deadlines, and removed dormant WebSocket inputs from its WebSocket-free default profile.
 - Published `linux/amd64` and `linux/arm64` image indexes with full-commit SHA tags, BuildKit provenance, an SBOM, and GitHub artifact attestations.
 - Hardened the watcher image and Compose profiles with a non-root runtime user, dropped capabilities, no-new-privileges, read-only root filesystems, bounded liveness tmpfs mounts, graceful container stop signaling, endpoint health checks, and loopback-only published ports for watchers, Prometheus, Grafana, and Surfpool.

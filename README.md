@@ -67,6 +67,26 @@ just rust run release config/local/validator.toml
 
 Use `just stack ps <target>` and `just stack logs <target>` to inspect a stack. Validate Compose rendering with `just stack config <target>`.
 
+## Production
+
+The supported single-host Mainnet deployment uses only immutable image digests,
+keeps every published port on loopback, applies service resource and log limits,
+and includes Prometheus, Grafana, and Alertmanager.
+
+```bash
+cp .env.production.example /etc/sol-validator-watcher/production.env
+cp .env.production.watcher.example /etc/sol-validator-watcher/watcher.env
+just production check /etc/sol-validator-watcher/production.env
+just production canary /etc/sol-validator-watcher/production.env \
+  ghcr.io/v4lproik/sol-validator-watcher@sha256:<digest>
+just production rollout /etc/sol-validator-watcher/production.env \
+  ghcr.io/v4lproik/sol-validator-watcher@sha256:<digest>
+```
+
+Read the [production runbook](docs/production-runbook.md) before deployment. It
+defines the secret-file contract, readiness and alert checks, canary rollout,
+automatic rollback, backup/restore procedure, and release gate.
+
 ## Observability
 
 | Surface | Purpose |
@@ -83,7 +103,11 @@ Grafana includes overview, consensus, leadership, and economics dashboards. The 
 
 ## Published images
 
-The container workflow publishes multi-architecture GHCR images only after repository CI passes for the same commit. Published images include provenance, an SBOM, and a GitHub artifact attestation.
+Pull requests build, smoke, and vulnerability-scan the exact `linux/amd64`
+container after repository CI passes. Main-branch and version-tag workflows then
+publish multi-architecture GHCR images for the same revision with provenance,
+an SBOM, and a GitHub artifact attestation. A version tag also creates release
+notes containing the immutable image digest.
 
 ```bash
 gh attestation verify \

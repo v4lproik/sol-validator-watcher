@@ -43,6 +43,9 @@ operator-facing semantics.
 - Reset connector-attributed WebSocket probe failure counters when a new
   configuration is accepted, initialize configured connectors at zero, and
   increment every failed fallback attempt rather than only route exhaustion.
+- Build identity and configuration fingerprint are process/config state, not
+  snapshot data. Reload outcomes are cumulative, and command fallback state
+  resets at the next poll before selected sources are recorded.
 - A zero is valid only when the domain value is truly zero. Missing, unsupported,
   stale, or failed data must not become a healthy-looking zero without an
   explicit availability/source signal.
@@ -78,8 +81,10 @@ operator-facing semantics.
   structured catch-up distance, that panel remains `No data`. Healthy, behind,
   current-voting, and non-current-voting states remain distinct, and every
   multi-network result identifies its network.
-- The repository provisions alert evaluation only. Notification routing remains
-  an external Alertmanager responsibility.
+- The production stack provisions Alertmanager routing with secret-file
+  receiver injection, resolved notifications, grouping, and critical-over-
+  warning inhibition. Escalation ownership and receiver availability remain
+  external operator responsibilities.
 - Keep overview, consensus, leadership, and economics dashboards separate.
   Mode dashboards consume only their mode's command health, routes, sources,
   and domain metrics.

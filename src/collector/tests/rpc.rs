@@ -59,8 +59,11 @@ async fn get_recent_block_fee_rewards_batches_slots_and_skips_missed_blocks() ->
         .get_recent_block_fee_rewards(&[805, 802, 800], "id-1")
         .await?
         .ok_or_else(|| anyhow!("missing recent block fee rewards"))?;
+    let repeated_rewards = client
+        .get_recent_block_fee_rewards(&[805, 802, 800], "id-1")
+        .await?
+        .ok_or_else(|| anyhow!("missing cached recent block fee rewards"))?;
     server_task.abort();
-
     assert_eq!(
         rewards,
         RecentBlockFeeRewards {
@@ -70,12 +73,33 @@ async fn get_recent_block_fee_rewards_batches_slots_and_skips_missed_blocks() ->
             sampled_block_count: 2,
         }
     );
+    assert_eq!(repeated_rewards, rewards);
     let recorded = requests.lock().await;
     let batch = recorded
         .first()
         .and_then(Value::as_array)
         .ok_or_else(|| anyhow!("getBlock requests were not sent as one JSON-RPC batch"))?;
     assert_eq!(batch.len(), 3);
+    assert_eq!(recorded.len(), 2);
+    let retry_batch = recorded[1]
+        .as_array()
+        .ok_or_else(|| anyhow!("uncached skipped slot was not retried as a JSON-RPC batch"))?;
+    assert_eq!(
+        retry_batch,
+        &[json!({
+            "jsonrpc": "2.0",
+            "id": 802,
+            "method": "getBlock",
+            "params": [
+                802,
+                {
+                    "commitment": "confirmed",
+                    "transactionDetails": "none",
+                    "rewards": true
+                }
+            ]
+        })]
+    );
     assert_eq!(
         batch[0],
         json!({
@@ -399,6 +423,30 @@ async fn rpc_transport_sends_connector_commitment_on_wire() -> Result<()> {
             "params": [{ "commitment": "finalized" }]
         })],
         "connector-local commitment must be sent in the JSON-RPC request"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn rpc_transport_rejects_response_bodies_over_the_configured_limit() -> Result<()> {
+    let (rpc_url, server_task) = start_mock_rpc_server().await?;
+    let mut transport = rpc_transport(&rpc_url, 5);
+    transport.response_size_limit_bytes = 8;
+    let client = RpcClient::try_new(
+        &transport,
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("bounded-rpc"),
+    )?;
+
+    let Err(error) = client.node_health().await else {
+        anyhow::bail!("the mock response must exceed the configured eight-byte limit");
+    };
+    server_task.abort();
+
+    assert!(
+        error
+            .to_string()
+            .contains("getHealth response exceeds configured 8 byte limit"),
+        "{error:#}"
     );
     Ok(())
 }
