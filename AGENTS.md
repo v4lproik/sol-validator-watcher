@@ -76,6 +76,7 @@ or site scripts directly.
 | --- | --- |
 | `just container doctor` | Verify Docker and Docker Compose |
 | `just container build [tag]` | Build the watcher image with the Rust version pinned in `mise.toml` |
+| `just container smoke <tag> [revision]` | Run the exact image against controlled RPC responses and verify readiness, build identity, and clean shutdown |
 | `just stack check` | Validate Prometheus configuration and alert rule behavior |
 | `just stack config <target>` | Render `surfpool`, `validator`, `devnet`, `mainnet`, or `all` without starting it |
 | `just stack up <target>` | Build with the pinned Rust version and start the selected stack |
@@ -83,6 +84,19 @@ or site scripts directly.
 | `just stack ps <target>` | Inspect selected stack containers |
 | `just stack reload prometheus` | Reload local Prometheus configuration |
 | `just stack down` | Stop all repository Compose profiles without deleting volumes |
+
+### Production and security
+
+| Command | Purpose |
+| --- | --- |
+| `just production check <env-file>` | Validate digest-pinned production Compose, Prometheus, alert rules, and Alertmanager |
+| `just production canary <env-file> <image@digest>` | Run the candidate image through five clean polls without replacing production |
+| `just production rollout <env-file> <image@digest>` | Deploy a canary-proven image and automatically restore the previous digest on failure |
+| `just production rollback <env-file>` | Restore the image retained by the latest rollout |
+| `just production test-alert-delivery` | Send a synthetic alert through the committed Alertmanager route |
+| `just security dependencies` | Audit Rust advisories, licenses, duplicate versions, and sources |
+| `just security repository` | Scan repository dependencies, secrets, and infrastructure configuration |
+| `just security image <tag>` | Scan an exact local image for high and critical vulnerabilities and secrets |
 
 ### Coverage site
 
@@ -97,6 +111,10 @@ Additional gates:
 - Coverage logic or threshold changes: run `just coverage check`.
 - Compose changes: run `just stack config <target>` for every affected target
   before any opt-in stack startup.
+- Production Compose, Prometheus, or Alertmanager changes: run
+  `just production check <env-file>`.
+- Security, dependency, or container release changes: run the applicable
+  `just security` recipes and the exact-image smoke.
 
 ## Maintaining This Guidance
 

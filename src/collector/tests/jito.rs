@@ -390,7 +390,7 @@ async fn start_header_recording_mock_jito_server(
     let requests = Arc::new(AtomicUsize::new(0));
     let authorization_headers = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
-        .route("/api/v1/validators/:vote_account", get(mock_jito_handler))
+        .route("/api/v1/validators/{vote_account}", get(mock_jito_handler))
         .with_state(MockJitoState {
             status,
             body,
@@ -420,7 +420,7 @@ async fn start_delayed_mock_jito_server() -> Result<(String, JoinHandle<()>, one
     let (request_started, request_received) = oneshot::channel();
     let app = Router::new()
         .route(
-            "/api/v1/validators/:vote_account",
+            "/api/v1/validators/{vote_account}",
             get(delayed_mock_jito_handler),
         )
         .with_state(DelayedMockJitoState {

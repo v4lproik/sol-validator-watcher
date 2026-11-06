@@ -15,6 +15,7 @@ solana_rpc_compatibility = "${SOL_VALIDATOR_SOLANA_RPC_COMPATIBILITY:-core}"
 url = "${SOL_VALIDATOR_RPC_URL:-http://host.docker.internal:8899}"
 request_timeout_sec = ${SOL_WATCHER_RPC_REQUEST_TIMEOUT_SEC:-30}
 connect_timeout_sec = ${SOL_WATCHER_RPC_CONNECT_TIMEOUT_SEC:-10}
+response_size_limit_bytes = ${SOL_WATCHER_RPC_RESPONSE_SIZE_LIMIT_BYTES:-33554432}
 commitment = "${SOL_WATCHER_COMMITMENT:-confirmed}"
 
 [modes.health.commands]

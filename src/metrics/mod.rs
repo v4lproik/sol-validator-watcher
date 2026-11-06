@@ -18,6 +18,10 @@ mod registration;
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 const SECONDS_PER_HOUR: f64 = 3_600.0;
+const BUILD_REVISION: &str = match option_env!("SOL_WATCHER_BUILD_REVISION") {
+    Some(revision) => revision,
+    None => "unknown",
+};
 const UPCOMING_LEADER_POSITION_LABELS: [&str; MAX_UPCOMING_LEADER_SLOTS] = [
     "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16",
 ];
@@ -38,6 +42,8 @@ pub struct Metrics {
     sol_cluster_non_vote_transactions_per_second: GaugeVec,
     sol_cluster_slots_per_second: GaugeVec,
     sol_estimated_epoch_end_unixtime: GaugeVec,
+    sol_config_info: IntGaugeVec,
+    sol_config_reload_total: IntCounterVec,
     sol_watcher_up: IntGaugeVec,
     sol_watcher_ready: IntGaugeVec,
     sol_watcher_poll_round_count: IntGaugeVec,
@@ -51,6 +57,8 @@ pub struct Metrics {
     sol_rpc_request_failure_count: IntGaugeVec,
     sol_rpc_request_duration_seconds: HistogramVec,
     sol_rpc_request_failures_total: IntCounterVec,
+    sol_rpc_block_fee_cache_accesses_total: IntCounterVec,
+    sol_rpc_block_fee_methods_requested_total: IntCounterVec,
     sol_rpc_up: IntGaugeVec,
     sol_ws_up: IntGaugeVec,
     sol_ws_probe_failures_total: IntCounterVec,
@@ -64,6 +72,7 @@ pub struct Metrics {
     sol_node_info: IntGaugeVec,
     sol_node_health: IntGaugeVec,
     sol_node_catchup_distance_slots: IntGaugeVec,
+    sol_mode_command_fallback_active: IntGaugeVec,
     sol_node_block_height: IntGaugeVec,
     sol_validator_status_count: GaugeVec,
     sol_validator_status_stake_sol: GaugeVec,
@@ -136,6 +145,8 @@ impl Metrics {
         self.sol_snapshot_failures_total.reset();
         self.sol_rpc_request_duration_seconds.reset();
         self.sol_rpc_request_failures_total.reset();
+        self.sol_rpc_block_fee_cache_accesses_total.reset();
+        self.sol_rpc_block_fee_methods_requested_total.reset();
         self.sol_ws_probe_failures_total.reset();
         self.sol_snapshot_failures_total
             .with_label_values(&[network])
@@ -184,6 +195,33 @@ impl Metrics {
     pub fn record_rpc_request_failure(&self, network: &str, connector: &str, method: &str) {
         self.sol_rpc_request_failures_total
             .with_label_values(&[network, connector, method])
+            .inc();
+    }
+
+    /// Records finalized-block cache lookups and the methods sent in a JSON-RPC batch.
+    pub fn record_block_fee_cache(
+        &self,
+        network: &str,
+        connector: &str,
+        hits: u64,
+        misses: u64,
+        methods_requested: u64,
+    ) {
+        self.sol_rpc_block_fee_cache_accesses_total
+            .with_label_values(&[network, connector, "hit"])
+            .inc_by(hits);
+        self.sol_rpc_block_fee_cache_accesses_total
+            .with_label_values(&[network, connector, "miss"])
+            .inc_by(misses);
+        self.sol_rpc_block_fee_methods_requested_total
+            .with_label_values(&[network, connector])
+            .inc_by(methods_requested);
+    }
+
+    /// Records whether a changed profile was accepted or rejected.
+    pub fn record_config_reload(&self, network: &str, outcome: &str) {
+        self.sol_config_reload_total
+            .with_label_values(&[network, outcome])
             .inc();
     }
 
@@ -300,6 +338,17 @@ impl Metrics {
         self.sol_mode_enabled.reset();
         self.sol_mode_command_route_info.reset();
         self.sol_watcher_poll_interval_seconds.reset();
+        self.sol_config_info.reset();
+        self.sol_config_info
+            .with_label_values(&[
+                config.network.as_str(),
+                if config.fingerprint.is_empty() {
+                    "unavailable"
+                } else {
+                    config.fingerprint.as_str()
+                },
+            ])
+            .set(1);
         self.sol_watcher_config_info
             .with_label_values(&[&config.network, transport_mode, bool_label(ws_configured)])
             .set(1);
@@ -374,6 +423,7 @@ impl Metrics {
     pub fn update_snapshot(&self, snapshot: &Snapshot) {
         self.sol_mode_command_source_info.reset();
         self.sol_mode_up.reset();
+        self.sol_mode_command_fallback_active.reset();
         self.reset_dynamic_metrics();
         self.sol_slot
             .with_label_values(&[&snapshot.network])
@@ -451,6 +501,16 @@ impl Metrics {
                     precedence.as_str(),
                 ])
                 .set(1);
+            if source.precedence > 1 {
+                self.sol_mode_command_fallback_active
+                    .with_label_values(&[
+                        &snapshot.network,
+                        source.mode.as_str(),
+                        source.command.as_str(),
+                        source.connector.as_ref(),
+                    ])
+                    .set(1);
+            }
         }
         if let Some(node) = &snapshot.node {
             let feature_set = node

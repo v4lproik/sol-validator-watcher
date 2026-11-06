@@ -6,6 +6,7 @@
 use crate::mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
     env, fmt, fs,
@@ -16,6 +17,9 @@ use std::{
 
 /// Reserved label that identifies the validator used for economics collection.
 pub const ECONOMICS_TARGET_LABEL: &str = "focus:economics";
+
+const DEFAULT_RPC_RESPONSE_SIZE_LIMIT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_RPC_RESPONSE_SIZE_LIMIT_BYTES: usize = 128 * 1024 * 1024;
 
 /// Ordered connector routes for health commands.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -309,6 +313,8 @@ pub struct RpcTransportConfig {
     pub request_timeout_sec: u64,
     /// DNS, TCP, and TLS connection deadline.
     pub connect_timeout_sec: u64,
+    /// Maximum accepted JSON-RPC response body size.
+    pub response_size_limit_bytes: usize,
     /// Request headers applied to every JSON-RPC request.
     pub headers: TransportHeaders,
     /// Solana commitment level sent with compatible RPC requests.
@@ -321,6 +327,7 @@ impl Default for RpcTransportConfig {
             url: String::new(),
             request_timeout_sec: default_http_request_timeout_sec(),
             connect_timeout_sec: default_http_connect_timeout_sec(),
+            response_size_limit_bytes: default_rpc_response_size_limit_bytes(),
             headers: TransportHeaders::default(),
             commitment: default_commitment(),
         }
@@ -334,6 +341,7 @@ impl fmt::Debug for RpcTransportConfig {
             .field("url", &Redacted)
             .field("request_timeout_sec", &self.request_timeout_sec)
             .field("connect_timeout_sec", &self.connect_timeout_sec)
+            .field("response_size_limit_bytes", &self.response_size_limit_bytes)
             .field("headers", &self.headers)
             .field("commitment", &self.commitment)
             .finish()
@@ -377,6 +385,13 @@ impl RpcTransportConfig {
 
     fn validate(&mut self, path: &str) -> Result<()> {
         validate_http_timeouts(self.request_timeout_sec, self.connect_timeout_sec, path)?;
+        if self.response_size_limit_bytes == 0
+            || self.response_size_limit_bytes > MAX_RPC_RESPONSE_SIZE_LIMIT_BYTES
+        {
+            bail!(
+                "{path}.response_size_limit_bytes must be between 1 and {MAX_RPC_RESPONSE_SIZE_LIMIT_BYTES}"
+            );
+        }
         validate_http_url(&format!("{path}.url"), &self.url)?;
         self.headers
             .normalize_and_validate(&format!("{path}.headers"), HTTP_RESERVED_HEADERS)?;
@@ -667,6 +682,9 @@ pub struct Config {
     pub liveness_file: Option<PathBuf>,
     /// Validators selected for detailed metrics and labels.
     pub watched_validators: Vec<WatchedValidatorConfig>,
+    /// SHA-256 of the fully expanded profile consumed by this process.
+    #[serde(skip)]
+    pub(crate) fingerprint: String,
 }
 
 impl Default for Config {
@@ -680,6 +698,7 @@ impl Default for Config {
             poll_interval_sec: default_poll_interval_sec(),
             delinquent_slot_distance: None,
             liveness_file: None,
+            fingerprint: String::new(),
             watched_validators: vec![],
         }
     }
@@ -689,12 +708,27 @@ fn default_network() -> String {
     "mainnet-beta".to_string()
 }
 
+fn config_fingerprint(expanded: &str) -> Result<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(expanded.as_bytes());
+    let mut encoded = Vec::with_capacity(digest.len() * 2);
+    for byte in digest {
+        encoded.push(HEX[usize::from(byte >> 4)]);
+        encoded.push(HEX[usize::from(byte & 0x0f)]);
+    }
+    String::from_utf8(encoded).context("SHA-256 fingerprint encoding was not UTF-8")
+}
+
 fn default_http_request_timeout_sec() -> u64 {
     30
 }
 
 fn default_http_connect_timeout_sec() -> u64 {
     10
+}
+
+const fn default_rpc_response_size_limit_bytes() -> usize {
+    DEFAULT_RPC_RESPONSE_SIZE_LIMIT_BYTES
 }
 
 fn default_ws_handshake_timeout_sec() -> u64 {
@@ -765,6 +799,7 @@ impl Config {
                 error.message()
             )
         })?;
+        config.fingerprint = config_fingerprint(&expanded)?;
 
         config.validate()?;
         Ok(config)

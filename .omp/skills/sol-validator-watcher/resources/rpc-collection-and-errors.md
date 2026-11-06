@@ -135,10 +135,18 @@ probes, and economics collection.
   node-local source.
 - Timeouts come from validated connector configuration. Do not add an unbounded
   request or retry loop.
+- Bound every standard RPC response body before JSON deserialization. Reject
+  oversized single and batch responses with method context and without logging
+  response bytes.
 - Bound provider-API response bytes before decoding. Cache a settled
   validator/epoch reward for the source-chain lifetime; cache absence only for
   the upstream cache window so late settlement can appear without per-poll
   history downloads.
+- Cache immutable finalized `getBlock` fee samples by slot for the client
+  lifetime. Confirmed samples are never cached because they can be rolled back.
+  Request only finalized cache misses, preserve input ordering, and export
+  connector-level hit, miss, and requested-method totals so provider load stays
+  auditable.
 
 ### Classify fallback deliberately
 

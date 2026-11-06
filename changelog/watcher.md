@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Bounded every standard JSON-RPC response before deserialization and cached immutable finalized block-fee samples by slot so repeated polls request only cache misses while confirmed samples are always refetched to tolerate rollback.
 - Preserved missing watched-validator and scope inflation-reward samples as unavailable while retaining independently collected reward-epoch block counts and valid zero-valued rewards.
 - Projected each watched validator's complete current-epoch assignment count and earliest 16 current- or next-epoch leader slots, preserving assignments from either available epoch schedule while keeping schedule absence distinct from a valid empty schedule.
 - Added an optional routed recent-block-fee command that selects at most 32 completed current-epoch leader slots, batches confirmed `getBlock` reward reads without transaction bodies, validates target identity fee rewards, and preserves ordered connector fallback and source provenance.

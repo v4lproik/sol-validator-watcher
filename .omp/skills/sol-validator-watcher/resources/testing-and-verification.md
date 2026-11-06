@@ -18,6 +18,10 @@ then complete the repository's required local gates.
 - Run `actionlint -color` for GitHub Actions changes.
 - Run affected `just stack config <target>` commands for Compose changes before
   starting any stack.
+- Run `just production check <env-file>` for production Compose, Prometheus, or
+  Alertmanager changes.
+- Run `just security dependencies`, `just security repository`, and the exact
+  image scan when dependency, security, container, or release controls change.
 - A verification result becomes stale when a tested file changes. Rerun the
   affected gate before push.
 
@@ -76,6 +80,9 @@ A behavioral change is not complete until the changed surface runs:
   source, and domain data.
 - Workflow or script: execute the harmless validation/build path and inspect its
   artifact or output.
+- Exact container image: run the image against controlled method-specific RPC
+  envelopes with the production hardening flags, wait for `/readyz`, inspect
+  `sol_watcher_build_info`, stop it cooperatively, and scan the same image.
 
 Throwaway smoke fixtures stay outside the repository and are removed afterward.
 

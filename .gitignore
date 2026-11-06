@@ -3,3 +3,7 @@
 /public
 /lcov.info
 /.env
+/.env.production
+/.env.production.watcher
+/.env.production.rollback
+/.env.production.failed

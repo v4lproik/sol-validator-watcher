@@ -1,0 +1,35 @@
+name: surfpool
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: surfpool-compatibility
+  cancel-in-progress: false
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install repository toolchain
+        uses: jdx/mise-action@v2
+
+      - name: Install checksum-verified Surfpool
+        run: |
+          just surfpool install "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Surfpool compatibility
+        run: |
+          just surfpool doctor
+          just surfpool test smoke
