@@ -1256,7 +1256,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Count of watched validators that are delinquent, lagging, or skipping too many leader slots.",
+      "description": "Count of watched validators that are delinquent, have more than 32 slots of last-vote lag, or exceed a 5% skip rate. Each validator is counted once, and unavailable lag or production samples do not hide another unhealthy signal.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1307,7 +1307,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum((((max by (network, identity, vote_account) (sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\",status=\"delinquent\"}) > bool 0) + (max by (network, identity, vote_account) (sol_watched_validator_last_vote_slot_lag{identity=~\"$validator\",network=~\"$network\"}) > bool 32) + (max by (network, identity, vote_account) (100 * sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} + sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, 1)) > bool 5)) > bool 0)) or vector(0)",
+          "expr": "count((max by (network, identity, vote_account) (sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\",status=\"delinquent\"}) > 0) or (max by (network, identity, vote_account) (sol_watched_validator_last_vote_slot_lag{identity=~\"$validator\",network=~\"$network\"}) > 32) or (max by (network, identity, vote_account) (100 * sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} / clamp_min(sol_watched_validator_blocks_missed{identity=~\"$validator\",network=~\"$network\"} + sol_watched_validator_blocks_produced{identity=~\"$validator\",network=~\"$network\"}, 1)) > 5)) or vector(0)",
           "instant": true,
           "legendFormat": "attention",
           "range": false,
