@@ -1256,7 +1256,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Count of watched validators that are delinquent, have more than 32 slots of last-vote lag, or exceed a 5% skip rate. Each validator is counted once, and unavailable lag or production samples do not hide another unhealthy signal.",
+      "description": "Count of watched validators that are delinquent, have more than 32 slots of last-vote lag, or exceed a 5% skip rate. Conditions are unioned by validator so active validators with lag or skip issues remain visible and overlapping conditions count once.",
       "fieldConfig": {
         "defaults": {
           "color": {
