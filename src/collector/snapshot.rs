@@ -5,15 +5,16 @@
 
 use super::{
     aggregate::{
-        aggregate_records, build_economics_metrics, build_record, estimated_epoch_end_unixtime,
-        ratio, resolve_economics_target, RecordBuildContext,
+        aggregate_records, apply_validator_funding_metrics, build_economics_metrics, build_record,
+        estimated_epoch_end_unixtime, ratio, resolve_economics_target, EconomicsTarget,
+        RecordBuildContext,
     },
     command,
     model::{
-        GossipObservation, ModeStatus, NodeVotingStatus, Snapshot, ValidatorStatus,
-        WatchedValidatorMetrics,
+        AccountBalanceTarget, AccountBalances, GossipObservation, ModeStatus, NodeVotingStatus,
+        Snapshot, ValidatorStatus, WatchedValidatorMetrics,
     },
-    rpc::{BlockProduction, ClusterNode, MAX_RECENT_BLOCK_FEE_REWARD_SLOTS},
+    rpc::{BlockProduction, ClusterNode, VoteAccounts, MAX_RECENT_BLOCK_FEE_REWARD_SLOTS},
 };
 use crate::{
     config::Config,
@@ -21,7 +22,7 @@ use crate::{
     mode::{CommandId, ModeId},
     source::SourceChain,
 };
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::collections::BinaryHeap;
 
 /// Exercises every required economics command before economics collection starts.
@@ -44,12 +45,17 @@ pub async fn ensure_economics_supported(sources: &SourceChain, config: &Config) 
     let epoch_info = epoch_info?;
     let vote_accounts = vote_accounts?;
     let target = resolve_economics_target(config, &vote_accounts.value)?;
-    sources
+    let matcher = LabelMatcher::from_config(config);
+    let mut account_targets = watched_account_balance_targets(&vote_accounts.value, &matcher);
+    include_economics_target(&mut account_targets, &target);
+    let balances = sources
         .required(&command::GetAccountBalances {
-            identity: &target.identity,
-            vote_account: &target.vote_account,
+            targets: &account_targets,
         })
         .await?;
+    if !economics_target_has_funding(&target, &account_targets, &balances.value) {
+        bail!("configured economics target account was not found");
+    }
 
     let Some(reward_epoch) = epoch_info.value.epoch.checked_sub(1) else {
         return Ok(());
@@ -160,18 +166,12 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         sources.optional(&next_schedule_command),
         async {
             let Some(target) = economics_target.as_ref() else {
-                return Ok::<_, anyhow::Error>((None, None, None, None, None));
+                return Ok::<_, anyhow::Error>((None, None, None, None));
             };
-            let balances = sources
-                .required(&command::GetAccountBalances {
-                    identity: &target.identity,
-                    vote_account: &target.vote_account,
-                })
-                .await?;
 
             let (Some(epoch), Some(addresses)) = (reward_epoch, reward_vote_accounts.as_deref())
             else {
-                return Ok((Some(balances), None, None, None, None));
+                return Ok((None, None, None, None));
             };
             let inflation_rewards_command = command::GetInflationRewards { addresses, epoch };
             let block_production_command = command::GetRewardEpochBlockProduction {
@@ -192,7 +192,6 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
                 sources.optional(&trillium_mev_capture_command),
             );
             Ok((
-                Some(balances),
                 Some(inflation_rewards?),
                 Some(block_production?),
                 jito_mev_reward,
@@ -201,13 +200,8 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         },
     );
 
-    let (
-        account_balances,
-        inflation_rewards,
-        reward_epoch_block_production,
-        jito_mev_reward,
-        trillium_mev_capture,
-    ) = economics_outputs?;
+    let (inflation_rewards, reward_epoch_block_production, jito_mev_reward, trillium_mev_capture) =
+        economics_outputs?;
     let leadership_up =
         current_block_production.is_some() && current_schedule.is_some() && next_schedule.is_some();
 
@@ -267,19 +261,14 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         }
         _ => None,
     };
-    let economics = match (economics_target.as_ref(), account_balances) {
-        (Some(target), Some(resolved)) => {
-            data_sources.push(resolved.source.into());
-            Some(build_economics_metrics(
-                target,
-                resolved.value,
-                jito_mev_reward,
-                trillium_mev_capture,
-                recent_block_fee_rewards,
-            ))
-        }
-        _ => None,
-    };
+    let economics = economics_target.as_ref().map(|target| {
+        build_economics_metrics(
+            target,
+            jito_mev_reward,
+            trillium_mev_capture,
+            recent_block_fee_rewards,
+        )
+    });
     let inflation_rewards = inflation_rewards
         .map(|resolved| {
             data_sources.push(resolved.source.into());
@@ -351,10 +340,39 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         data_sources.push(resolved.source.into());
         apply_gossip_observations(&mut snapshot.watched_validators, resolved.value);
     }
+    if economics_enabled {
+        let Some(target) = economics_target.as_ref() else {
+            bail!("economics mode is enabled without a resolved target");
+        };
+        let watched_validator_count = snapshot.watched_validators.len();
+        let mut account_targets = snapshot
+            .watched_validators
+            .iter()
+            .map(|validator| AccountBalanceTarget {
+                identity: validator.identity.as_str(),
+                vote_account: validator.vote_account.as_str(),
+            })
+            .collect::<Vec<_>>();
+        include_economics_target(&mut account_targets, target);
+        let balances = sources
+            .required(&command::GetAccountBalances {
+                targets: &account_targets,
+            })
+            .await?;
+        if !economics_target_has_funding(target, &account_targets, &balances.value) {
+            bail!("configured economics target account was not found");
+        }
+        drop(account_targets);
+        data_sources.push(balances.source.into());
+        let mut funding = balances.value;
+        funding.truncate(watched_validator_count);
+        apply_validator_funding_metrics(&mut snapshot.watched_validators, funding)?;
+    }
 
     Ok(Snapshot {
         epoch_slots: epoch_info.value.slots_in_epoch,
         epoch_progress_pct: ratio(epoch_info.value.slot_index, epoch_info.value.slots_in_epoch),
+
         epoch_slots_remaining,
         cluster_performance,
         estimated_epoch_end_unixtime: estimated_epoch_end_unixtime(
@@ -367,6 +385,58 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         mode_statuses,
         ..snapshot
     })
+}
+fn watched_account_balance_targets<'a>(
+    vote_accounts: &'a VoteAccounts,
+    matcher: &LabelMatcher,
+) -> Vec<AccountBalanceTarget<'a>> {
+    let mut targets = vote_accounts
+        .current
+        .iter()
+        .chain(vote_accounts.delinquent.iter())
+        .filter(|account| matcher.is_watched(&account.node_pubkey, &account.vote_pubkey))
+        .map(|account| AccountBalanceTarget {
+            identity: account.node_pubkey.as_str(),
+            vote_account: account.vote_pubkey.as_str(),
+        })
+        .collect::<Vec<_>>();
+    // `aggregate_records` uses the same key order for watched-validator rows.
+    targets.sort_unstable_by(|left, right| {
+        left.identity
+            .cmp(right.identity)
+            .then_with(|| left.vote_account.cmp(right.vote_account))
+    });
+    targets
+}
+
+fn include_economics_target<'a>(
+    account_targets: &mut Vec<AccountBalanceTarget<'a>>,
+    target: &'a EconomicsTarget,
+) {
+    if account_targets.iter().any(|candidate| {
+        candidate.identity == target.identity && candidate.vote_account == target.vote_account
+    }) {
+        return;
+    }
+    account_targets.push(AccountBalanceTarget {
+        identity: target.identity.as_str(),
+        vote_account: target.vote_account.as_str(),
+    });
+}
+
+fn economics_target_has_funding(
+    target: &EconomicsTarget,
+    account_targets: &[AccountBalanceTarget<'_>],
+    balances: &[Option<AccountBalances>],
+) -> bool {
+    account_targets
+        .iter()
+        .zip(balances)
+        .any(|(candidate, balances)| {
+            candidate.identity == target.identity
+                && candidate.vote_account == target.vote_account
+                && balances.is_some()
+        })
 }
 
 fn apply_gossip_observations(
@@ -441,7 +511,15 @@ fn recent_completed_leader_slots(
 
 #[cfg(test)]
 mod tests {
-    use super::recent_completed_leader_slots;
+    use super::{
+        economics_target_has_funding, recent_completed_leader_slots,
+        watched_account_balance_targets, AccountBalanceTarget, AccountBalances, EconomicsTarget,
+    };
+    use crate::{
+        collector::rpc::{VoteAccountInfo, VoteAccounts},
+        config::{Config, WatchedValidatorConfig},
+        labels::LabelMatcher,
+    };
 
     #[test]
     fn recent_completed_leader_slots_keeps_the_latest_bounded_unique_slots() {
@@ -451,5 +529,85 @@ mod tests {
         let slots = recent_completed_leader_slots(&relative_slots, 100, 138);
 
         assert_eq!(slots, (106..=137).rev().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn configured_target_funding_remains_required_when_other_accounts_are_absent() {
+        let target = EconomicsTarget {
+            identity: "target-id".to_string(),
+            vote_account: "target-vote".to_string(),
+        };
+        let account_targets = [
+            AccountBalanceTarget {
+                identity: "missing-id",
+                vote_account: "missing-vote",
+            },
+            AccountBalanceTarget {
+                identity: "target-id",
+                vote_account: "target-vote",
+            },
+        ];
+        let target_balance = AccountBalances {
+            identity_lamports: 1,
+            vote_account_lamports: 2,
+            vote_account_rent_exempt_minimum_lamports: Some(1),
+        };
+
+        assert!(economics_target_has_funding(
+            &target,
+            &account_targets,
+            &[None, Some(target_balance)]
+        ));
+        assert!(!economics_target_has_funding(
+            &target,
+            &account_targets,
+            &[None, None]
+        ));
+    }
+
+    #[test]
+    fn watched_account_balance_targets_follow_snapshot_order() {
+        let config = Config {
+            watched_validators: vec![
+                WatchedValidatorConfig {
+                    identity: Some("id-z".to_string()),
+                    vote_account: Some("vote-z".to_string()),
+                    labels: Vec::new(),
+                },
+                WatchedValidatorConfig {
+                    identity: Some("id-a".to_string()),
+                    vote_account: Some("vote-a".to_string()),
+                    labels: Vec::new(),
+                },
+            ],
+            ..Config::default()
+        };
+        let vote_account = |identity: &str, vote_account: &str| VoteAccountInfo {
+            vote_pubkey: vote_account.to_string(),
+            node_pubkey: identity.to_string(),
+            activated_stake: 1,
+            commission: 0,
+            epoch_credits: Vec::new(),
+            last_vote: 0,
+            root_slot: 0,
+        };
+        let vote_accounts = VoteAccounts {
+            current: vec![
+                vote_account("id-z", "vote-z"),
+                vote_account("id-a", "vote-a"),
+            ],
+            delinquent: Vec::new(),
+        };
+        let matcher = LabelMatcher::from_config(&config);
+
+        let targets = watched_account_balance_targets(&vote_accounts, &matcher);
+
+        assert_eq!(
+            targets
+                .iter()
+                .map(|target| (target.identity, target.vote_account))
+                .collect::<Vec<_>>(),
+            vec![("id-a", "vote-a"), ("id-z", "vote-z")]
+        );
     }
 }

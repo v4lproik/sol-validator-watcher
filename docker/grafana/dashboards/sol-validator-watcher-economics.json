@@ -1662,32 +1662,36 @@
       },
       "id": 9,
       "panels": [],
-      "title": "Configured Economics Target — Funding and Timing",
+      "title": "Watched Validators — Funding and Timing",
       "type": "row",
-      "description": "These panels describe the single validator configured under modes.economics.validator, separate from the tracked-validator comparison above."
+      "description": "Funding rows follow the selected watched validators. Epoch timing is network-wide; Next Leader is reported separately for each selected validator."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Current account balances and the vote-account reserve above rent exemption. VAT runway counts complete future 0.8 SOL charges; it excludes future rewards or transfers.",
+      "description": "One row per selected watched validator. VAT reserve is the vote-account balance above rent exemption; runway counts complete future 0.8 SOL charges. Missing accounts or account-size data remain blank.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "text",
-            "mode": "fixed"
+            "mode": "thresholds"
           },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
-                "value": null
-              },
-              {
                 "color": "green",
-                "value": 1
+                "value": null
               }
             ]
           }
@@ -1696,9 +1700,25 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "Validator"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "Identity Balance"
             },
             "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
               {
                 "id": "unit",
                 "value": "suffix: SOL"
@@ -1716,6 +1736,10 @@
             },
             "properties": [
               {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
                 "id": "unit",
                 "value": "suffix: SOL"
               },
@@ -1731,6 +1755,10 @@
               "options": "Rent Minimum"
             },
             "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              },
               {
                 "id": "unit",
                 "value": "suffix: SOL"
@@ -1748,9 +1776,21 @@
             },
             "properties": [
               {
-                "id": "color",
+                "id": "custom.width",
+                "value": 95
+              },
+              {
+                "id": "unit",
+                "value": "suffix: SOL"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              },
+              {
+                "id": "custom.cellOptions",
                 "value": {
-                  "mode": "thresholds"
+                  "type": "color-text"
                 }
               },
               {
@@ -1768,14 +1808,6 @@
                     }
                   ]
                 }
-              },
-              {
-                "id": "unit",
-                "value": "suffix: SOL"
-              },
-              {
-                "id": "decimals",
-                "value": 3
               }
             ]
           },
@@ -1786,9 +1818,21 @@
             },
             "properties": [
               {
-                "id": "color",
+                "id": "custom.width",
+                "value": 85
+              },
+              {
+                "id": "unit",
+                "value": "suffix: epochs"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
                 "value": {
-                  "mode": "thresholds"
+                  "type": "color-text"
                 }
               },
               {
@@ -1806,14 +1850,6 @@
                     }
                   ]
                 }
-              },
-              {
-                "id": "unit",
-                "value": "suffix: epochs"
-              },
-              {
-                "id": "decimals",
-                "value": 0
               }
             ]
           },
@@ -1824,31 +1860,20 @@
             },
             "properties": [
               {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
+                "id": "custom.width",
+                "value": 100
               },
               {
-                "id": "thresholds",
+                "id": "custom.cellOptions",
                 "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "green",
-                      "value": 1
-                    }
-                  ]
+                  "type": "color-background"
                 }
               },
               {
                 "id": "mappings",
                 "value": [
                   {
+                    "type": "value",
                     "options": {
                       "0": {
                         "color": "red",
@@ -1860,96 +1885,210 @@
                         "index": 1,
                         "text": "FUNDED"
                       }
-                    },
-                    "type": "value"
+                    }
                   }
                 ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 75
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 24,
         "x": 0,
         "y": 73
       },
       "id": 10,
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
           "fields": "",
-          "values": false
+          "reducer": [
+            "sum"
+          ],
+          "show": false
         },
-        "textMode": "auto",
-        "wideLayout": true
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Validator"
+          }
+        ]
       },
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_identity_balance_sol{network=\"$network\"}",
+          "expr": "max by (validator_key, network, status, validator_identity, validator_vote_account) (label_join(label_join(label_join(sol_watched_validator_info{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"), \"validator_identity\", \"\", \"identity\"), \"validator_vote_account\", \"\", \"vote_account\"))",
           "instant": true,
-          "legendFormat": "{{identity}} · Identity Balance",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "A"
+          "refId": "A",
+          "format": "table"
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vote_account_balance_sol{network=\"$network\"}",
+          "expr": "max by (validator_key, network) (label_join(sol_economics_identity_balance_sol{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"))",
           "instant": true,
-          "legendFormat": "{{identity}} · Vote Balance",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "B"
+          "refId": "B",
+          "format": "table"
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vote_account_rent_exempt_minimum_sol{network=\"$network\"}",
+          "expr": "max by (validator_key, network) (label_join(sol_economics_vote_account_balance_sol{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"))",
           "instant": true,
-          "legendFormat": "{{identity}} · Rent Minimum",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "C"
+          "refId": "C",
+          "format": "table"
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vat_reserve_sol{network=\"$network\"}",
+          "expr": "max by (validator_key, network) (label_join(sol_economics_vote_account_rent_exempt_minimum_sol{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"))",
           "instant": true,
-          "legendFormat": "{{identity}} · VAT Reserve",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "D"
+          "refId": "D",
+          "format": "table"
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vat_epochs_available{network=\"$network\"}",
+          "expr": "max by (validator_key, network) (label_join(sol_economics_vat_reserve_sol{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"))",
           "instant": true,
-          "legendFormat": "{{identity}} · VAT Runway",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "E"
+          "refId": "E",
+          "format": "table"
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vat_next_epoch_funded{network=\"$network\"}",
+          "expr": "max by (validator_key, network) (label_join(sol_economics_vat_epochs_available{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"))",
           "instant": true,
-          "legendFormat": "{{identity}} · Next VAT",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "F"
+          "refId": "F",
+          "format": "table"
+        },
+        {
+          "editorMode": "code",
+          "expr": "max by (validator_key, network) (label_join(sol_economics_vat_next_epoch_funded{network=\"$network\",identity=~\"$validator\"}, \"validator_key\", \" / \", \"identity\", \"vote_account\"))",
+          "instant": true,
+          "legendFormat": "{{identity}}",
+          "range": false,
+          "refId": "G",
+          "format": "table"
         }
       ],
-      "title": "Target Account Balances and VAT Runway",
-      "type": "stat"
+      "title": "Watched Validator Account Funding",
+      "type": "table",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "validator_key",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #A": true,
+              "__name__": true,
+              "network": true,
+              "validator_key": true,
+              "Time 1": true,
+              "__name__ 1": true,
+              "network 1": true,
+              "validator_key 1": true,
+              "Time 2": true,
+              "__name__ 2": true,
+              "network 2": true,
+              "validator_key 2": true,
+              "Time 3": true,
+              "__name__ 3": true,
+              "network 3": true,
+              "validator_key 3": true,
+              "Time 4": true,
+              "__name__ 4": true,
+              "network 4": true,
+              "validator_key 4": true,
+              "Time 5": true,
+              "__name__ 5": true,
+              "network 5": true,
+              "validator_key 5": true,
+              "Time 6": true,
+              "__name__ 6": true,
+              "network 6": true,
+              "validator_key 6": true
+            },
+            "indexByName": {
+              "validator_identity": 0,
+              "validator_vote_account": 1,
+              "status": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8
+            },
+            "renameByName": {
+              "validator_identity": "Validator",
+              "validator_vote_account": "Vote Account",
+              "status": "Status",
+              "Value #B": "Identity Balance",
+              "Value #C": "Vote Balance",
+              "Value #D": "Rent Minimum",
+              "Value #E": "VAT Reserve",
+              "Value #F": "VAT Runway",
+              "Value #G": "Next VAT"
+            }
+          }
+        }
+      ]
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Epoch estimates use the latest getRecentPerformanceSamples average. Next-leader ETA is omitted when no current or next-epoch schedule is available for the economics validator.",
+      "description": "Epoch progress, average slot duration, and estimated epoch end are network-wide. Next-leader ETA is reported for every selected watched validator with an available current- or next-epoch assignment.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2016,8 +2155,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Next Leader"
+              "id": "byRegexp",
+              "options": ".* · Next Leader"
             },
             "properties": [
               {
@@ -2036,7 +2175,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 81
+        "y": 83
       },
       "id": 11,
       "options": {
@@ -2081,14 +2220,14 @@
         },
         {
           "editorMode": "code",
-          "expr": "min(sol_watched_validator_seconds_until_next_leader{network=\"$network\"} * on(network, identity, vote_account) group_left() sol_watched_validator_scope_info{network=\"$network\",scope=\"focus:economics\"})",
+          "expr": "sol_watched_validator_seconds_until_next_leader{network=\"$network\",identity=~\"$validator\"}",
           "instant": true,
-          "legendFormat": "Next Leader",
+          "legendFormat": "{{identity}} · Next Leader",
           "range": false,
           "refId": "D"
         }
       ],
-      "title": "Target Epoch and Leader Timing",
+      "title": "Network Epoch and Validator Leader Timing",
       "type": "stat"
     }
   ],
@@ -2162,6 +2301,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 9,
+  "version": 10,
   "weekStart": ""
 }

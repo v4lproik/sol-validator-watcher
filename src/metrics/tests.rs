@@ -4,7 +4,7 @@ use crate::{
         ClusterPerformanceMetrics, EconomicsMetrics, GossipObservation, JitoMevReward, ModeStatus,
         NodeHealth, NodeMetrics, NodeVotingStatus, RecentBlockFeeRewards, ScopeMetrics, Snapshot,
         SnapshotDataSource, TrilliumBlockRewards, TrilliumMevCapture, TrilliumTransactionMetrics,
-        ValidatorStatus, WatchedValidatorMetrics,
+        ValidatorFundingMetrics, ValidatorStatus, WatchedValidatorMetrics,
     },
     config::{
         Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -73,6 +73,14 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 "region:sbg".to_string(),
             ],
             activated_stake_lamports: 1_500_000_000,
+            funding: Some(ValidatorFundingMetrics {
+                identity_balance_lamports: 3_000_000_000,
+                vote_account_balance_lamports: 2_500_000_000,
+                vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
+                vat_reserve_lamports: Some(1_600_000_000),
+                vat_epochs_available: Some(2),
+                vat_next_epoch_funded: Some(true),
+            }),
             latest_epoch_vote_credits: Some(11),
             latest_epoch_reward_lamports: Some(6_000_000_000),
             latest_epoch_rewarded_blocks_produced: 3,
@@ -167,12 +175,6 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         economics: Some(EconomicsMetrics {
             identity: "id-1".to_string(),
             vote_account: "vote-1".to_string(),
-            identity_balance_lamports: 3_000_000_000,
-            vote_account_balance_lamports: 2_500_000_000,
-            vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
-            vat_reserve_lamports: Some(1_600_000_000),
-            vat_epochs_available: Some(2),
-            vat_next_epoch_funded: Some(true),
             jito_mev_reward: Some(JitoMevReward {
                 epoch: 41,
                 reward_lamports: 123_456_789,
@@ -450,6 +452,7 @@ fn scheduled_frequency_requires_a_valid_epoch_duration() -> Result<()> {
         gossip: GossipObservation::Unavailable,
         scopes: vec!["scope:watched".to_string()],
         activated_stake_lamports: 1,
+        funding: None,
         latest_epoch_vote_credits: None,
         vote_efficiency_pct: None,
         last_vote_slot_lag: 0,
@@ -494,33 +497,77 @@ fn scheduled_frequency_requires_a_valid_epoch_duration() -> Result<()> {
 }
 
 #[test]
-fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
+fn watched_validator_balances_render_for_every_validator_and_preserve_absence() -> Result<()> {
     let metrics = Metrics::new()?;
+    let watched_validator =
+        |identity: &str, vote_account: &str, funding: ValidatorFundingMetrics| {
+            WatchedValidatorMetrics {
+                identity: identity.to_string(),
+                vote_account: vote_account.to_string(),
+                status: ValidatorStatus::Current,
+                gossip: GossipObservation::Unavailable,
+                scopes: vec!["scope:watched".to_string()],
+                activated_stake_lamports: 0,
+                funding: Some(funding),
+                latest_epoch_vote_credits: None,
+                vote_efficiency_pct: None,
+                last_vote_slot_lag: 0,
+                root_slot_lag: 0,
+                commission_pct: 0,
+                latest_epoch_reward_lamports: None,
+                latest_epoch_rewarded_blocks_produced: 0,
+                blocks_produced: 0,
+                blocks_missed: 0,
+                block_production_rate: 0.0,
+                current_epoch_scheduled_leader_slots: None,
+                future_leader_slots: 0,
+                next_leader_slot: None,
+                slots_until_next_leader: None,
+                seconds_until_next_leader: None,
+                upcoming_leader_slots: vec![],
+            }
+        };
     metrics.update_snapshot(&Snapshot {
         network: "mainnet-beta".to_string(),
-        economics: Some(EconomicsMetrics {
-            identity: "id-1".to_string(),
-            vote_account: "vote-1".to_string(),
-            identity_balance_lamports: 3_000_000_000,
-            vote_account_balance_lamports: 2_500_000_000,
-            vote_account_rent_exempt_minimum_lamports: None,
-            vat_reserve_lamports: None,
-            vat_epochs_available: None,
-            vat_next_epoch_funded: None,
-            jito_mev_reward: None,
-            trillium_mev_capture: None,
-            recent_block_fee_rewards: None,
-        }),
+        watched_validators: vec![
+            watched_validator(
+                "id-1",
+                "vote-1",
+                ValidatorFundingMetrics {
+                    identity_balance_lamports: 3_000_000_000,
+                    vote_account_balance_lamports: 2_500_000_000,
+                    vote_account_rent_exempt_minimum_lamports: None,
+                    vat_reserve_lamports: None,
+                    vat_epochs_available: None,
+                    vat_next_epoch_funded: None,
+                },
+            ),
+            watched_validator(
+                "id-2",
+                "vote-2",
+                ValidatorFundingMetrics {
+                    identity_balance_lamports: 4_000_000_000,
+                    vote_account_balance_lamports: 3_500_000_000,
+                    vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
+                    vat_reserve_lamports: Some(2_600_000_000),
+                    vat_epochs_available: Some(3),
+                    vat_next_epoch_funded: Some(true),
+                },
+            ),
+        ],
         ..Snapshot::default()
     });
 
     let rendered = metrics.render()?;
     assert!(rendered.contains("sol_economics_identity_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 3"));
-    assert!(rendered.contains("sol_economics_vote_account_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2.5"));
-    assert!(!rendered.contains("sol_economics_vote_account_rent_exempt_minimum_sol{"));
-    assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
-    assert!(!rendered.contains("sol_economics_vat_epochs_available{"));
-    assert!(!rendered.contains("sol_economics_vat_next_epoch_funded{"));
+    assert!(rendered.contains("sol_economics_identity_balance_sol{identity=\"id-2\",network=\"mainnet-beta\",vote_account=\"vote-2\"} 4"));
+    assert!(
+        !rendered.contains("sol_economics_vote_account_rent_exempt_minimum_sol{identity=\"id-1\"")
+    );
+    assert!(rendered.contains("sol_economics_vote_account_rent_exempt_minimum_sol{identity=\"id-2\",network=\"mainnet-beta\",vote_account=\"vote-2\"} 0.9"));
+    assert!(rendered.contains("sol_economics_vat_reserve_sol{identity=\"id-2\",network=\"mainnet-beta\",vote_account=\"vote-2\"} 2.6"));
+    assert!(rendered.contains("sol_economics_vat_epochs_available{identity=\"id-2\",network=\"mainnet-beta\",vote_account=\"vote-2\"} 3"));
+    assert!(rendered.contains("sol_economics_vat_next_epoch_funded{identity=\"id-2\",network=\"mainnet-beta\",vote_account=\"vote-2\"} 1"));
     Ok(())
 }
 
@@ -601,6 +648,14 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             },
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 1_000_000_000,
+            funding: Some(ValidatorFundingMetrics {
+                identity_balance_lamports: 1_000_000_000,
+                vote_account_balance_lamports: 1_000_000_000,
+                vote_account_rent_exempt_minimum_lamports: Some(500_000_000),
+                vat_reserve_lamports: Some(500_000_000),
+                vat_epochs_available: Some(0),
+                vat_next_epoch_funded: Some(false),
+            }),
             latest_epoch_vote_credits: Some(1),
             latest_epoch_reward_lamports: Some(1_000_000_000),
             latest_epoch_rewarded_blocks_produced: 1,
@@ -643,12 +698,6 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         economics: Some(EconomicsMetrics {
             identity: "old-id".to_string(),
             vote_account: "old-vote".to_string(),
-            identity_balance_lamports: 1_000_000_000,
-            vote_account_balance_lamports: 1_000_000_000,
-            vote_account_rent_exempt_minimum_lamports: Some(500_000_000),
-            vat_reserve_lamports: Some(500_000_000),
-            vat_epochs_available: Some(0),
-            vat_next_epoch_funded: Some(false),
             jito_mev_reward: Some(JitoMevReward {
                 epoch: 0,
                 reward_lamports: 1,
@@ -690,12 +739,6 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         economics: Some(EconomicsMetrics {
             identity: "partial-id".to_string(),
             vote_account: "partial-vote".to_string(),
-            identity_balance_lamports: 0,
-            vote_account_balance_lamports: 0,
-            vote_account_rent_exempt_minimum_lamports: None,
-            vat_reserve_lamports: None,
-            vat_epochs_available: None,
-            vat_next_epoch_funded: None,
             jito_mev_reward: None,
             trillium_mev_capture: Some(TrilliumMevCapture {
                 epoch: 1,
@@ -749,6 +792,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             gossip: GossipObservation::Missing,
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 1_000_000_000,
+            funding: None,
             latest_epoch_vote_credits: None,
             latest_epoch_reward_lamports: None,
             latest_epoch_rewarded_blocks_produced: 3,

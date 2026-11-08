@@ -482,42 +482,42 @@ impl Metrics {
         let sol_economics_identity_balance_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_identity_balance_sol",
-                "Identity account balance in SOL for the configured economics validator",
+                "Identity account balance in SOL for each watched validator",
             ),
             economics_labels,
         )?;
         let sol_economics_vote_account_balance_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_vote_account_balance_sol",
-                "Vote account balance in SOL for the configured economics validator",
+                "Vote account balance in SOL for each watched validator",
             ),
             economics_labels,
         )?;
         let sol_economics_vote_account_rent_exempt_minimum_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_vote_account_rent_exempt_minimum_sol",
-                "Rent-exempt minimum in SOL for the configured economics vote account",
+                "Rent-exempt minimum in SOL for each watched validator vote account",
             ),
             economics_labels,
         )?;
         let sol_economics_vat_reserve_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_vat_reserve_sol",
-                "Vote account balance above rent exemption available for future VAT charges",
+                "Watched-validator vote account balance above rent exemption available for future VAT charges",
             ),
             economics_labels,
         )?;
         let sol_economics_vat_epochs_available = IntGaugeVec::new(
             Opts::new(
                 "sol_economics_vat_epochs_available",
-                "Complete future 0.8 SOL VAT charges funded above rent exemption",
+                "Complete future 0.8 SOL VAT charges funded for each watched validator",
             ),
             economics_labels,
         )?;
         let sol_economics_vat_next_epoch_funded = IntGaugeVec::new(
             Opts::new(
                 "sol_economics_vat_next_epoch_funded",
-                "Whether the vote account can fund the next 0.8 SOL VAT charge above rent exemption",
+                "Whether each watched validator vote account can fund the next 0.8 SOL VAT charge above rent exemption",
             ),
             economics_labels,
         )?;

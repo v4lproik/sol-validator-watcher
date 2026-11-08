@@ -260,6 +260,15 @@ pub struct RecentBlockFeeRewards {
     pub sampled_block_count: u64,
 }
 
+/// Validator addresses requested together for account-funding collection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AccountBalanceTarget<'a> {
+    /// Validator identity account address.
+    pub identity: &'a str,
+    /// Validator vote-account address.
+    pub vote_account: &'a str,
+}
+
 /// Balances needed to derive validator economics metrics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct AccountBalances {
@@ -271,13 +280,9 @@ pub(crate) struct AccountBalances {
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
 }
 
-/// Operator-account balances and 0.8 SOL VAT runway estimates.
-#[derive(Clone, Debug, PartialEq)]
-pub struct EconomicsMetrics {
-    /// Validator identity account address.
-    pub identity: String,
-    /// Validator vote-account address.
-    pub vote_account: String,
+/// Current balances and derived vote-account funding runway for one watched validator.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ValidatorFundingMetrics {
     /// Identity-account balance in lamports.
     pub identity_balance_lamports: u64,
     /// Vote-account balance in lamports.
@@ -290,6 +295,15 @@ pub struct EconomicsMetrics {
     pub vat_epochs_available: Option<u64>,
     /// Whether the reserve covers the next 0.8 SOL VAT charge.
     pub vat_next_epoch_funded: Option<bool>,
+}
+
+/// Configured-target provider and recent block-fee economics.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EconomicsMetrics {
+    /// Validator identity account address.
+    pub identity: String,
+    /// Validator vote-account address.
+    pub vote_account: String,
     /// Settled Jito MEV reward, when a configured Jito route has published the epoch.
     pub jito_mev_reward: Option<JitoMevReward>,
     /// Completed-epoch MEV capture when a configured Trillium route has data.
@@ -332,6 +346,8 @@ pub struct WatchedValidatorMetrics {
     pub scopes: Vec<String>,
     /// Activated stake delegated to the vote account, in lamports.
     pub activated_stake_lamports: u64,
+    /// Current account balances and VAT runway when economics collection is enabled.
+    pub funding: Option<ValidatorFundingMetrics>,
     /// Vote credits earned in the bounded sample epoch.
     pub latest_epoch_vote_credits: Option<u64>,
     /// Earned vote credits as a percentage of the scope's ideal credits.

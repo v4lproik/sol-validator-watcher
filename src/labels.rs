@@ -47,6 +47,11 @@ impl LabelMatcher {
         matcher
     }
 
+    /// Returns whether either address identifies an explicitly watched validator.
+    pub fn is_watched(&self, identity: &str, vote_account: &str) -> bool {
+        self.by_identity.contains_key(identity) || self.by_vote_account.contains_key(vote_account)
+    }
+
     /// Returns sorted, deduplicated built-in and configured labels for a validator.
     pub fn labels_for(&self, identity: &str, vote_account: &str) -> Vec<String> {
         let identity_labels = self.by_identity.get(identity);

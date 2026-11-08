@@ -563,34 +563,6 @@ impl Metrics {
                 economics.identity.as_str(),
                 economics.vote_account.as_str(),
             ];
-            self.sol_economics_identity_balance_sol
-                .with_label_values(&labels)
-                .set(lamports_to_sol(economics.identity_balance_lamports));
-            self.sol_economics_vote_account_balance_sol
-                .with_label_values(&labels)
-                .set(lamports_to_sol(economics.vote_account_balance_lamports));
-            if let Some(rent_exempt_minimum_lamports) =
-                economics.vote_account_rent_exempt_minimum_lamports
-            {
-                self.sol_economics_vote_account_rent_exempt_minimum_sol
-                    .with_label_values(&labels)
-                    .set(lamports_to_sol(rent_exempt_minimum_lamports));
-            }
-            if let Some(vat_reserve_lamports) = economics.vat_reserve_lamports {
-                self.sol_economics_vat_reserve_sol
-                    .with_label_values(&labels)
-                    .set(lamports_to_sol(vat_reserve_lamports));
-            }
-            if let Some(vat_epochs_available) = economics.vat_epochs_available {
-                self.sol_economics_vat_epochs_available
-                    .with_label_values(&labels)
-                    .set(vat_epochs_available as i64);
-            }
-            if let Some(vat_next_epoch_funded) = economics.vat_next_epoch_funded {
-                self.sol_economics_vat_next_epoch_funded
-                    .with_label_values(&labels)
-                    .set(i64::from(vat_next_epoch_funded));
-            }
             if let Some(block_rewards) = economics.recent_block_fee_rewards {
                 self.sol_economics_block_fee_reward_sol
                     .with_label_values(&labels)
@@ -1078,6 +1050,41 @@ impl Metrics {
         self.sol_watched_validator_activated_stake_sol
             .with_label_values(&labels)
             .set(lamports_to_sol(validator.activated_stake_lamports));
+        if let Some(funding) = validator.funding {
+            let funding_labels = [
+                network,
+                validator.identity.as_str(),
+                validator.vote_account.as_str(),
+            ];
+            self.sol_economics_identity_balance_sol
+                .with_label_values(&funding_labels)
+                .set(lamports_to_sol(funding.identity_balance_lamports));
+            self.sol_economics_vote_account_balance_sol
+                .with_label_values(&funding_labels)
+                .set(lamports_to_sol(funding.vote_account_balance_lamports));
+            if let Some(rent_exempt_minimum_lamports) =
+                funding.vote_account_rent_exempt_minimum_lamports
+            {
+                self.sol_economics_vote_account_rent_exempt_minimum_sol
+                    .with_label_values(&funding_labels)
+                    .set(lamports_to_sol(rent_exempt_minimum_lamports));
+            }
+            if let Some(vat_reserve_lamports) = funding.vat_reserve_lamports {
+                self.sol_economics_vat_reserve_sol
+                    .with_label_values(&funding_labels)
+                    .set(lamports_to_sol(vat_reserve_lamports));
+            }
+            if let Some(vat_epochs_available) = funding.vat_epochs_available {
+                self.sol_economics_vat_epochs_available
+                    .with_label_values(&funding_labels)
+                    .set(vat_epochs_available as i64);
+            }
+            if let Some(vat_next_epoch_funded) = funding.vat_next_epoch_funded {
+                self.sol_economics_vat_next_epoch_funded
+                    .with_label_values(&funding_labels)
+                    .set(i64::from(vat_next_epoch_funded));
+            }
+        }
         if let Some(vote_credits) = validator.latest_epoch_vote_credits {
             self.sol_watched_validator_vote_credits_latest_epoch
                 .with_label_values(&labels)

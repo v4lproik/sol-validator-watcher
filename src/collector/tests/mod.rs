@@ -1,11 +1,12 @@
 use super::{
-    aggregate_records, build_economics_metrics, build_record, build_watched_validator_metrics,
-    collect_snapshot, ensure_economics_supported, estimated_epoch_end_unixtime_at, ratio,
-    resolve_economics_target, reward_epoch_block_range, AccountBalances, BlockProduction,
-    ClusterPerformanceMetrics, EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig,
-    GossipObservation, RecentBlockFeeRewards, RecordBuildContext, RewardSample, RpcClient,
-    RpcValueResponse, ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo,
-    VoteAccounts, WatchedValidatorMetrics, MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
+    aggregate_records, build_record, build_validator_funding_metrics,
+    build_watched_validator_metrics, collect_snapshot, ensure_economics_supported,
+    estimated_epoch_end_unixtime_at, ratio, resolve_economics_target, reward_epoch_block_range,
+    AccountBalanceTarget, AccountBalances, BlockProduction, ClusterPerformanceMetrics,
+    EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig, GossipObservation,
+    RecentBlockFeeRewards, RecordBuildContext, RewardSample, RpcClient, RpcValueResponse,
+    ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts,
+    WatchedValidatorMetrics, MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
 };
 use crate::{
     config::{
@@ -495,28 +496,47 @@ async fn mock_rpc_handler(
             } else {
                 json!(3762)
             };
+            let values = params
+                .first()
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .map(|(index, address)| {
+                    if address
+                        .as_str()
+                        .is_some_and(|address| address.starts_with("missing-"))
+                    {
+                        return Value::Null;
+                    }
+                    let is_vote_account = index % 2 == 1;
+                    json!({
+                        "lamports": if is_vote_account {
+                            2_500_000_000u64
+                        } else {
+                            3_000_000_000u64
+                        },
+                        "owner": if is_vote_account {
+                            "Vote111111111111111111111111111111111111111"
+                        } else {
+                            "11111111111111111111111111111111"
+                        },
+                        "data": ["", "base64"],
+                        "executable": false,
+                        "rentEpoch": 0,
+                        "space": if is_vote_account {
+                            vote_account_space.clone()
+                        } else {
+                            json!(0)
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
             (
                 StatusCode::OK,
                 Json(rpc_success(json!({
                     "context": { "slot": 810 },
-                    "value": [
-                        {
-                            "lamports": 3_000_000_000u64,
-                            "owner": "11111111111111111111111111111111",
-                            "data": ["", "base64"],
-                            "executable": false,
-                            "rentEpoch": 0,
-                            "space": 0
-                        },
-                        {
-                            "lamports": 2_500_000_000u64,
-                            "owner": "Vote111111111111111111111111111111111111111",
-                            "data": ["", "base64"],
-                            "executable": false,
-                            "rentEpoch": 0,
-                            "space": vote_account_space
-                        }
-                    ]
+                    "value": values
                 }))),
             )
                 .into_response()
