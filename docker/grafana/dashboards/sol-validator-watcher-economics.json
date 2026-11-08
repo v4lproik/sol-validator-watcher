@@ -1664,7 +1664,7 @@
       "panels": [],
       "title": "Watched Validators — Funding and Timing",
       "type": "row",
-      "description": "Funding rows follow the selected watched validators. Epoch timing is network-wide; Next Leader is reported separately for each selected validator."
+      "description": "Funding rows follow the selected watched validators. Separate timing panels show network-wide epoch progress, recent slot duration, time to epoch end, and each selected validator's next leader ETA."
     },
     {
       "datasource": {
@@ -2089,12 +2089,16 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Epoch progress, average slot duration, and estimated epoch end are network-wide. Next-leader ETA is reported for every selected watched validator with an available current- or next-epoch assignment.",
+      "description": "Completed percentage of the current epoch for the selected network.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "green",
+            "mode": "fixed"
           },
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -2103,87 +2107,84 @@
                 "value": null
               }
             ]
-          }
+          },
+          "unit": "percent"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Epoch Progress"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percent"
-              },
-              {
-                "id": "min",
-                "value": 0
-              },
-              {
-                "id": "max",
-                "value": 100
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Average Slot"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 3
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Epoch End"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "dateTimeFromNow"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* · Next Leader"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 5,
         "x": 0,
         "y": 83
       },
       "id": 11,
       "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max(sol_epoch_progress_pct{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "Epoch Progress",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Epoch Progress",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Average slot duration from the latest Solana performance samples. The sparkline shows how recent slot timing has changed across the selected range.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 5,
+        "y": 83
+      },
+      "id": 34,
+      "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
-        "orientation": "horizontal",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -2197,39 +2198,140 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max(sol_epoch_progress_pct{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "Epoch Progress",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
           "expr": "max(sol_average_slot_time_seconds{network=\"$network\"})",
-          "instant": true,
+          "instant": false,
           "legendFormat": "Average Slot",
-          "range": false,
-          "refId": "B"
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Average Slot Time",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Estimated time remaining in the current epoch. The sparkline shows the countdown adjusted by changes in recent slot duration.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "yellow",
+            "mode": "fixed"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 10,
+        "y": 83
+      },
+      "id": 35,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
         {
           "editorMode": "code",
-          "expr": "max(sol_estimated_epoch_end_unixtime{network=\"$network\"}) * 1000",
-          "instant": true,
-          "legendFormat": "Epoch End",
-          "range": false,
-          "refId": "C"
+          "expr": "clamp_min(max(sol_estimated_epoch_end_unixtime{network=\"$network\"}) - time(), 0)",
+          "instant": false,
+          "legendFormat": "Time Remaining",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Time to Epoch End",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Estimated time until the next scheduled leader slot for each selected watched validator. Missing validators have no available current- or next-epoch assignment.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 83
+      },
+      "id": 36,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "targets": [
         {
           "editorMode": "code",
           "expr": "sol_watched_validator_seconds_until_next_leader{network=\"$network\",identity=~\"$validator\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · Next Leader",
+          "legendFormat": "{{identity}}",
           "range": false,
-          "refId": "D"
+          "refId": "A"
         }
       ],
-      "title": "Network Epoch and Validator Leader Timing",
-      "type": "stat"
+      "title": "Next Leader ETA",
+      "type": "bargauge"
     }
   ],
   "refresh": "15s",
@@ -2302,6 +2404,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 10,
+  "version": 11,
   "weekStart": ""
 }

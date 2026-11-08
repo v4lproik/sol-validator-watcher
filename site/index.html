@@ -6,7 +6,7 @@
     <title>Solana Validator Watcher — Operator observability</title>
     <meta
       name="description"
-      content="Open-source Prometheus monitoring and Grafana dashboards for Solana validator health, consensus, leadership, and economics."
+      content="Open-source Prometheus monitoring and Grafana dashboards for Solana validator health, consensus, leadership, funding, and completed-epoch MEV."
     >
     <meta name="theme-color" content="#f4f1e8">
     <script>
@@ -93,7 +93,7 @@
           <p class="pill">Open-source Solana observability</p>
           <h1 id="hero-title">Know your validator before the next slot.</h1>
           <p class="hero-lead">
-            Health, consensus, leadership, and validator economics—collected by one Rust exporter and explained in Grafana.
+            Readiness, vote performance, leader delivery, account runway, and completed-epoch MEV—collected by one Rust exporter and explained in five provisioned Grafana views.
           </p>
 
           <div class="cta-row">
@@ -103,7 +103,7 @@
 
           <dl class="hero-proof" aria-label="Project facts">
             <div>
-              <dt>4</dt>
+              <dt>5</dt>
               <dd>operator dashboards</dd>
             </div>
             <div>
@@ -125,9 +125,10 @@
             </div>
             <img
               src="assets/dashboard-overview.webp"
-              alt="Grafana overview showing watched validator liveness, validators needing attention, and collection mode status"
+              alt="Grafana overview showing watched validator liveness, validators needing attention, and watched-validator gossip posture"
               width="1600"
               height="987"
+              decoding="async"
               fetchpriority="high"
             >
           </figure>
@@ -135,7 +136,7 @@
             <span class="signal-dot" aria-hidden="true"></span>
             <div>
               <strong>Operator state, immediately visible</strong>
-              <span>Readiness, validator status, and source routing</span>
+              <span>Readiness, validator status, gossip, and source routing</span>
             </div>
           </div>
         </div>
@@ -143,10 +144,10 @@
 
       <section class="proof-band" aria-label="Project capabilities">
         <div class="shell proof-band-inner">
-          <span>Solana RPC</span>
-          <span>WebSocket health</span>
-          <span>Connector fallback</span>
-          <span>Validator economics</span>
+          <span>Five dashboards</span>
+          <span>Every watched validator</span>
+          <span>Per-command provenance</span>
+          <span>Completed-epoch MEV</span>
           <span>Prometheus + Grafana</span>
         </div>
       </section>
@@ -154,11 +155,11 @@
       <section id="dashboards" class="section section-gallery shell" aria-labelledby="dashboards-title">
         <div class="section-heading section-heading-split">
           <div>
-            <p class="eyebrow">Dashboard gallery</p>
-            <h2 id="dashboards-title">See the whole validator, not a single metric.</h2>
+            <p class="eyebrow">Five provisioned views</p>
+            <h2 id="dashboards-title">One validator story, from vote to value.</h2>
           </div>
           <p>
-            Each provisioned view answers a different operator question—from upcoming leader opportunity to network-relative voting performance and reward history.
+            Move from network-relative voting and upcoming leader slots to account runway and completed-epoch MEV without leaving the same operating surface.
           </p>
         </div>
 
@@ -177,7 +178,7 @@
               <span class="gallery-index">01</span>
               <span>
                 <strong>Leadership</strong>
-                <small>Leader slots, blocks, skip rate</small>
+                <small>Upcoming slots and delivery</small>
               </span>
             </button>
             <button
@@ -193,7 +194,7 @@
               <span class="gallery-index">02</span>
               <span>
                 <strong>Consensus</strong>
-                <small>Vote efficiency, lag, stake</small>
+                <small>Voting and stake context</small>
               </span>
             </button>
             <button
@@ -209,7 +210,23 @@
               <span class="gallery-index">03</span>
               <span>
                 <strong>Economics</strong>
-                <small>Rewards, block fees, runway</small>
+                <small>Funding and epoch timing</small>
+              </span>
+            </button>
+            <button
+              id="dashboard-tab-mev-capture"
+              class="gallery-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="dashboard-panel-mev-capture"
+              tabindex="-1"
+              data-dashboard-tab="mev-capture"
+            >
+              <span class="gallery-index">04</span>
+              <span>
+                <strong>MEV Capture</strong>
+                <small>Capture, fees, and allocation</small>
               </span>
             </button>
           </div>
@@ -219,6 +236,7 @@
               id="dashboard-panel-leadership"
               class="gallery-panel is-active"
               role="tabpanel"
+              tabindex="0"
               aria-labelledby="dashboard-tab-leadership"
               data-dashboard-panel="leadership"
             >
@@ -229,11 +247,12 @@
                   width="1600"
                   height="987"
                   loading="lazy"
+                  decoding="async"
                 >
               </div>
               <figcaption>
                 <span>Provisioned Grafana capture</span>
-                <strong>Know the schedule, then compare delivery.</strong>
+                <strong>See the next opportunity, then measure delivery.</strong>
               </figcaption>
             </figure>
 
@@ -242,6 +261,7 @@
               class="gallery-panel"
               role="tabpanel"
               aria-labelledby="dashboard-tab-consensus"
+              tabindex="0"
               data-dashboard-panel="consensus"
               hidden
             >
@@ -252,11 +272,12 @@
                   width="1600"
                   height="987"
                   loading="lazy"
+                  decoding="async"
                 >
               </div>
               <figcaption>
                 <span>Provisioned Grafana capture</span>
-                <strong>Compare every watched validator with the network.</strong>
+                <strong>Put every watched validator in network context.</strong>
               </figcaption>
             </figure>
 
@@ -265,21 +286,48 @@
               class="gallery-panel"
               role="tabpanel"
               aria-labelledby="dashboard-tab-economics"
+              tabindex="0"
               data-dashboard-panel="economics"
               hidden
             >
               <div class="gallery-image-shell">
                 <img
                   src="assets/dashboard-economics.webp"
-                  alt="Economics dashboard showing tracked inflation rewards, rewarded blocks, reward per produced block, and reward data availability"
+                  alt="Economics dashboard showing watched-validator funding, epoch progress, average slot timing, time to epoch end, and next-leader timing"
                   width="1600"
                   height="987"
                   loading="lazy"
+                  decoding="async"
                 >
               </div>
               <figcaption>
                 <span>Provisioned Grafana capture</span>
-                <strong>Keep missing rewards distinct from valid zero rewards.</strong>
+                <strong>See who is funded, where the epoch stands, and what comes next.</strong>
+              </figcaption>
+            </figure>
+
+            <figure
+              id="dashboard-panel-mev-capture"
+              class="gallery-panel"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-mev-capture"
+              tabindex="0"
+              data-dashboard-panel="mev-capture"
+              hidden
+            >
+              <div class="gallery-image-shell">
+                <img
+                  src="assets/dashboard-mev-capture.webp"
+                  alt="MEV Capture dashboard showing the published epoch, gross Jito tips, captured MEV, commission, source, and allocation"
+                  width="1600"
+                  height="987"
+                  loading="lazy"
+                  decoding="async"
+                >
+              </div>
+              <figcaption>
+                <span>Provisioned Grafana capture</span>
+                <strong>Trace completed-epoch MEV from source to allocation.</strong>
               </figcaption>
             </figure>
           </div>
@@ -324,7 +372,7 @@
           </ol>
 
           <div class="pipeline" aria-label="Observability data flow">
-            <span>RPC · WebSocket · provider APIs</span>
+            <span>RPC · WebSocket · Jito · Trillium</span>
             <b aria-hidden="true">→</b>
             <span>Rust exporter</span>
             <b aria-hidden="true">→</b>
@@ -338,25 +386,25 @@
       <section class="section section-features shell" aria-labelledby="features-title">
         <div class="section-heading">
           <p class="eyebrow">Built for operator truth</p>
-          <h2 id="features-title">Useful when the data is imperfect.</h2>
-          <p>No silent zeros, hidden connector changes, or one-endpoint assumptions.</p>
+          <h2 id="features-title">The answer includes the source.</h2>
+          <p>Every view preserves the difference between healthy, unavailable, missing, and stale.</p>
         </div>
 
         <div class="feature-grid">
-          <article>
-            <span class="feature-mark feature-mark-violet" aria-hidden="true"></span>
-            <h3>Per-command source routing</h3>
-            <p>Declare ordered connector routes once. The first successful compatible connector wins, and the selected source is exported.</p>
+          <article class="feature-card feature-card-violet">
+            <p class="feature-value">Every validator</p>
+            <h3>One row per watched identity.</h3>
+            <p>Compare vote state, gossip posture, balances, VAT reserve, runway, and next-leader timing without losing validator context.</p>
           </article>
-          <article>
-            <span class="feature-mark feature-mark-coral" aria-hidden="true"></span>
-            <h3>Missing stays missing</h3>
-            <p>Optional rewards and unavailable samples remain no data instead of becoming healthy-looking zero values.</p>
+          <article class="feature-card feature-card-coral">
+            <p class="feature-value">Completed epoch</p>
+            <h3>MEV without guesswork.</h3>
+            <p>Trace Trillium capture, Jito tips, commission, fees, allocation, and production from the published epoch—not an implied live accrual.</p>
           </article>
-          <article>
-            <span class="feature-mark feature-mark-green" aria-hidden="true"></span>
-            <h3>Economics beside performance</h3>
-            <p>Inflation rewards, produced blocks, recent block fees, Jito rewards, commission, and funding runway share one operating view.</p>
+          <article class="feature-card feature-card-green">
+            <p class="feature-value">Named source</p>
+            <h3>Fallback stays auditable.</h3>
+            <p>Each command follows an ordered compatible route. Prometheus records the connector that succeeded and every failed attempt before it.</p>
           </article>
         </div>
       </section>
@@ -412,7 +460,7 @@
 
       <section class="closing shell" aria-labelledby="closing-title">
         <p class="eyebrow">Open source · MIT</p>
-        <h2 id="closing-title">Bring validator health, performance, and economics into focus.</h2>
+        <h2 id="closing-title">Bring validator health, consensus, funding, and MEV into focus.</h2>
         <div class="cta-row">
           <a class="button button-accent" href="https://github.com/v4lproik/sol-validator-watcher">Explore the repository</a>
           <a class="text-link text-link-large" href="https://github.com/v4lproik/sol-validator-watcher/blob/main/docs/production-runbook.md">Read the production runbook <span aria-hidden="true">↗</span></a>
