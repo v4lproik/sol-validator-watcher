@@ -50,6 +50,11 @@ These changes do not require new exporter metrics.
   `DELINQUENT` means the vote account is not keeping up with cluster voting.
   These states do not probe a validator's private RPC process; use vote and root
   lag for additional liveness context.
+- Gossip `VISIBLE` means the watched identity appears in the latest successful
+  routed `getClusterNodes` response. `MISSING` means that successful response
+  omitted the identity. With a watched validator selected, no data means the
+  route was not configured or every configured source failed; it is not evidence
+  that the validator disappeared.
 - Vote-credit sample, total, and efficiency series are absent when no
   current-epoch sample is available; missing credits are not reported as zero.
 - `/healthz` is process liveness. `/readyz` and `sol_watcher_ready` require five
@@ -101,6 +106,16 @@ while rent and VAT series are omitted.
 Configured Jito reward routes use the economics target's vote account. Missing
 settlement data or an exhausted optional route omits the Jito series instead of
 publishing zero; required economics RPC failures remain fail-closed.
+
+Public watched-validator gossip posture is exposed through
+`sol_watched_validator_gossip_visible` and
+`sol_watched_validator_gossip_info`. The first records explicit presence or
+absence only after a successful routed `getClusterNodes` response. The second
+records advertised validator version, feature set, and shred version only for
+visible watched identities. The overview dashboard counts missing identities
+and lists software metadata without exposing gossip, TPU, or RPC addresses.
+Both metric families reset with every completed snapshot so disappeared
+validators and changed versions cannot survive as stale series.
 
 Node-local operator health is exposed through `sol_node_info`,
 `sol_node_health`, `sol_node_catchup_distance_slots`, and

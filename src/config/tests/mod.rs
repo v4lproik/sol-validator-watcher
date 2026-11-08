@@ -63,6 +63,7 @@ fn modes_for(rpc: &str, ws: Option<&str>, economics_enabled: bool) -> ModesConfi
             commands: ConsensusCommands {
                 epoch_info: rpc_route(),
                 vote_accounts: rpc_route(),
+                cluster_nodes: rpc_route(),
                 recent_performance_samples: rpc_route(),
             },
         },

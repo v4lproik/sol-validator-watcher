@@ -4,7 +4,7 @@
 //! reset behavior, rendering, and unit conversion.
 
 use crate::{
-    collector::{Snapshot, WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS},
+    collector::{GossipObservation, Snapshot, WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS},
     config::{Config, ConnectorConfig},
     mode::{ModeId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
@@ -105,6 +105,8 @@ pub struct Metrics {
     sol_economics_jito_mev_commission_pct: GaugeVec,
     sol_economics_jito_mev_reward_epoch: IntGaugeVec,
     sol_watched_validator_info: IntGaugeVec,
+    sol_watched_validator_gossip_visible: IntGaugeVec,
+    sol_watched_validator_gossip_info: IntGaugeVec,
     sol_watched_validator_scope_info: IntGaugeVec,
     sol_watched_validator_activated_stake_sol: GaugeVec,
     sol_watched_validator_vote_credits_latest_epoch: GaugeVec,
@@ -737,6 +739,8 @@ impl Metrics {
         self.sol_block_production_rate.reset();
         self.sol_future_leader_slots.reset();
         self.sol_watched_validator_info.reset();
+        self.sol_watched_validator_gossip_visible.reset();
+        self.sol_watched_validator_gossip_info.reset();
         self.sol_watched_validator_scope_info.reset();
         self.sol_watched_validator_activated_stake_sol.reset();
         self.sol_watched_validator_vote_credits_latest_epoch.reset();
@@ -774,6 +778,40 @@ impl Metrics {
         self.sol_watched_validator_info
             .with_label_values(&labels)
             .set(1);
+        match &validator.gossip {
+            GossipObservation::Unavailable => {}
+            GossipObservation::Missing => {
+                self.sol_watched_validator_gossip_visible
+                    .with_label_values(&labels)
+                    .set(0);
+            }
+            GossipObservation::Present {
+                version,
+                feature_set,
+                shred_version,
+            } => {
+                self.sol_watched_validator_gossip_visible
+                    .with_label_values(&labels)
+                    .set(1);
+                let feature_set = feature_set
+                    .map(|value| value.to_string())
+                    .unwrap_or_default();
+                let shred_version = shred_version
+                    .map(|value| value.to_string())
+                    .unwrap_or_default();
+                self.sol_watched_validator_gossip_info
+                    .with_label_values(&[
+                        network,
+                        validator.identity.as_str(),
+                        validator.vote_account.as_str(),
+                        validator.status.as_str(),
+                        version.as_deref().unwrap_or_default(),
+                        feature_set.as_str(),
+                        shred_version.as_str(),
+                    ])
+                    .set(1);
+            }
+        }
         self.sol_watched_validator_activated_stake_sol
             .with_label_values(&labels)
             .set(lamports_to_sol(validator.activated_stake_lamports));

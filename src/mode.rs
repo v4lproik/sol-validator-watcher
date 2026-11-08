@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 14;
+pub const COMMAND_COUNT: usize = 15;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -173,6 +173,8 @@ pub enum CommandId {
     EpochInfo,
     /// Current and delinquent vote accounts.
     VoteAccounts,
+    /// Public gossip peers and their validator software metadata.
+    ClusterNodes,
     /// Recent cluster slot-performance sample.
     RecentPerformanceSamples,
     /// Block production in the current epoch range.
@@ -201,6 +203,7 @@ impl CommandId {
         Self::NodeStatus,
         Self::EpochInfo,
         Self::VoteAccounts,
+        Self::ClusterNodes,
         Self::RecentPerformanceSamples,
         Self::CurrentBlockProduction,
         Self::CurrentLeaderSchedule,
@@ -220,6 +223,7 @@ impl CommandId {
             Self::NodeStatus => "node-status",
             Self::EpochInfo => "epoch-info",
             Self::VoteAccounts => "vote-accounts",
+            Self::ClusterNodes => "cluster-nodes",
             Self::RecentPerformanceSamples => "recent-performance-samples",
             Self::CurrentBlockProduction => "current-block-production",
             Self::CurrentLeaderSchedule => "current-leader-schedule",
@@ -236,9 +240,10 @@ impl CommandId {
     pub const fn mode(self) -> ModeId {
         match self {
             Self::RpcHealth | Self::WsHealth | Self::NodeStatus => ModeId::Health,
-            Self::EpochInfo | Self::VoteAccounts | Self::RecentPerformanceSamples => {
-                ModeId::Consensus
-            }
+            Self::EpochInfo
+            | Self::VoteAccounts
+            | Self::ClusterNodes
+            | Self::RecentPerformanceSamples => ModeId::Consensus,
             Self::CurrentBlockProduction
             | Self::CurrentLeaderSchedule
             | Self::NextLeaderSchedule => ModeId::Leadership,
@@ -257,6 +262,7 @@ impl CommandId {
             | Self::NodeStatus
             | Self::EpochInfo
             | Self::VoteAccounts
+            | Self::ClusterNodes
             | Self::CurrentLeaderSchedule
             | Self::NextLeaderSchedule => RPC_CORE_SOURCE_REQUIREMENT,
             Self::WsHealth => WEBSOCKET_SOURCE_REQUIREMENT,
@@ -279,15 +285,16 @@ impl CommandId {
             Self::NodeStatus => 2,
             Self::EpochInfo => 3,
             Self::VoteAccounts => 4,
-            Self::RecentPerformanceSamples => 5,
-            Self::CurrentBlockProduction => 6,
-            Self::CurrentLeaderSchedule => 7,
-            Self::NextLeaderSchedule => 8,
-            Self::AccountBalances => 9,
-            Self::InflationRewards => 10,
-            Self::RewardEpochBlockProduction => 11,
-            Self::JitoMevRewards => 12,
-            Self::RecentBlockFeeRewards => 13,
+            Self::ClusterNodes => 5,
+            Self::RecentPerformanceSamples => 6,
+            Self::CurrentBlockProduction => 7,
+            Self::CurrentLeaderSchedule => 8,
+            Self::NextLeaderSchedule => 9,
+            Self::AccountBalances => 10,
+            Self::InflationRewards => 11,
+            Self::RewardEpochBlockProduction => 12,
+            Self::JitoMevRewards => 13,
+            Self::RecentBlockFeeRewards => 14,
         }
     }
 }
@@ -333,6 +340,7 @@ mod tests {
             CommandId::NodeStatus,
             CommandId::EpochInfo,
             CommandId::VoteAccounts,
+            CommandId::ClusterNodes,
             CommandId::CurrentLeaderSchedule,
             CommandId::NextLeaderSchedule,
         ] {

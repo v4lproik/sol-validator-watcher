@@ -179,6 +179,12 @@ async fn capability_probe_handler(
             "solana-core": "3.1.8",
             "feature-set": 2_891_131_721u32
         }),
+        "getClusterNodes" => json!([{
+            "pubkey": "id-1",
+            "version": "3.1.8",
+            "featureSet": 2_891_131_721u32,
+            "shredVersion": 56_123
+        }]),
         "getBlockHeight" => json!(1_233),
         "getEpochInfo" => json!({
             "epoch": 1,

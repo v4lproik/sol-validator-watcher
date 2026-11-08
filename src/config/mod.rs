@@ -41,6 +41,8 @@ pub struct ConsensusCommands {
     pub epoch_info: Vec<String>,
     /// Connector names used for vote accounts, in fallback order.
     pub vote_accounts: Vec<String>,
+    /// Connector names used for public gossip peers and version metadata, in fallback order.
+    pub cluster_nodes: Vec<String>,
     /// Connector names used for recent performance samples, in fallback order.
     pub recent_performance_samples: Vec<String>,
 }
@@ -143,6 +145,7 @@ impl ModesConfig {
             CommandId::NodeStatus => &self.health.commands.node_status,
             CommandId::EpochInfo => &self.consensus.commands.epoch_info,
             CommandId::VoteAccounts => &self.consensus.commands.vote_accounts,
+            CommandId::ClusterNodes => &self.consensus.commands.cluster_nodes,
             CommandId::RecentPerformanceSamples => {
                 &self.consensus.commands.recent_performance_samples
             }
@@ -935,6 +938,7 @@ impl Config {
                 CommandId::RpcHealth | CommandId::EpochInfo | CommandId::VoteAccounts => true,
                 CommandId::WsHealth
                 | CommandId::NodeStatus
+                | CommandId::ClusterNodes
                 | CommandId::RecentPerformanceSamples
                 | CommandId::CurrentBlockProduction
                 | CommandId::CurrentLeaderSchedule

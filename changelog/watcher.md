@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added optional routed `getClusterNodes` collection that maps watched identities to explicit unavailable, missing, or present gossip observations with advertised validator version, feature set, shred version, and successful-source provenance.
 - Built validator label sets, vote-account records, and completed snapshots from immutable transformations while retaining explicit mutable accumulators only for bounded collection algorithms.
 - Bounded every standard JSON-RPC response before deserialization and cached immutable finalized block-fee samples by slot so repeated polls request only cache misses while confirmed samples are always refetched to tolerate rollback.
 - Preserved missing watched-validator and scope inflation-reward samples as unavailable while retaining independently collected reward-epoch block counts and valid zero-valued rewards.

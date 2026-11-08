@@ -91,7 +91,7 @@ impl RpcClient {
         let commitment = self.commitment.as_str();
 
         let epoch_info = async {
-            let (_, epoch_info, (), _, _, _) = tokio::try_join!(
+            let (_, epoch_info, (), (), (), (), ()) = tokio::try_join!(
                 async {
                     self.node_health()
                         .await
@@ -108,6 +108,10 @@ impl RpcClient {
                         "commitment": commitment,
                         "votePubkey": PROBE_PUBKEY
                     }]),
+                ),
+                self.probe_required_method::<Vec<ClusterNode>, _>(
+                    "getClusterNodes",
+                    serde_json::json!([]),
                 ),
                 self.probe_required_method::<IdentityResponse, _>(
                     "getIdentity",
@@ -339,6 +343,10 @@ impl RpcClient {
             }],
         )
         .await
+    }
+    /// Returns public gossip peers and their validator software metadata.
+    pub(super) async fn get_cluster_nodes(&self) -> Result<Vec<ClusterNode>> {
+        self.call("getClusterNodes", [(); 0]).await
     }
 
     /// Derives cluster throughput and slot timing from the latest performance sample.
@@ -1193,6 +1201,20 @@ struct IdentityResponse {
 struct VersionResponse {
     solana_core: String,
     feature_set: Option<u32>,
+}
+
+/// Public node entry returned by `getClusterNodes`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClusterNode {
+    /// Validator identity account address.
+    pub(super) pubkey: String,
+    /// Validator client version when advertised.
+    pub(super) version: Option<String>,
+    /// Feature-set identifier when advertised.
+    pub(super) feature_set: Option<u32>,
+    /// Shred protocol version when advertised.
+    pub(super) shred_version: Option<u16>,
 }
 
 /// Standard Solana RPC response wrapper containing a `value`.

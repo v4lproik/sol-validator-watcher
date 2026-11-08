@@ -3,9 +3,9 @@ use super::{
     collect_snapshot, ensure_economics_supported, estimated_epoch_end_unixtime_at, ratio,
     resolve_economics_target, reward_epoch_block_range, AccountBalances, BlockProduction,
     ClusterPerformanceMetrics, EconomicsTarget, EpochCreditsSample, GetBlockProductionConfig,
-    RecentBlockFeeRewards, RecordBuildContext, RewardSample, RpcClient, RpcValueResponse,
-    ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo, VoteAccounts,
-    WatchedValidatorMetrics, MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
+    GossipObservation, RecentBlockFeeRewards, RecordBuildContext, RewardSample, RpcClient,
+    RpcValueResponse, ScopeMetrics, SlotRange, ValidatorRecord, ValidatorStatus, VoteAccountInfo,
+    VoteAccounts, WatchedValidatorMetrics, MAX_BLOCK_PRODUCTION_RANGE_SLOTS,
 };
 use crate::{
     config::{
@@ -43,6 +43,7 @@ enum MockRpcProfile {
     Unhealthy,
     Delayed,
     NoEpochInfo,
+    MissingWatchedClusterNode,
     NoInflationRewards,
     NoLeaderSchedule,
     NoMinimumLedgerSlot,
@@ -164,7 +165,9 @@ async fn start_mock_rpc_server_with_recordings(
 fn capability_probe_params_are_valid(method: &str, params: &[Value]) -> bool {
     let actual = Value::Array(params.to_vec());
     match method {
-        "getHealth" | "getIdentity" | "getVersion" | "minimumLedgerSlot" => actual == json!([]),
+        "getHealth" | "getIdentity" | "getVersion" | "getClusterNodes" | "minimumLedgerSlot" => {
+            actual == json!([])
+        }
         "getBlockHeight" => actual == json!([{ "commitment": "confirmed" }]),
         "getEpochInfo" => actual == json!([{ "commitment": "confirmed" }]),
         "getVoteAccounts" => {
@@ -327,6 +330,26 @@ async fn mock_rpc_handler(
             }))),
         )
             .into_response(),
+        "getClusterNodes" => {
+            let identity = if matches!(profile, MockRpcProfile::MissingWatchedClusterNode) {
+                "other-id"
+            } else {
+                "id-1"
+            };
+            (
+                StatusCode::OK,
+                Json(rpc_success(json!([{
+                    "pubkey": identity,
+                    "gossip": "127.0.0.1:8001",
+                    "tpu": "127.0.0.1:8003",
+                    "rpc": null,
+                    "version": "3.1.8",
+                    "featureSet": 2_891_131_721u32,
+                    "shredVersion": 56_123
+                }]))),
+            )
+                .into_response()
+        }
         "getBlockHeight" => (StatusCode::OK, Json(rpc_success(json!(1_233)))).into_response(),
         "getEpochInfo" => {
             if matches!(profile, MockRpcProfile::NoEpochInfo) {
@@ -626,6 +649,7 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
             commands: ConsensusCommands {
                 epoch_info: route(),
                 vote_accounts: route(),
+                cluster_nodes: route(),
                 recent_performance_samples: route(),
             },
         },

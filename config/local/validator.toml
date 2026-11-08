@@ -27,6 +27,7 @@ node_status = ["local-validator"]
 [modes.consensus.commands]
 epoch_info = ["local-validator"]
 vote_accounts = ["local-validator"]
+cluster_nodes = ["local-validator"]
 recent_performance_samples = []
 
 [modes.leadership.commands]

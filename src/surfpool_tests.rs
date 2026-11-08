@@ -97,6 +97,7 @@ fn surfpool_modes() -> ModesConfig {
             commands: ConsensusCommands {
                 epoch_info: route(),
                 vote_accounts: route(),
+                cluster_nodes: route(),
                 recent_performance_samples: route(),
             },
         },

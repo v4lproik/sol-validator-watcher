@@ -47,6 +47,27 @@ async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
 }
 
 #[tokio::test]
+async fn get_cluster_nodes_decodes_validator_protocol_metadata() -> Result<()> {
+    let (rpc_url, server_task) = start_mock_rpc_server().await?;
+    let client = RpcClient::try_new(
+        &rpc_transport(&rpc_url, 5),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+    )?;
+
+    let nodes = client.get_cluster_nodes().await?;
+    server_task.abort();
+
+    let node = nodes
+        .first()
+        .ok_or_else(|| anyhow!("missing cluster node"))?;
+    assert_eq!(node.pubkey, "id-1");
+    assert_eq!(node.version.as_deref(), Some("3.1.8"));
+    assert_eq!(node.feature_set, Some(2_891_131_721));
+    assert_eq!(node.shred_version, Some(56_123));
+    Ok(())
+}
+
+#[tokio::test]
 async fn finalized_block_fee_rewards_cache_produced_blocks_and_retry_skipped_slots() -> Result<()> {
     let (rpc_url, server_task, requests) =
         start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
@@ -601,6 +622,7 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
         core_methods.iter().map(String::as_str).collect::<Vec<_>>(),
         [
             "getBlockHeight",
+            "getClusterNodes",
             "getEpochInfo",
             "getHealth",
             "getIdentity",
@@ -640,6 +662,7 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
         [
             "getBlockHeight",
             "getBlockProduction",
+            "getClusterNodes",
             "getEpochInfo",
             "getHealth",
             "getIdentity",

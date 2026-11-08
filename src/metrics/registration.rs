@@ -577,6 +577,28 @@ impl Metrics {
             ),
             &["network", "identity", "vote_account", "status"],
         )?;
+        let sol_watched_validator_gossip_visible = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_gossip_visible",
+                "Whether the watched validator identity appeared in the latest successful getClusterNodes response",
+            ),
+            &["network", "identity", "vote_account", "status"],
+        )?;
+        let sol_watched_validator_gossip_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_gossip_info",
+                "Validator software metadata advertised in the latest successful getClusterNodes response",
+            ),
+            &[
+                "network",
+                "identity",
+                "vote_account",
+                "status",
+                "version",
+                "feature_set",
+                "shred_version",
+            ],
+        )?;
         let sol_watched_validator_scope_info = IntGaugeVec::new(
             Opts::new(
                 "sol_watched_validator_scope_info",
@@ -803,6 +825,8 @@ impl Metrics {
         register(&registry, &sol_economics_jito_mev_commission_pct)?;
         register(&registry, &sol_economics_jito_mev_reward_epoch)?;
         register(&registry, &sol_watched_validator_info)?;
+        register(&registry, &sol_watched_validator_gossip_visible)?;
+        register(&registry, &sol_watched_validator_gossip_info)?;
         register(&registry, &sol_watched_validator_scope_info)?;
         register(&registry, &sol_watched_validator_activated_stake_sol)?;
         register(&registry, &sol_watched_validator_vote_credits_latest_epoch)?;
@@ -910,6 +934,8 @@ impl Metrics {
             sol_economics_jito_mev_commission_pct,
             sol_economics_jito_mev_reward_epoch,
             sol_watched_validator_info,
+            sol_watched_validator_gossip_visible,
+            sol_watched_validator_gossip_info,
             sol_watched_validator_scope_info,
             sol_watched_validator_activated_stake_sol,
             sol_watched_validator_vote_credits_latest_epoch,
