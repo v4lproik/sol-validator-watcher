@@ -84,6 +84,7 @@ async fn run_watcher_loop_with_retry_policy(
         let previous_config_modified = runtime.config_modified;
         match runtime.reload_if_needed().await {
             Ok(()) if runtime.config_modified != previous_config_modified => {
+                metrics.record_config_reload(&runtime.config.network, "accepted");
                 let reset = watcher_state.reset_admission(&runtime.config.network).await;
                 let Some(()) = state_transition_or_shutdown(reset, &shutdown)
                     .context("failed to reset readiness after configuration reload")?
@@ -96,6 +97,7 @@ async fn run_watcher_loop_with_retry_policy(
             }
             Ok(()) => {}
             Err(err) => {
+                metrics.record_config_reload(&runtime.config.network, "rejected");
                 warn!(error = ?err, "failed to reload config, keeping previous configuration");
             }
         }
@@ -207,16 +209,19 @@ async fn run_watcher_loop_with_retry_policy(
 }
 
 async fn collect_poll_snapshot(runtime: &RuntimeState, metrics: &Metrics) -> Result<Snapshot> {
-    let (health_sources, mut health_status) = guard_dependencies_healthy(runtime, metrics).await?;
+    let (health_sources, health_status) = guard_dependencies_healthy(runtime, metrics).await?;
     let mut snapshot = collect_snapshot(&runtime.sources, &runtime.config)
         .await
         .context("failed to collect snapshot from configured command routes")?;
-    if !runtime.config.modes.route(CommandId::NodeStatus).is_empty() {
-        health_status.up &= snapshot
-            .node
-            .as_ref()
-            .is_some_and(|node| node.health.is_healthy());
-    }
+    let health_status = ModeStatus {
+        up: health_status.up
+            && (runtime.config.modes.route(CommandId::NodeStatus).is_empty()
+                || snapshot
+                    .node
+                    .as_ref()
+                    .is_some_and(|node| node.health.is_healthy())),
+        ..health_status
+    };
     snapshot.data_sources.extend(health_sources);
     snapshot.mode_statuses.push(health_status);
     if !runtime.config.watched_validators.is_empty() && snapshot.watched_validators.is_empty() {
@@ -274,23 +279,24 @@ async fn guard_dependencies_healthy(
     };
     let rpc_up = rpc_health.value.is_healthy();
     metrics.set_rpc_up(&runtime.config.network, rpc_up);
-    let mut sources = vec![rpc_health.source.into()];
-
-    let websocket_up = match runtime.sources.websocket_healthy().await {
+    let (websocket_source, websocket_up) = match runtime.sources.websocket_healthy().await {
         Ok(Some(source)) => {
             metrics.set_ws_up(&runtime.config.network, true);
-            sources.push(source.into());
-            true
+            (Some(source.into()), true)
         }
-        Ok(None) => true,
+        Ok(None) => (None, true),
         Err(err) => {
             warn!(
                 error = ?err,
                 "websocket health command failed for all configured connectors"
             );
-            false
+            (None, false)
         }
     };
+    let sources = [Some(rpc_health.source.into()), websocket_source]
+        .into_iter()
+        .flatten()
+        .collect();
     let health_up = rpc_up && websocket_up;
     metrics.set_mode_up(&runtime.config.network, ModeId::Health, health_up);
 

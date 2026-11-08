@@ -16,7 +16,12 @@ use anyhow::{bail, Context, Result};
 use reqwest::{Client, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+    time::Instant,
+};
+use tokio::sync::Mutex;
 use tracing::warn;
 
 /// Largest inclusive slot range sent in one `getBlockProduction` request.
@@ -24,12 +29,27 @@ pub(super) const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
 const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
 /// Maximum number of recent assigned slots requested in one `getBlock` batch.
 pub(super) const MAX_RECENT_BLOCK_FEE_REWARD_SLOTS: usize = 32;
+const MAX_CACHED_BLOCK_FEE_RESPONSES: usize = MAX_RECENT_BLOCK_FEE_REWARD_SLOTS * 2;
+
+type CachedBlockResponse = Option<Arc<BlockResponse>>;
+
+#[derive(Default)]
+struct BlockFeeRewardCache {
+    by_slot: BTreeMap<u64, Arc<BlockResponse>>,
+}
+
+struct BlockFeeRewardPlan {
+    by_slot: HashMap<u64, CachedBlockResponse>,
+    missing_slots: Vec<u64>,
+}
 /// Connector-local Solana JSON-RPC client with shared response telemetry.
 #[derive(Clone)]
 pub struct RpcClient {
     http: Client,
     url: Url,
     commitment: String,
+    response_size_limit_bytes: usize,
+    block_fee_reward_cache: Arc<Mutex<BlockFeeRewardCache>>,
     telemetry: ConnectorRpcTelemetry,
 }
 
@@ -52,6 +72,8 @@ impl RpcClient {
             http,
             url,
             commitment: transport.commitment_config()?,
+            response_size_limit_bytes: transport.response_size_limit_bytes,
+            block_fee_reward_cache: Arc::new(Mutex::new(BlockFeeRewardCache::default())),
             telemetry,
         })
     }
@@ -575,9 +597,10 @@ impl RpcClient {
     }
     /// Returns validator fee rewards from a bounded batch of recent assigned slots.
     ///
-    /// Skipped slots are omitted. A produced block must contain exactly one
-    /// non-negative fee reward for `identity`; malformed rewards fail the command so
-    /// the configured connector fallback can run.
+    /// Skipped slots are omitted. Finalized produced blocks are cached by slot;
+    /// confirmed responses are always fetched because they may be rolled back. A
+    /// produced block must contain exactly one non-negative fee reward for
+    /// `identity`; malformed rewards fail the command so connector fallback can run.
     pub(super) async fn get_recent_block_fee_rewards(
         &self,
         slots: &[u64],
@@ -591,16 +614,43 @@ impl RpcClient {
         slots: &[u64],
         identity: Option<&str>,
     ) -> Result<Option<RecentBlockFeeRewards>> {
+        Self::validate_block_fee_slots(slots)?;
+        if slots.is_empty() {
+            return Ok(None);
+        }
+
+        let cache_enabled = self.block_fee_cache_enabled();
+        let plan = self.plan_block_fee_rewards(slots).await;
+        let methods_requested = u64::try_from(plan.missing_slots.len())
+            .context("block-fee method request count does not fit u64")?;
+        let (hits, misses) = if cache_enabled {
+            let misses = methods_requested;
+            let hits = u64::try_from(slots.len() - plan.missing_slots.len())
+                .context("block-fee cache hit count does not fit u64")?;
+            (hits, misses)
+        } else {
+            (0, 0)
+        };
+        self.telemetry
+            .record_block_fee_cache(hits, misses, methods_requested)?;
+
         let started_at = Instant::now();
-        let result = self.get_block_fee_rewards_request(slots, identity).await;
+        let result = self.resolve_block_fee_rewards(slots, identity, plan).await;
         let outcome = if result.is_ok() {
             RpcRequestOutcome::Succeeded
         } else {
             RpcRequestOutcome::Failed
         };
-        let telemetry_result =
+        let telemetry_result = if methods_requested == 0 {
+            if result.is_err() {
+                self.telemetry.record_failure("getBlock")
+            } else {
+                Ok(())
+            }
+        } else {
             self.telemetry
-                .record_request("getBlock", started_at.elapsed(), outcome);
+                .record_request("getBlock", started_at.elapsed(), outcome)
+        };
 
         match (result, telemetry_result) {
             (Ok(result), Ok(())) => Ok(result),
@@ -612,14 +662,7 @@ impl RpcClient {
         }
     }
 
-    async fn get_block_fee_rewards_request(
-        &self,
-        slots: &[u64],
-        identity: Option<&str>,
-    ) -> Result<Option<RecentBlockFeeRewards>> {
-        if slots.is_empty() {
-            return Ok(None);
-        }
+    fn validate_block_fee_slots(slots: &[u64]) -> Result<()> {
         if slots.len() > MAX_RECENT_BLOCK_FEE_REWARD_SLOTS {
             bail!(
                 "getBlock batch contains {} slots; maximum is {}",
@@ -632,7 +675,55 @@ impl RpcClient {
                 bail!("getBlock batch contains duplicate slot {slot}");
             }
         }
+        Ok(())
+    }
 
+    fn block_fee_cache_enabled(&self) -> bool {
+        self.commitment == "finalized"
+    }
+
+    async fn plan_block_fee_rewards(&self, slots: &[u64]) -> BlockFeeRewardPlan {
+        if !self.block_fee_cache_enabled() {
+            return BlockFeeRewardPlan {
+                by_slot: HashMap::with_capacity(slots.len()),
+                missing_slots: slots.to_vec(),
+            };
+        }
+
+        let cache = self.block_fee_reward_cache.lock().await;
+        let mut by_slot = HashMap::with_capacity(slots.len());
+        let mut missing_slots = Vec::with_capacity(slots.len());
+        for slot in slots {
+            if let Some(block) = cache.by_slot.get(slot) {
+                by_slot.insert(*slot, Some(Arc::clone(block)));
+            } else {
+                missing_slots.push(*slot);
+            }
+        }
+        BlockFeeRewardPlan {
+            by_slot,
+            missing_slots,
+        }
+    }
+
+    async fn resolve_block_fee_rewards(
+        &self,
+        slots: &[u64],
+        identity: Option<&str>,
+        mut plan: BlockFeeRewardPlan,
+    ) -> Result<Option<RecentBlockFeeRewards>> {
+        if !plan.missing_slots.is_empty() {
+            let fetched = self.fetch_block_fee_responses(&plan.missing_slots).await?;
+            self.cache_block_fee_responses(&fetched).await;
+            plan.by_slot.extend(fetched);
+        }
+        Self::aggregate_block_fee_rewards(slots, identity, &plan.by_slot)
+    }
+
+    async fn fetch_block_fee_responses(
+        &self,
+        slots: &[u64],
+    ) -> Result<HashMap<u64, CachedBlockResponse>> {
         let requests = slots
             .iter()
             .map(|slot| {
@@ -696,6 +787,41 @@ impl RpcClient {
             bail!("getBlock batch omitted one or more requested slots");
         }
 
+        Ok(responses
+            .into_iter()
+            .map(|response| {
+                let block = match response.result {
+                    JsonRpcResult::Value(block) => Some(Arc::new(block)),
+                    JsonRpcResult::Null | JsonRpcResult::Missing => None,
+                };
+                (response.id, block)
+            })
+            .collect())
+    }
+
+    async fn cache_block_fee_responses(&self, fetched: &HashMap<u64, CachedBlockResponse>) {
+        if !self.block_fee_cache_enabled() {
+            return;
+        }
+        let mut cache = self.block_fee_reward_cache.lock().await;
+        for (slot, block) in fetched {
+            if let Some(block) = block {
+                cache.by_slot.insert(*slot, Arc::clone(block));
+            }
+        }
+        while cache.by_slot.len() > MAX_CACHED_BLOCK_FEE_RESPONSES {
+            let Some((&oldest_slot, _)) = cache.by_slot.first_key_value() else {
+                break;
+            };
+            cache.by_slot.remove(&oldest_slot);
+        }
+    }
+
+    fn aggregate_block_fee_rewards(
+        slots: &[u64],
+        identity: Option<&str>,
+        responses: &HashMap<u64, CachedBlockResponse>,
+    ) -> Result<Option<RecentBlockFeeRewards>> {
         let Some(identity) = identity else {
             return Ok(None);
         };
@@ -703,37 +829,33 @@ impl RpcClient {
         let mut latest_reward_lamports = 0;
         let mut total_reward_lamports = 0_u64;
         let mut sampled_block_count = 0_u64;
-        for response in responses {
-            let JsonRpcResult::Value(block) = response.result else {
+        for slot in slots {
+            let Some(block) = responses
+                .get(slot)
+                .with_context(|| format!("getBlock batch omitted requested slot {slot}"))?
+            else {
                 continue;
             };
             let mut fee_rewards = block.rewards.iter().filter(|reward| {
                 reward.reward_type == Some(BlockRewardType::Fee) && reward.pubkey == identity
             });
             let reward = fee_rewards.next().with_context(|| {
-                format!(
-                    "getBlock for slot {} returned no fee reward for validator identity",
-                    response.id
-                )
+                format!("getBlock for slot {slot} returned no fee reward for validator identity")
             })?;
             if fee_rewards.next().is_some() {
                 bail!(
-                    "getBlock for slot {} returned multiple fee rewards for validator identity",
-                    response.id
+                    "getBlock for slot {slot} returned multiple fee rewards for validator identity"
                 );
             }
             let reward_lamports = u64::try_from(reward.lamports).with_context(|| {
-                format!(
-                    "getBlock for slot {} returned a negative validator fee reward",
-                    response.id
-                )
+                format!("getBlock for slot {slot} returned a negative validator fee reward")
             })?;
             total_reward_lamports = total_reward_lamports
                 .checked_add(reward_lamports)
                 .context("recent block fee reward total overflowed u64")?;
             sampled_block_count += 1;
-            if latest_slot.is_none_or(|slot| response.id > slot) {
-                latest_slot = Some(response.id);
+            if latest_slot.is_none_or(|latest| *slot > latest) {
+                latest_slot = Some(*slot);
                 latest_reward_lamports = reward_lamports;
             }
         }
@@ -838,14 +960,9 @@ impl RpcClient {
             .await
             .map_err(reqwest::Error::without_url)
             .with_context(|| format!("{method} request failed"))?;
-        let status = response.status();
+        let (status, body) = self.read_response_body(response, method).await?;
         self.telemetry.record_response(status.as_u16())?;
-        let body = response
-            .text()
-            .await
-            .map_err(reqwest::Error::without_url)
-            .with_context(|| format!("{method} response body read failed"))?;
-        let envelope = serde_json::from_str(&body).with_context(|| {
+        let envelope = serde_json::from_slice(&body).with_context(|| {
             if status.is_success() {
                 format!("{} returned an invalid JSON-RPC payload", method)
             } else {
@@ -875,14 +992,11 @@ impl RpcClient {
             .await
             .map_err(reqwest::Error::without_url)
             .with_context(|| format!("{method} batch request failed"))?;
-        let status = response.status();
+        let (status, body) = self
+            .read_response_body(response, &format!("{method} batch"))
+            .await?;
         self.telemetry.record_response(status.as_u16())?;
-        let body = response
-            .text()
-            .await
-            .map_err(reqwest::Error::without_url)
-            .with_context(|| format!("{method} batch response body read failed"))?;
-        let envelopes = serde_json::from_str(&body).with_context(|| {
+        let envelopes = serde_json::from_slice(&body).with_context(|| {
             if status.is_success() {
                 format!("{method} returned an invalid batch JSON-RPC payload")
             } else {
@@ -893,6 +1007,44 @@ impl RpcClient {
         })?;
 
         Ok((status, envelopes))
+    }
+    async fn read_response_body(
+        &self,
+        mut response: reqwest::Response,
+        operation: &str,
+    ) -> Result<(StatusCode, Vec<u8>)> {
+        let status = response.status();
+        if response
+            .content_length()
+            .is_some_and(|length| length > self.response_size_limit_bytes as u64)
+        {
+            bail!(
+                "{operation} response exceeds configured {} byte limit",
+                self.response_size_limit_bytes
+            );
+        }
+
+        let capacity = response
+            .content_length()
+            .and_then(|length| usize::try_from(length).ok())
+            .unwrap_or_default();
+        let mut body = Vec::with_capacity(capacity);
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(reqwest::Error::without_url)
+            .with_context(|| format!("{operation} response body read failed"))?
+        {
+            if chunk.len() > self.response_size_limit_bytes.saturating_sub(body.len()) {
+                bail!(
+                    "{operation} response exceeds configured {} byte limit",
+                    self.response_size_limit_bytes
+                );
+            }
+            body.extend_from_slice(&chunk);
+        }
+
+        Ok((status, body))
     }
 }
 fn merge_block_production(target: &mut BlockProduction, update: BlockProduction) {

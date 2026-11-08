@@ -18,6 +18,7 @@ solana_rpc_compatibility = "extended"
 url = "${SOL_DEVNET_RPC_URL}"
 request_timeout_sec = 30
 connect_timeout_sec = 10
+response_size_limit_bytes = 33554432
 commitment = "confirmed"
 
 [connectors.websocket]

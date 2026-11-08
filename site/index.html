@@ -3,12 +3,40 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Solana Validator Watcher</title>
+    <title>Solana Validator Watcher — Operator observability</title>
     <meta
       name="description"
-      content="A Solana operator surface for validator health, network context, dashboards, coverage, and container delivery."
+      content="Open-source Prometheus monitoring and Grafana dashboards for Solana validator health, consensus, leadership, and economics."
     >
-    <meta name="theme-color" content="#0a111b">
+    <meta name="theme-color" content="#f4f1e8">
+    <script>
+      (() => {
+        const preferenceKey = "sol-validator-watcher-theme";
+        let theme;
+
+        try {
+          const storedTheme = window.localStorage.getItem(preferenceKey);
+          if (storedTheme === "light" || storedTheme === "dark") {
+            theme = storedTheme;
+          }
+        } catch (error) {
+          console.warn("Unable to read the saved theme preference; using the system theme.", error);
+        }
+
+        theme ??= window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]').content =
+          theme === "dark" ? "#0d1117" : "#f4f1e8";
+      })();
+    </script>
+    <meta property="og:title" content="Solana Validator Watcher">
+    <meta
+      property="og:description"
+      content="Know your validator before the next slot. Health, consensus, leadership, and economics in one operator surface."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://v4lproik.github.io/sol-validator-watcher/">
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -19,255 +47,391 @@
     <script defer src="app.js"></script>
   </head>
   <body>
-    <div class="page-aura" aria-hidden="true"></div>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
     <header class="topbar">
-      <div class="topbar-shell">
-        <a class="brand" href="./">
-          <img src="assets/logo.svg" alt="Solana Validator Watcher logo" width="38" height="38">
-          <span>Solana Validator Watcher</span>
+      <div class="shell topbar-inner">
+        <a class="brand" href="./" aria-label="Sol Validator Watcher home">
+          <img src="assets/logo.svg" alt="" width="34" height="34">
+          <span>Sol Validator Watcher</span>
         </a>
 
-        <nav class="topnav" aria-label="Primary">
-          <a href="#product-tabs">Product</a>
-          <a href="#tab-coverage">Coverage</a>
-          <a href="#tab-container">Container</a>
-          <a href="#tab-dashboards">Dashboards</a>
+        <nav class="topnav" aria-label="Primary navigation">
+          <a href="#dashboards">Dashboards</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#run-locally">Run locally</a>
         </nav>
 
         <div class="topbar-actions">
-          <a class="button button-ghost" href="coverage/">Coverage</a>
-          <a class="button button-solid" href="https://github.com/v4lproik/sol-validator-watcher">GitHub</a>
+          <a class="text-link" href="coverage/">Coverage</a>
+          <button
+            class="theme-toggle"
+            type="button"
+            data-theme-toggle
+            aria-label="Switch to dark theme"
+            aria-pressed="false"
+            title="Switch to dark theme"
+          >
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20.2 15.2A8.5 8.5 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z"></path>
+            </svg>
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3.5"></circle>
+              <path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"></path>
+            </svg>
+          </button>
+          <a class="button button-small button-dark" href="https://github.com/v4lproik/sol-validator-watcher">
+            <span class="button-long-label">View on&nbsp;</span>GitHub
+          </a>
         </div>
       </div>
     </header>
 
-    <main>
-      <section class="hero">
+    <main id="main-content">
+      <section class="hero shell" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="launch-pill">Rust exporter for Solana operators</p>
-          <h1>One Grafana surface for Solana operators.</h1>
-          <p class="hero-text">Health, performance, and revenue in one Grafana.</p>
-          <p class="hero-subtext">Metrics exporter, dashboards, container image, and coverage site for validator ops.</p>
+          <p class="pill">Open-source Solana observability</p>
+          <h1 id="hero-title">Know your validator before the next slot.</h1>
+          <p class="hero-lead">
+            Health, consensus, leadership, and validator economics—collected by one Rust exporter and explained in Grafana.
+          </p>
 
           <div class="cta-row">
-            <a class="button button-solid" href="#product-tabs">Explore the product</a>
-            <a class="button button-ghost" href="coverage/">Open coverage</a>
+            <a class="button button-accent" href="#dashboards">Explore dashboards</a>
+            <a class="button button-outline" href="#run-locally">Run locally</a>
           </div>
 
-          <ul class="trust-strip" aria-label="Project stack">
-            <li>Metrics</li>
-            <li>Dashboards</li>
-            <li>Coverage</li>
-            <li>GHCR</li>
-          </ul>
+          <dl class="hero-proof" aria-label="Project facts">
+            <div>
+              <dt>4</dt>
+              <dd>operator dashboards</dd>
+            </div>
+            <div>
+              <dt>5</dt>
+              <dd>clean polls to ready</dd>
+            </div>
+            <div>
+              <dt>Prometheus</dt>
+              <dd>native metrics</dd>
+            </div>
+          </dl>
         </div>
 
-        <div id="preview-carousel" class="hero-stage">
-          <div class="stage-shell">
-            <div class="stage-top">
-              <span>Operator preview</span>
-              <div class="preview-badges">
-                <span>Health</span>
-                <span>Economics</span>
-                <span>Coverage</span>
-              </div>
+        <div class="hero-visual">
+          <figure class="product-frame product-frame-hero">
+            <div class="frame-bar" aria-hidden="true">
+              <span></span><span></span><span></span>
+              <strong>Overview / mainnet-beta</strong>
             </div>
-
-            <div class="carousel-shell" data-carousel>
-              <div class="carousel-track">
-                <article class="carousel-slide is-active" data-slide>
-                  <div class="shot shot-overview">
-                    <span class="shot-label">Fleet overview</span>
-                    <div class="shot-head"></div>
-                    <div class="shot-surface shot-surface-grid"></div>
-                    <div class="shot-footer">Validator health, slot freshness, RPC state, and network-relative context.</div>
-                  </div>
-                  <div class="slide-copy">
-                    <strong>Start from the operator view</strong>
-                    <span>Watched validators, network baselines, and fast incident scanning.</span>
-                  </div>
-                </article>
-
-                <article class="carousel-slide" data-slide>
-                  <div class="shot shot-breakdown">
-                    <span class="shot-label">Revenue and breakdowns</span>
-                    <div class="shot-head"></div>
-                    <div class="shot-surface shot-surface-bars"></div>
-                    <div class="shot-footer">Reserved for scope rankings, outliers, and validator economics.</div>
-                  </div>
-                  <div class="slide-copy">
-                    <strong>Add economics without leaving Grafana</strong>
-                    <span>Jito, Harmonic, and per-block revenue sit next to health signals.</span>
-                  </div>
-                </article>
-
-                <article class="carousel-slide" data-slide>
-                  <div class="shot shot-watched">
-                    <span class="shot-label">Watched validators</span>
-                    <div class="shot-head"></div>
-                    <div class="shot-surface shot-surface-table"></div>
-                    <div class="shot-footer">Ideal slot for the per-validator table and later screenshot carousel.</div>
-                  </div>
-                  <div class="slide-copy">
-                    <strong>Ready for real screenshots</strong>
-                    <span>Swap placeholders for Grafana captures when they are ready.</span>
-                  </div>
-                </article>
-              </div>
-
-              <div class="carousel-controls">
-                <button type="button" class="carousel-button" data-carousel-action="prev" aria-label="Previous slide">
-                  Prev
-                </button>
-                <div class="carousel-dots" aria-label="Carousel pagination">
-                  <button type="button" class="carousel-dot is-active" data-carousel-dot="0" aria-label="Go to slide 1"></button>
-                  <button type="button" class="carousel-dot" data-carousel-dot="1" aria-label="Go to slide 2"></button>
-                  <button type="button" class="carousel-dot" data-carousel-dot="2" aria-label="Go to slide 3"></button>
-                </div>
-                <button type="button" class="carousel-button" data-carousel-action="next" aria-label="Next slide">
-                  Next
-                </button>
-              </div>
+            <img
+              src="assets/dashboard-overview.webp"
+              alt="Grafana overview showing watched validator liveness, validators needing attention, and collection mode status"
+              width="1600"
+              height="987"
+              fetchpriority="high"
+            >
+          </figure>
+          <div class="signal-card">
+            <span class="signal-dot" aria-hidden="true"></span>
+            <div>
+              <strong>Operator state, immediately visible</strong>
+              <span>Readiness, validator status, and source routing</span>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="product-tabs" class="product-tabs">
-        <div class="section-header">
-          <p class="eyebrow">Project</p>
-          <h2>Everything lives in one repo.</h2>
-          <p>Metrics, dashboards, coverage, and the container path are all exposed here without extra marketing layers.</p>
+      <section class="proof-band" aria-label="Project capabilities">
+        <div class="shell proof-band-inner">
+          <span>Solana RPC</span>
+          <span>WebSocket health</span>
+          <span>Connector fallback</span>
+          <span>Validator economics</span>
+          <span>Prometheus + Grafana</span>
+        </div>
+      </section>
+
+      <section id="dashboards" class="section section-gallery shell" aria-labelledby="dashboards-title">
+        <div class="section-heading section-heading-split">
+          <div>
+            <p class="eyebrow">Dashboard gallery</p>
+            <h2 id="dashboards-title">See the whole validator, not a single metric.</h2>
+          </div>
+          <p>
+            Each provisioned view answers a different operator question—from upcoming leader opportunity to network-relative voting performance and reward history.
+          </p>
         </div>
 
-        <div class="tab-buttons" role="tablist" aria-label="Project sections">
-          <button id="tab-overview" class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" data-tab="overview">
-            Overview
-          </button>
-          <button id="tab-coverage" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-coverage" data-tab="coverage">
-            Coverage
-          </button>
-          <button id="tab-container" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-container" data-tab="container">
-            Container
-          </button>
-          <button id="tab-dashboards" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboards" data-tab="dashboards">
-            Dashboards
-          </button>
-        </div>
+        <div class="dashboard-gallery">
+          <div class="gallery-tabs" role="tablist" aria-label="Dashboard previews">
+            <button
+              id="dashboard-tab-leadership"
+              class="gallery-tab is-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="dashboard-panel-leadership"
+              tabindex="0"
+              data-dashboard-tab="leadership"
+            >
+              <span class="gallery-index">01</span>
+              <span>
+                <strong>Leadership</strong>
+                <small>Leader slots, blocks, skip rate</small>
+              </span>
+            </button>
+            <button
+              id="dashboard-tab-consensus"
+              class="gallery-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="dashboard-panel-consensus"
+              tabindex="-1"
+              data-dashboard-tab="consensus"
+            >
+              <span class="gallery-index">02</span>
+              <span>
+                <strong>Consensus</strong>
+                <small>Vote efficiency, lag, stake</small>
+              </span>
+            </button>
+            <button
+              id="dashboard-tab-economics"
+              class="gallery-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="dashboard-panel-economics"
+              tabindex="-1"
+              data-dashboard-tab="economics"
+            >
+              <span class="gallery-index">03</span>
+              <span>
+                <strong>Economics</strong>
+                <small>Rewards, block fees, runway</small>
+              </span>
+            </button>
+          </div>
 
-        <div class="tab-panels">
-          <section id="panel-overview" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
-            <div class="panel-intro">
-              <h3>Operator-facing signals</h3>
-              <p>The current surface covers validator operations first. Revenue metrics extend the same flow.</p>
-            </div>
-
-            <div class="panel-grid">
-              <article>
-                <strong>Metrics</strong>
-                <span>Vote lag, root lag, commission, leader slots, blocks produced, and blocks missed.</span>
-              </article>
-              <article>
-                <strong>Scopes</strong>
-                <span>Watch validators, customer slices, regional groups, and the full network with one exporter.</span>
-              </article>
-              <article>
-                <strong>Revenue roadmap</strong>
-                <span>Add Jito, Harmonic, and base revenue per block directly into the same Grafana flow.</span>
-              </article>
-            </div>
-          </section>
-
-          <section id="panel-coverage" class="tab-panel" role="tabpanel" aria-labelledby="tab-coverage" data-panel="coverage" hidden>
-            <div class="panel-intro">
-              <h3>Coverage is part of the site</h3>
-              <p>The Pages build publishes the landing page at the root and the generated <code>cargo llvm-cov</code> report under <code>/coverage/</code>.</p>
-              <div class="inline-actions">
-                <a class="button button-solid" href="coverage/">Open full coverage report</a>
+          <div class="gallery-stage">
+            <figure
+              id="dashboard-panel-leadership"
+              class="gallery-panel is-active"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-leadership"
+              data-dashboard-panel="leadership"
+            >
+              <div class="gallery-image-shell">
+                <img
+                  src="assets/dashboard-leadership.webp"
+                  alt="Leadership dashboard showing future leader slots, produced and missed blocks, skip rate, and producer schedule"
+                  width="1600"
+                  height="987"
+                  loading="lazy"
+                >
               </div>
+              <figcaption>
+                <span>Provisioned Grafana capture</span>
+                <strong>Know the schedule, then compare delivery.</strong>
+              </figcaption>
+            </figure>
+
+            <figure
+              id="dashboard-panel-consensus"
+              class="gallery-panel"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-consensus"
+              data-dashboard-panel="consensus"
+              hidden
+            >
+              <div class="gallery-image-shell">
+                <img
+                  src="assets/dashboard-consensus.webp"
+                  alt="Consensus dashboard showing delinquent validators, vote efficiency, vote lag, root lag, and activated stake"
+                  width="1600"
+                  height="987"
+                  loading="lazy"
+                >
+              </div>
+              <figcaption>
+                <span>Provisioned Grafana capture</span>
+                <strong>Compare every watched validator with the network.</strong>
+              </figcaption>
+            </figure>
+
+            <figure
+              id="dashboard-panel-economics"
+              class="gallery-panel"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-economics"
+              data-dashboard-panel="economics"
+              hidden
+            >
+              <div class="gallery-image-shell">
+                <img
+                  src="assets/dashboard-economics.webp"
+                  alt="Economics dashboard showing tracked inflation rewards, rewarded blocks, reward per produced block, and reward data availability"
+                  width="1600"
+                  height="987"
+                  loading="lazy"
+                >
+              </div>
+              <figcaption>
+                <span>Provisioned Grafana capture</span>
+                <strong>Keep missing rewards distinct from valid zero rewards.</strong>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <noscript>
+          <p class="noscript-note">JavaScript enables the dashboard switcher. The complete dashboards are available in the repository.</p>
+        </noscript>
+      </section>
+
+      <section id="workflow" class="section section-workflow" aria-labelledby="workflow-title">
+        <div class="shell">
+          <div class="section-heading section-heading-split section-heading-dark">
+            <div>
+              <p class="eyebrow">Operator workflow</p>
+              <h2 id="workflow-title">From signal to answer in one surface.</h2>
             </div>
+            <p>
+              Start with process readiness and validator state, diagnose against network context, then verify recovery through clean polling rounds.
+            </p>
+          </div>
 
-            <div class="coverage-frame-shell">
-              <iframe
-                src="coverage/"
-                title="Coverage report preview"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-              ></iframe>
+          <ol class="workflow-steps">
+            <li>
+              <span class="step-number step-detect">1</span>
+              <p class="step-label">Detect</p>
+              <h3>Find what needs attention.</h3>
+              <p>Health, readiness, and watched-validator state make the first failure visible without searching across tools.</p>
+            </li>
+            <li>
+              <span class="step-number step-diagnose">2</span>
+              <p class="step-label">Diagnose</p>
+              <h3>Compare it with the network.</h3>
+              <p>Vote lag, root lag, skip rate, stake, source provenance, and provider outcomes keep the signal in context.</p>
+            </li>
+            <li>
+              <span class="step-number step-verify">3</span>
+              <p class="step-label">Verify</p>
+              <h3>Observe a clean recovery.</h3>
+              <p>Five consecutive clean polling rounds restore readiness while failed modes and stale snapshots stay explicit.</p>
+            </li>
+          </ol>
+
+          <div class="pipeline" aria-label="Observability data flow">
+            <span>RPC · WebSocket · provider APIs</span>
+            <b aria-hidden="true">→</b>
+            <span>Rust exporter</span>
+            <b aria-hidden="true">→</b>
+            <span>Prometheus</span>
+            <b aria-hidden="true">→</b>
+            <span>Grafana · Alertmanager</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-features shell" aria-labelledby="features-title">
+        <div class="section-heading">
+          <p class="eyebrow">Built for operator truth</p>
+          <h2 id="features-title">Useful when the data is imperfect.</h2>
+          <p>No silent zeros, hidden connector changes, or one-endpoint assumptions.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article>
+            <span class="feature-mark feature-mark-violet" aria-hidden="true"></span>
+            <h3>Per-command source routing</h3>
+            <p>Declare ordered connector routes once. The first successful compatible connector wins, and the selected source is exported.</p>
+          </article>
+          <article>
+            <span class="feature-mark feature-mark-coral" aria-hidden="true"></span>
+            <h3>Missing stays missing</h3>
+            <p>Optional rewards and unavailable samples remain no data instead of becoming healthy-looking zero values.</p>
+          </article>
+          <article>
+            <span class="feature-mark feature-mark-green" aria-hidden="true"></span>
+            <h3>Economics beside performance</h3>
+            <p>Inflation rewards, produced blocks, recent block fees, Jito rewards, commission, and funding runway share one operating view.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="run-locally" class="section section-start shell" aria-labelledby="start-title">
+        <div class="start-card">
+          <div class="start-copy">
+            <p class="eyebrow">Local proof</p>
+            <h2 id="start-title">Run the complete surface locally.</h2>
+            <p>
+              The repository owns the exporter, provisioned dashboards, Prometheus configuration, and repeatable stack commands.
+            </p>
+            <div class="cta-row">
+              <a class="button button-light" href="https://github.com/v4lproik/sol-validator-watcher#quick-start">Open quick start</a>
+              <a class="button button-dark-outline" href="coverage/">Inspect coverage</a>
             </div>
-          </section>
+          </div>
 
-          <section id="panel-container" class="tab-panel" role="tabpanel" aria-labelledby="tab-container" data-panel="container" hidden>
-            <div class="panel-intro">
-              <h3>Pull the image from GHCR</h3>
-              <p>The workflow publishes branch, tag, SHA, and <code>latest</code> tags to GitHub Container Registry.</p>
+          <div class="terminal" aria-label="Local quick-start commands">
+            <div class="terminal-bar">
+              <span></span><span></span><span></span>
+              <strong>terminal</strong>
             </div>
+            <pre><code><span class="prompt">$</span> git clone https://github.com/v4lproik/sol-validator-watcher.git
+<span class="prompt">$</span> cd sol-validator-watcher
+<span class="prompt">$</span> mise install
+<span class="prompt">$</span> cp .env.example .env
+<span class="prompt">$</span> just stack up surfpool
 
-            <div class="snippet-layout">
-              <article class="snippet-card">
-                <p class="snippet-title">Pull</p>
-                <pre><code>docker pull ghcr.io/v4lproik/sol-validator-watcher:latest</code></pre>
-              </article>
+<span class="comment"># Grafana → http://127.0.0.1:3001</span></code></pre>
+          </div>
+        </div>
 
-              <article class="snippet-card">
-                <p class="snippet-title">Run</p>
-                <pre><code>docker run --rm \
-  --read-only \
-  --tmpfs /tmp:rw,noexec,nosuid,size=16m,mode=1777 \
-  --cap-drop ALL \
-  --security-opt no-new-privileges:true \
-  -p 127.0.0.1:8000:8000 \
-  -v "$(pwd)/config:/app/config:ro" \
-  ghcr.io/v4lproik/sol-validator-watcher:latest \
-  --config /app/config/remote/devnet.toml</code></pre>
-              </article>
+        <dl class="engineering-proof" aria-label="Engineering proof">
+          <div>
+            <dt>90%</dt>
+            <dd>line and region coverage gate</dd>
+          </div>
+          <div>
+            <dt>2</dt>
+            <dd>published container architectures</dd>
+          </div>
+          <div>
+            <dt>Read-only</dt>
+            <dd>production root filesystem</dd>
+          </div>
+          <div>
+            <dt>Digest</dt>
+            <dd>pinned production releases</dd>
+          </div>
+        </dl>
+      </section>
 
-              <article class="snippet-card">
-                <p class="snippet-title">Tags</p>
-                <pre><code>main
-latest
-sha-&lt;commit&gt;
-v&lt;release-tag&gt;</code></pre>
-              </article>
-            </div>
-          </section>
-
-          <section id="panel-dashboards" class="tab-panel" role="tabpanel" aria-labelledby="tab-dashboards" data-panel="dashboards" hidden>
-            <div class="panel-intro">
-              <h3>Keep a home for Grafana screenshots</h3>
-              <p>The preview stage already has slots for overview, breakdown, and watched-validator captures.</p>
-            </div>
-
-            <div class="panel-grid">
-              <article>
-                <strong>Overview dashboard</strong>
-                <span>Top-line operator health, validator comparisons, and network context.</span>
-              </article>
-              <article>
-                <strong>Breakdown</strong>
-                <span>Scope rankings, outlier scans, and revenue slices by operator or customer.</span>
-              </article>
-              <article>
-                <strong>Watched validators</strong>
-                <span>The row-level operations view with lag, skip rate, stake, leader pressure, and revenue columns.</span>
-              </article>
-            </div>
-          </section>
+      <section class="closing shell" aria-labelledby="closing-title">
+        <p class="eyebrow">Open source · MIT</p>
+        <h2 id="closing-title">Bring validator health, performance, and economics into focus.</h2>
+        <div class="cta-row">
+          <a class="button button-accent" href="https://github.com/v4lproik/sol-validator-watcher">Explore the repository</a>
+          <a class="text-link text-link-large" href="https://github.com/v4lproik/sol-validator-watcher/blob/main/docs/production-runbook.md">Read the production runbook <span aria-hidden="true">↗</span></a>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div>
-        <strong>Solana Validator Watcher</strong>
-        <span>Rust exporter, dashboards, coverage, and container image.</span>
-      </div>
-
-      <div class="footer-links">
-        <a href="https://github.com/v4lproik/sol-validator-watcher">Repository</a>
-        <a href="coverage/">Coverage</a>
-        <a href="#tab-container">Container</a>
+      <div class="shell footer-inner">
+        <a class="brand" href="./">
+          <img src="assets/logo.svg" alt="" width="32" height="32">
+          <span>Sol Validator Watcher</span>
+        </a>
+        <p>Prometheus monitoring and Grafana dashboards for Solana validator operators.</p>
+        <nav class="footer-links" aria-label="Footer navigation">
+          <a href="https://github.com/v4lproik/sol-validator-watcher">GitHub</a>
+          <a href="coverage/">Coverage</a>
+          <a href="https://github.com/v4lproik/sol-validator-watcher/blob/main/README.md">Documentation</a>
+        </nav>
       </div>
     </footer>
   </body>

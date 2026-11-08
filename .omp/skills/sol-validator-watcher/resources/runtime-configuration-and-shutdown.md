@@ -92,6 +92,9 @@ liveness files, signals, and shutdown.
   changed runtime dependency, verify declared RPC capabilities, then replace the
   last known-good state. A failed reload keeps the prior state and remains
   observable.
+- Fingerprint the fully expanded TOML consumed by the process with SHA-256 and
+  publish only the digest. Count accepted and rejected reload outcomes; never
+  expose expanded configuration or secret-bearing values.
 - A changed metrics host or port requires restart because the listener is
   already bound. Do not pretend a reload moved it.
 
@@ -133,6 +136,9 @@ liveness files, signals, and shutdown.
   current configuration only after five consecutive required polling rounds
   complete without a failed RPC attempt. A failed attempt, failed whole poll, or
   accepted configuration reload resets the admission streak.
+- Publish the build revision compiled into the binary, the active configuration
+  fingerprint, and current command fallback state so operators can distinguish
+  deploy, reload, and provider failover changes.
 - The `healthcheck` CLI command probes `/healthz`, not `/readyz`, so container
   health tracks the serving process without restarting on recoverable
   collection failures.

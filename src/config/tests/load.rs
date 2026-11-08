@@ -1,4 +1,14 @@
 use super::*;
+use crate::config::config_fingerprint;
+#[test]
+fn fingerprints_expanded_config_with_sha256() -> Result<()> {
+    assert_eq!(
+        config_fingerprint("hello world")?,
+        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    );
+    Ok(())
+}
+
 #[test]
 fn loads_toml_and_preserves_explicit_command_route_order() -> Result<()> {
     let test_dir = unique_test_dir("ordered-connectors");
@@ -54,6 +64,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
     let config = Config::load(&config_path)?;
 
     assert_eq!(config.network, "testnet");
+    assert_eq!(config.fingerprint.len(), 64);
     assert_eq!(
         config.metrics_host,
         IpAddr::V4(Ipv4Addr::LOCALHOST),

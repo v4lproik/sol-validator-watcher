@@ -3,7 +3,7 @@
 //! All descriptors are registered in one registry so metric names and label sets
 //! remain a single, auditable operational contract.
 
-use super::{register, Metrics};
+use super::{register, Metrics, BUILD_REVISION};
 use anyhow::Result;
 use prometheus::{
     GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry,
@@ -92,6 +92,30 @@ impl Metrics {
                 "Estimated Unix time when the current epoch will end",
             ),
             &["network"],
+        )?;
+        let sol_watcher_build_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_build_info",
+                "Watcher binary version and source revision",
+            ),
+            &["version", "revision"],
+        )?;
+        sol_watcher_build_info
+            .with_label_values(&[env!("CARGO_PKG_VERSION"), BUILD_REVISION])
+            .set(1);
+        let sol_config_info = IntGaugeVec::new(
+            Opts::new(
+                "sol_config_info",
+                "SHA-256 fingerprint of the fully expanded active profile",
+            ),
+            &["network", "fingerprint"],
+        )?;
+        let sol_config_reload_total = IntCounterVec::new(
+            Opts::new(
+                "sol_config_reload_total",
+                "Changed profile reload attempts by outcome",
+            ),
+            &["network", "outcome"],
         )?;
         let sol_watcher_up = IntGaugeVec::new(
             Opts::new("sol_watcher_up", "Whether the watcher process is running"),
@@ -182,6 +206,20 @@ impl Metrics {
                 "Failed Solana JSON-RPC attempts by connector and method for the current accepted configuration",
             ),
             &["network", "connector", "method"],
+        )?;
+        let sol_rpc_block_fee_cache_accesses_total = IntCounterVec::new(
+            Opts::new(
+                "sol_rpc_block_fee_cache_accesses_total",
+                "Finalized block-fee cache lookups by connector and outcome",
+            ),
+            &["network", "connector", "outcome"],
+        )?;
+        let sol_rpc_block_fee_methods_requested_total = IntCounterVec::new(
+            Opts::new(
+                "sol_rpc_block_fee_methods_requested_total",
+                "getBlock methods sent for block-fee samples",
+            ),
+            &["network", "connector"],
         )?;
         let sol_rpc_up = IntGaugeVec::new(
             Opts::new(
@@ -278,6 +316,13 @@ impl Metrics {
                 "feature",
                 "precedence",
             ],
+        )?;
+        let sol_mode_command_fallback_active = IntGaugeVec::new(
+            Opts::new(
+                "sol_mode_command_fallback_active",
+                "Whether a mode command's latest value came from a fallback connector",
+            ),
+            &["network", "mode", "command", "connector"],
         )?;
         let sol_node_info = IntGaugeVec::new(
             Opts::new(
@@ -685,6 +730,9 @@ impl Metrics {
         register(&registry, &sol_cluster_non_vote_transactions_per_second)?;
         register(&registry, &sol_cluster_slots_per_second)?;
         register(&registry, &sol_estimated_epoch_end_unixtime)?;
+        register(&registry, &sol_watcher_build_info)?;
+        register(&registry, &sol_config_info)?;
+        register(&registry, &sol_config_reload_total)?;
         register(&registry, &sol_watcher_up)?;
         register(&registry, &sol_rpc_up)?;
         register(&registry, &sol_ws_up)?;
@@ -704,10 +752,13 @@ impl Metrics {
         register(&registry, &sol_rpc_request_failure_count)?;
         register(&registry, &sol_rpc_request_duration_seconds)?;
         register(&registry, &sol_rpc_request_failures_total)?;
+        register(&registry, &sol_rpc_block_fee_cache_accesses_total)?;
+        register(&registry, &sol_rpc_block_fee_methods_requested_total)?;
         register(&registry, &sol_mode_enabled)?;
         register(&registry, &sol_mode_up)?;
         register(&registry, &sol_mode_command_route_info)?;
         register(&registry, &sol_mode_command_source_info)?;
+        register(&registry, &sol_mode_command_fallback_active)?;
         register(&registry, &sol_node_info)?;
         register(&registry, &sol_node_health)?;
         register(&registry, &sol_node_catchup_distance_slots)?;
@@ -796,6 +847,8 @@ impl Metrics {
             sol_cluster_non_vote_transactions_per_second,
             sol_cluster_slots_per_second,
             sol_estimated_epoch_end_unixtime,
+            sol_config_info,
+            sol_config_reload_total,
             sol_watcher_up,
             sol_rpc_up,
             sol_ws_up,
@@ -817,8 +870,11 @@ impl Metrics {
             sol_rpc_request_failure_count,
             sol_rpc_request_duration_seconds,
             sol_rpc_request_failures_total,
+            sol_rpc_block_fee_cache_accesses_total,
+            sol_rpc_block_fee_methods_requested_total,
             sol_mode_command_route_info,
             sol_mode_command_source_info,
+            sol_mode_command_fallback_active,
             sol_node_info,
             sol_node_health,
             sol_node_catchup_distance_slots,

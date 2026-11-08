@@ -13,6 +13,7 @@ solana_rpc_compatibility = "core"
 url = "http://127.0.0.1:8899"
 request_timeout_sec = 30
 connect_timeout_sec = 10
+response_size_limit_bytes = 33554432
 commitment = "confirmed"
 
 [[watched_validators]]
