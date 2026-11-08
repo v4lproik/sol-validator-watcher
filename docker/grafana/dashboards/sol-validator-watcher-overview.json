@@ -64,7 +64,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 23
       },
       "id": 1,
       "panels": [],
@@ -138,7 +138,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "id": 2,
       "options": {
@@ -240,7 +240,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 16
+        "y": 24
       },
       "id": 3,
       "options": {
@@ -342,7 +342,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 16
+        "y": 24
       },
       "id": 4,
       "options": {
@@ -444,7 +444,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 16
+        "y": 24
       },
       "id": 5,
       "options": {
@@ -514,7 +514,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 21
+        "y": 29
       },
       "id": 6,
       "options": {
@@ -621,7 +621,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 21
+        "y": 29
       },
       "id": 7,
       "options": {
@@ -697,7 +697,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 35
       },
       "id": 8,
       "panels": [],
@@ -731,7 +731,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "id": 9,
       "options": {
@@ -797,7 +797,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 28
+        "y": 36
       },
       "id": 10,
       "options": {
@@ -854,7 +854,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 28
+        "y": 36
       },
       "id": 11,
       "options": {
@@ -924,7 +924,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 28
+        "y": 36
       },
       "id": 12,
       "options": {
@@ -993,7 +993,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 28
+        "y": 36
       },
       "id": 13,
       "options": {
@@ -1062,7 +1062,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 28
+        "y": 36
       },
       "id": 14,
       "options": {
@@ -1988,818 +1988,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
-      },
-      "id": 20,
-      "panels": [],
-      "title": "Readiness and Transport Responses",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 0,
-                  "text": "NOT READY"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 1,
-                  "text": "READY"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 6,
-        "x": 0,
-        "y": 33
-      },
-      "id": 21,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max(sol_watcher_ready{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "Readiness",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Watcher Readiness",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              },
-              {
-                "color": "green",
-                "value": 5
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 6,
-        "x": 6,
-        "y": 33
-      },
-      "id": 22,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max(sol_watcher_clean_poll_streak{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "Clean Polls",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Clean Polls (5 Required)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Seconds since the latest complete watcher snapshot. No data means this runtime has not published a snapshot.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 60
-              },
-              {
-                "color": "red",
-                "value": 120
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 6,
-        "x": 12,
-        "y": 33
-      },
-      "id": 24,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max(clamp_min(time() - sol_last_successful_snapshot_timestamp_seconds{network=\"$network\"}, 0))",
-          "instant": true,
-          "legendFormat": "Snapshot age",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Snapshot Age",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 6,
-        "x": 18,
-        "y": 33
-      },
-      "id": 23,
-      "options": {
-        "displayMode": "gradient",
-        "maxVizHeight": 300,
-        "minVizHeight": 16,
-        "minVizWidth": 8,
-        "namePlacement": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max by (status_class) (sol_rpc_http_response_class_count{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "{{status_class}}",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max by (status_code) (sol_rpc_http_response_status_count{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "HTTP {{status_code}}",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max(sol_rpc_request_failure_count{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "RPC failures",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max by (connector) (sol_ws_probe_failures_total{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "WS {{connector}} failures",
-          "range": false,
-          "refId": "D"
-        }
-      ],
-      "title": "Transport Responses and Failures",
-      "type": "bargauge"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 42
-      },
-      "id": 25,
-      "panels": [],
-      "title": "Node-Local Operator Health",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Health reported by the configured node-local RPC endpoint relative to the cluster tip. NOT CONFIGURED means this profile has no node-status route; UNAVAILABLE means the route exists but supplied no current node series.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 2,
-                  "text": "BEHIND"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 3,
-                  "text": "HEALTHY"
-                },
-                "-2": {
-                  "color": "red",
-                  "index": 0,
-                  "text": "UNAVAILABLE"
-                },
-                "-1": {
-                  "color": "blue",
-                  "index": 1,
-                  "text": "NOT CONFIGURED"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 43
-      },
-      "id": 26,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "min by (network) (sol_node_health{network=\"$network\"}) or ((max by (network) (sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_health{network=\"$network\"}) or ((max by (network) (sol_watcher_up{network=\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"})",
-          "instant": true,
-          "legendFormat": "{{network}} · node health",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Node Health",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Slots the node-local RPC endpoint reports behind the cluster tip. No data means the endpoint did not supply a structured distance.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "-2": {
-                  "color": "red",
-                  "index": 0,
-                  "text": "UNAVAILABLE"
-                },
-                "-1": {
-                  "color": "blue",
-                  "index": 1,
-                  "text": "NOT CONFIGURED"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 32
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 43
-      },
-      "id": 27,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max by (network) (sol_node_catchup_distance_slots{network=\"$network\"}) or ((max by (network) (sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_health{network=\"$network\"}) or ((max by (network) (sol_watcher_up{network=\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"})",
-          "instant": true,
-          "legendFormat": "{{network}} · slots behind",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Catch-up Distance",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Block height reported by each configured node-local RPC endpoint.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "-2": {
-                  "color": "red",
-                  "index": 0,
-                  "text": "UNAVAILABLE"
-                },
-                "-1": {
-                  "color": "blue",
-                  "index": 1,
-                  "text": "NOT CONFIGURED"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 43
-      },
-      "id": 28,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max by (network, identity) (sol_node_block_height{network=\"$network\"}) or on (network) label_replace(((max by (network) (sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_block_height{network=\"$network\"}), \"identity\", \"unavailable\", \"\", \"\") or on (network) label_replace(((max by (network) (sol_watcher_up{network=\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}), \"identity\", \"not configured\", \"\", \"\")",
-          "instant": true,
-          "legendFormat": "{{network}} · {{identity}}",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Node Block Height",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Whether every configured node identity appears in the current Solana vote-account set.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 2,
-                  "text": "NOT CURRENT"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 3,
-                  "text": "CURRENT"
-                },
-                "-2": {
-                  "color": "red",
-                  "index": 0,
-                  "text": "UNAVAILABLE"
-                },
-                "-1": {
-                  "color": "blue",
-                  "index": 1,
-                  "text": "NOT CONFIGURED"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 43
-      },
-      "id": 29,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "min by (network) (max by (network, identity) (sol_node_info{network=\"$network\",voting_status=\"current\"}) or (max by (network, identity) (sol_node_info{network=\"$network\",voting_status=~\"delinquent|not-found\"}) * 0)) or ((max by (network) (sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_info{network=\"$network\"}) or ((max by (network) (sol_watcher_up{network=\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"})",
-          "instant": true,
-          "legendFormat": "{{network}} · voting",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Node Voting",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Active node identity, validator client version, feature set, and current vote-account classification.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 48
-      },
-      "id": 30,
-      "options": {
-        "colorMode": "none",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "name",
-        "wideLayout": true
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "max by (network, identity, version, feature_set, voting_status) (sol_node_info{network=\"$network\"})",
-          "instant": true,
-          "legendFormat": "{{network}} · {{identity}} · v{{version}} · feature {{feature_set}} · {{voting_status}}",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "(max by (network) (sol_watcher_up{network=\"$network\"}) * 0 - 1) unless on (network) sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}",
-          "instant": true,
-          "legendFormat": "{{network}} · NOT CONFIGURED",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "(max by (network) (sol_mode_command_route_info{network=\"$network\",mode=\"health\",command=\"node-status\"}) * 0 - 2) unless on (network) sol_node_info{network=\"$network\"}",
-          "instant": true,
-          "legendFormat": "{{network}} · UNAVAILABLE",
-          "range": false,
-          "refId": "C"
-        }
-      ],
-      "title": "Node Identity and Version",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 52
+        "y": 15
       },
       "id": 31,
       "panels": [],
@@ -2850,7 +2039,7 @@
         "h": 7,
         "w": 6,
         "x": 0,
-        "y": 53
+        "y": 16
       },
       "id": 32,
       "options": {
@@ -3008,7 +2197,7 @@
         "h": 7,
         "w": 18,
         "x": 6,
-        "y": 53
+        "y": 16
       },
       "id": 33,
       "options": {
@@ -3104,6 +2293,353 @@
       ],
       "title": "Watched Validator Gossip Versions",
       "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "id": 20,
+      "panels": [],
+      "title": "Readiness and Transport Responses",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "NOT READY"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "READY"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 0,
+        "y": 41
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(sol_watcher_ready{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "Readiness",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Watcher Readiness",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 6,
+        "y": 41
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(sol_watcher_clean_poll_streak{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "Clean Polls",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Clean Polls (5 Required)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Seconds since the latest complete watcher snapshot. No data means this runtime has not published a snapshot.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 120
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 12,
+        "y": 41
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(clamp_min(time() - sol_last_successful_snapshot_timestamp_seconds{network=\"$network\"}, 0))",
+          "instant": true,
+          "legendFormat": "Snapshot age",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Snapshot Age",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 18,
+        "y": 41
+      },
+      "id": 23,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (status_class) (sol_rpc_http_response_class_count{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "{{status_class}}",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (status_code) (sol_rpc_http_response_status_count{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "HTTP {{status_code}}",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(sol_rpc_request_failure_count{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "RPC failures",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (connector) (sol_ws_probe_failures_total{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "WS {{connector}} failures",
+          "range": false,
+          "refId": "D"
+        }
+      ],
+      "title": "Transport Responses and Failures",
+      "type": "bargauge"
     }
   ],
   "refresh": "15s",
@@ -3176,6 +2712,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 5,
+  "version": 7,
   "weekStart": ""
 }
