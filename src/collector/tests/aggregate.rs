@@ -106,6 +106,7 @@ fn aggregates_by_scope() -> Result<()> {
             gossip: GossipObservation::Unavailable,
             scopes: vec!["scope:watched".to_string(), "scope:all-network".to_string()],
             activated_stake_lamports: 10,
+            funding: None,
             latest_epoch_vote_credits: Some(10),
             latest_epoch_reward_lamports: Some(9_000_000_000),
             latest_epoch_rewarded_blocks_produced: 3,
@@ -165,6 +166,7 @@ fn watched_validator_metrics_preserve_missing_reward_and_block_count() {
             gossip: GossipObservation::Unavailable,
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 10,
+            funding: None,
             latest_epoch_vote_credits: None,
             latest_epoch_reward_lamports: None,
             latest_epoch_rewarded_blocks_produced: 7,
@@ -561,21 +563,12 @@ fn economics_target_rejects_mismatched_identity_and_vote_account() {
 }
 
 #[test]
-fn economics_metrics_preserve_rent_and_vat_boundaries() {
-    let metrics = build_economics_metrics(
-        &EconomicsTarget {
-            identity: "id-1".to_string(),
-            vote_account: "vote-1".to_string(),
-        },
-        AccountBalances {
-            identity_lamports: 3_000_000_000,
-            vote_account_lamports: 2_500_000_000,
-            vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
-        },
-        None,
-        None,
-        None,
-    );
+fn validator_funding_metrics_preserve_rent_and_vat_boundaries() {
+    let metrics = build_validator_funding_metrics(AccountBalances {
+        identity_lamports: 3_000_000_000,
+        vote_account_lamports: 2_500_000_000,
+        vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
+    });
 
     assert_eq!(metrics.vat_reserve_lamports, Some(1_600_000_000));
     assert_eq!(metrics.vat_epochs_available, Some(2));

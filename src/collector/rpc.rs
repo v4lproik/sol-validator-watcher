@@ -4,8 +4,8 @@
 //! not choose connectors or apply cross-connector fallback policy.
 
 use super::model::{
-    AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards,
-    RewardSample,
+    AccountBalanceTarget, AccountBalances, ClusterPerformanceMetrics, NodeHealth, NodeRpcStatus,
+    RecentBlockFeeRewards, RewardSample,
 };
 use crate::{
     config::{has_explicit_authority, RpcTransportConfig},
@@ -27,6 +27,7 @@ use tracing::warn;
 /// Largest inclusive slot range sent in one `getBlockProduction` request.
 pub(super) const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
 const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
+const MAX_ACCOUNT_BALANCE_TARGETS_PER_REQUEST: usize = 50;
 /// Maximum number of recent assigned slots requested in one `getBlock` batch.
 pub(super) const MAX_RECENT_BLOCK_FEE_REWARD_SLOTS: usize = 32;
 const MAX_CACHED_BLOCK_FEE_RESPONSES: usize = MAX_RECENT_BLOCK_FEE_REWARD_SLOTS * 2;
@@ -480,47 +481,78 @@ impl RpcClient {
         self.call("minimumLedgerSlot", [(); 0]).await
     }
 
-    /// Returns identity and vote-account balances plus the vote account's rent floor.
+    /// Returns identity and vote-account balances plus vote-account rent floors.
+    ///
+    /// Each `getMultipleAccounts` request contains at most 100 addresses: one
+    /// identity and one vote account for each target. The output preserves target
+    /// order, and each distinct vote-account size incurs one rent-floor request.
     pub(super) async fn get_account_balances(
         &self,
-        identity: &str,
-        vote_account: &str,
-    ) -> Result<AccountBalances> {
-        let response: RpcValueResponse<Vec<Option<AccountValue>>> = self
-            .call(
-                "getMultipleAccounts",
-                (
-                    [identity, vote_account],
-                    GetMultipleAccountsConfig {
-                        commitment: &self.commitment,
-                        encoding: "base64",
-                        data_slice: DataSlice {
-                            offset: 0,
-                            length: 0,
-                        },
-                    },
-                ),
-            )
-            .await?;
-        if response.value.len() != 2 {
-            self.telemetry.record_failure("getMultipleAccounts")?;
-            bail!(
-                "getMultipleAccounts returned {} accounts for 2 addresses",
-                response.value.len()
-            );
+        targets: &[AccountBalanceTarget<'_>],
+    ) -> Result<Vec<Option<AccountBalances>>> {
+        if targets.is_empty() {
+            return Ok(Vec::new());
         }
-        let mut accounts = response.value.into_iter();
-        let identity = accounts
-            .next()
-            .flatten()
-            .context("identity account was not found")?;
-        let vote_account = accounts
-            .next()
-            .flatten()
-            .context("vote account was not found")?;
-        let rent_exempt_minimum_lamports = match vote_account.space {
-            Some(space) => Some(
-                self.call(
+
+        let mut raw_balances = Vec::with_capacity(targets.len());
+        for target_chunk in targets.chunks(MAX_ACCOUNT_BALANCE_TARGETS_PER_REQUEST) {
+            let mut addresses = Vec::with_capacity(target_chunk.len() * 2);
+            for target in target_chunk {
+                addresses.push(target.identity);
+                addresses.push(target.vote_account);
+            }
+            let expected_accounts = addresses.len();
+            let response: RpcValueResponse<Vec<Option<AccountValue>>> = self
+                .call(
+                    "getMultipleAccounts",
+                    (
+                        addresses,
+                        GetMultipleAccountsConfig {
+                            commitment: &self.commitment,
+                            encoding: "base64",
+                            data_slice: DataSlice {
+                                offset: 0,
+                                length: 0,
+                            },
+                        },
+                    ),
+                )
+                .await?;
+            if response.value.len() != expected_accounts {
+                self.telemetry.record_failure("getMultipleAccounts")?;
+                bail!(
+                    "getMultipleAccounts returned {} accounts for {expected_accounts} addresses",
+                    response.value.len()
+                );
+            }
+
+            let mut accounts = response.value.into_iter();
+            for _ in target_chunk {
+                let identity = accounts
+                    .next()
+                    .context("getMultipleAccounts response ended before an identity account")?;
+                let vote_account = accounts
+                    .next()
+                    .context("getMultipleAccounts response ended before a vote account")?;
+                raw_balances.push(match (identity, vote_account) {
+                    (Some(identity), Some(vote_account)) => {
+                        Some((identity.lamports, vote_account.lamports, vote_account.space))
+                    }
+                    _ => None,
+                });
+            }
+        }
+
+        let mut vote_account_spaces = raw_balances
+            .iter()
+            .filter_map(|balances| balances.as_ref().and_then(|(_, _, space)| *space))
+            .collect::<Vec<_>>();
+        vote_account_spaces.sort_unstable();
+        vote_account_spaces.dedup();
+        let mut rent_minimums = HashMap::with_capacity(vote_account_spaces.len());
+        for space in vote_account_spaces {
+            let minimum = self
+                .call(
                     "getMinimumBalanceForRentExemption",
                     (
                         space,
@@ -529,21 +561,34 @@ impl RpcClient {
                         },
                     ),
                 )
-                .await?,
-            ),
-            None => {
-                warn!(
-                    "vote account response omitted account data size; rent and VAT metrics will be unavailable"
-                );
-                None
-            }
-        };
+                .await?;
+            rent_minimums.insert(space, minimum);
+        }
+        if raw_balances
+            .iter()
+            .filter_map(Option::as_ref)
+            .any(|(_, _, space)| space.is_none())
+        {
+            warn!(
+                "one or more vote account responses omitted account data size; rent and VAT metrics will be unavailable"
+            );
+        }
 
-        Ok(AccountBalances {
-            identity_lamports: identity.lamports,
-            vote_account_lamports: vote_account.lamports,
-            vote_account_rent_exempt_minimum_lamports: rent_exempt_minimum_lamports,
-        })
+        Ok(raw_balances
+            .into_iter()
+            .map(|balances| {
+                balances.map(
+                    |(identity_lamports, vote_account_lamports, vote_account_space)| {
+                        AccountBalances {
+                            identity_lamports,
+                            vote_account_lamports,
+                            vote_account_rent_exempt_minimum_lamports: vote_account_space
+                                .and_then(|space| rent_minimums.get(&space).copied()),
+                        }
+                    },
+                )
+            })
+            .collect())
     }
 
     /// Returns available inflation rewards keyed by requested address.

@@ -126,6 +126,12 @@ pub struct Metrics {
     sol_watched_validator_gossip_info: IntGaugeVec,
     sol_watched_validator_scope_info: IntGaugeVec,
     sol_watched_validator_activated_stake_sol: GaugeVec,
+    sol_watched_validator_identity_balance_sol: GaugeVec,
+    sol_watched_validator_vote_account_balance_sol: GaugeVec,
+    sol_watched_validator_vote_account_rent_exempt_minimum_sol: GaugeVec,
+    sol_watched_validator_vat_reserve_sol: GaugeVec,
+    sol_watched_validator_vat_epochs_available: IntGaugeVec,
+    sol_watched_validator_vat_next_epoch_funded: IntGaugeVec,
     sol_watched_validator_vote_credits_latest_epoch: GaugeVec,
     sol_watched_validator_epoch_reward_sol: GaugeVec,
     sol_watched_validator_rewarded_blocks_latest_epoch: GaugeVec,
@@ -584,7 +590,7 @@ impl Metrics {
             if let Some(vat_epochs_available) = economics.vat_epochs_available {
                 self.sol_economics_vat_epochs_available
                     .with_label_values(&labels)
-                    .set(vat_epochs_available as i64);
+                    .set(metric_count(vat_epochs_available));
             }
             if let Some(vat_next_epoch_funded) = economics.vat_next_epoch_funded {
                 self.sol_economics_vat_next_epoch_funded
@@ -1006,6 +1012,13 @@ impl Metrics {
         self.sol_watched_validator_gossip_info.reset();
         self.sol_watched_validator_scope_info.reset();
         self.sol_watched_validator_activated_stake_sol.reset();
+        self.sol_watched_validator_identity_balance_sol.reset();
+        self.sol_watched_validator_vote_account_balance_sol.reset();
+        self.sol_watched_validator_vote_account_rent_exempt_minimum_sol
+            .reset();
+        self.sol_watched_validator_vat_reserve_sol.reset();
+        self.sol_watched_validator_vat_epochs_available.reset();
+        self.sol_watched_validator_vat_next_epoch_funded.reset();
         self.sol_watched_validator_vote_credits_latest_epoch.reset();
         self.sol_watched_validator_epoch_reward_sol.reset();
         self.sol_watched_validator_rewarded_blocks_latest_epoch
@@ -1078,6 +1091,36 @@ impl Metrics {
         self.sol_watched_validator_activated_stake_sol
             .with_label_values(&labels)
             .set(lamports_to_sol(validator.activated_stake_lamports));
+        if let Some(funding) = validator.funding {
+            self.sol_watched_validator_identity_balance_sol
+                .with_label_values(&labels)
+                .set(lamports_to_sol(funding.identity_balance_lamports));
+            self.sol_watched_validator_vote_account_balance_sol
+                .with_label_values(&labels)
+                .set(lamports_to_sol(funding.vote_account_balance_lamports));
+            if let Some(rent_exempt_minimum_lamports) =
+                funding.vote_account_rent_exempt_minimum_lamports
+            {
+                self.sol_watched_validator_vote_account_rent_exempt_minimum_sol
+                    .with_label_values(&labels)
+                    .set(lamports_to_sol(rent_exempt_minimum_lamports));
+            }
+            if let Some(vat_reserve_lamports) = funding.vat_reserve_lamports {
+                self.sol_watched_validator_vat_reserve_sol
+                    .with_label_values(&labels)
+                    .set(lamports_to_sol(vat_reserve_lamports));
+            }
+            if let Some(vat_epochs_available) = funding.vat_epochs_available {
+                self.sol_watched_validator_vat_epochs_available
+                    .with_label_values(&labels)
+                    .set(metric_count(vat_epochs_available));
+            }
+            if let Some(vat_next_epoch_funded) = funding.vat_next_epoch_funded {
+                self.sol_watched_validator_vat_next_epoch_funded
+                    .with_label_values(&labels)
+                    .set(i64::from(vat_next_epoch_funded));
+            }
+        }
         if let Some(vote_credits) = validator.latest_epoch_vote_credits {
             self.sol_watched_validator_vote_credits_latest_epoch
                 .with_label_values(&labels)

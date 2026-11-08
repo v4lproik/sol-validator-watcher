@@ -171,6 +171,8 @@ tests:
         values: '200+0x5'
       - series: 'sol_economics_vat_next_epoch_funded{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-1",vote_account="vote-1"}'
         values: '0+0x5'
+      - series: 'sol_watched_validator_vat_next_epoch_funded{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta",identity="validator-2",vote_account="vote-2",status="current"}'
+        values: '0+0x5'
     alert_rule_test:
       - eval_time: 5m
         alertname: SolValidatorWatchedValidatorDelinquent

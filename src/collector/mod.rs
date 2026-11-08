@@ -22,22 +22,22 @@ use aggregate::reward_epoch_block_range;
 pub(crate) use jito::JitoClient;
 pub(crate) use model::MAX_UPCOMING_LEADER_SLOTS;
 pub(crate) use model::{
-    AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample, TrilliumBlockRewards,
-    TrilliumMevCapture, TrilliumTransactionMetrics,
+    AccountBalanceTarget, AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample,
+    TrilliumBlockRewards, TrilliumMevCapture, TrilliumTransactionMetrics,
 };
 #[cfg(test)]
 pub(crate) use model::{
     EconomicsMetrics, EpochCreditsSample, NodeMetrics, NodeVotingStatus, ScopeMetrics,
-    ValidatorRecord, ValidatorStatus,
+    ValidatorFundingMetrics, ValidatorRecord, ValidatorStatus,
 };
 pub(crate) use rpc::{BlockProduction, ClusterNode, EpochInfo, VoteAccounts};
 pub(crate) use trillium::TrilliumClient;
 
 #[cfg(test)]
 use aggregate::{
-    aggregate_records, build_economics_metrics, build_record, build_watched_validator_metrics,
-    estimated_epoch_end_unixtime_at, ratio, resolve_economics_target, EconomicsTarget,
-    RecordBuildContext,
+    aggregate_records, build_record, build_validator_funding_metrics,
+    build_watched_validator_metrics, estimated_epoch_end_unixtime_at, ratio,
+    resolve_economics_target, EconomicsTarget, RecordBuildContext,
 };
 #[cfg(test)]
 use rpc::{
