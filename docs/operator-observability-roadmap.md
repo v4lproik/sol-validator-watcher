@@ -137,9 +137,10 @@ snapshot age from the last successful timestamp and shows cumulative HTTP, RPC,
 and connector-attributed WebSocket failures.
 Prometheus evaluates target, readiness, stale-snapshot, RPC- and
 WebSocket-failure, node-behind, node-not-voting, validator-health,
-upcoming-leader, VAT-funding, rejected-reload, sustained-fallback, and
-ineffective-block-fee-cache alerts. The supported production stack routes these
-alerts through Alertmanager; receiver ownership and escalation policy remain an
+upcoming-leader, VAT-funding, rejected-reload, sustained-fallback,
+ineffective-block-fee-cache, missing-Trillium-capture, and high completed-epoch
+block-miss-rate alerts. The supported production stack routes these alerts
+through Alertmanager; receiver ownership and escalation policy remain an
 operator responsibility.
 
 Recent validator block-fee economics are exposed through
@@ -155,6 +156,16 @@ per-validator protocol reward, reward-epoch block production, and reward per
 produced block comparisons separate from the configured economics target's
 balances, block fees, and Jito rewards. Missing inflation-reward samples remain
 absent while independently collected reward-epoch block counts stay visible.
+
+The MEV Capture dashboard uses Trillium's public completed-epoch validator
+rewards feed. It displays `mev_earned`, independently published
+validator/staker allocations and Jito fee amounts, MEV and priority-fee
+commissions converted from basis points to percent, gross Jito tips, block
+reward and per-block fee distributions, transaction outcomes and throughput,
+compute use, activated stake, leader slots, produced blocks, and derived
+block-production efficiency. Snapshot-owned series reset when an optional
+Trillium route has no data, so the dashboard shows No data rather than carrying
+a prior epoch forward.
 
 ## Metrics the exporter should add
 

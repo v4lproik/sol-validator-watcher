@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 15;
+pub const COMMAND_COUNT: usize = 16;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -70,6 +70,8 @@ pub enum ProviderFeature {
     BlockFeeRewards,
     /// Settled per-validator rewards served by the Jito validator API.
     JitoMevRewards,
+    /// Completed-epoch validator MEV analytics served by the Trillium API.
+    TrilliumMevCapture,
 }
 
 impl ProviderFeature {
@@ -79,6 +81,7 @@ impl ProviderFeature {
             Self::HistoricalData => "historical-data",
             Self::BlockFeeRewards => "block-fee-rewards",
             Self::JitoMevRewards => "jito-mev-rewards",
+            Self::TrilliumMevCapture => "trillium-mev-capture",
         }
     }
 }
@@ -123,6 +126,11 @@ const PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT: ModeSourceRequirement = Mode
     transport: Transport::ProviderApi,
     solana_rpc_compatibility: None,
     feature: Some(ProviderFeature::JitoMevRewards),
+};
+const PROVIDER_API_TRILLIUM_MEV_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
+    transport: Transport::ProviderApi,
+    solana_rpc_compatibility: None,
+    feature: Some(ProviderFeature::TrilliumMevCapture),
 };
 
 /// Stable identifier for an independently reported watcher mode.
@@ -193,6 +201,8 @@ pub enum CommandId {
     JitoMevRewards,
     /// Recent confirmed block-fee rewards for the economics validator.
     RecentBlockFeeRewards,
+    /// Latest completed-epoch Trillium MEV capture for the economics validator.
+    TrilliumMevCapture,
 }
 
 impl CommandId {
@@ -213,6 +223,7 @@ impl CommandId {
         Self::RewardEpochBlockProduction,
         Self::JitoMevRewards,
         Self::RecentBlockFeeRewards,
+        Self::TrilliumMevCapture,
     ];
 
     /// Returns the stable metric and configuration label.
@@ -233,6 +244,7 @@ impl CommandId {
             Self::RewardEpochBlockProduction => "reward-epoch-block-production",
             Self::JitoMevRewards => "jito-mev-rewards",
             Self::RecentBlockFeeRewards => "recent-block-fee-rewards",
+            Self::TrilliumMevCapture => "trillium-mev-capture",
         }
     }
 
@@ -251,7 +263,8 @@ impl CommandId {
             | Self::InflationRewards
             | Self::RewardEpochBlockProduction
             | Self::JitoMevRewards
-            | Self::RecentBlockFeeRewards => ModeId::Economics,
+            | Self::RecentBlockFeeRewards
+            | Self::TrilliumMevCapture => ModeId::Economics,
         }
     }
 
@@ -274,6 +287,7 @@ impl CommandId {
             }
             Self::JitoMevRewards => PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT,
             Self::RecentBlockFeeRewards => RPC_EXTENDED_BLOCK_FEE_SOURCE_REQUIREMENT,
+            Self::TrilliumMevCapture => PROVIDER_API_TRILLIUM_MEV_SOURCE_REQUIREMENT,
         }
     }
 
@@ -295,6 +309,7 @@ impl CommandId {
             Self::RewardEpochBlockProduction => 12,
             Self::JitoMevRewards => 13,
             Self::RecentBlockFeeRewards => 14,
+            Self::TrilliumMevCapture => 15,
         }
     }
 }

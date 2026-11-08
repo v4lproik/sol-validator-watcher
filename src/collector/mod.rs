@@ -9,6 +9,7 @@ mod jito;
 mod model;
 mod rpc;
 mod snapshot;
+mod trillium;
 
 pub use model::{
     ClusterPerformanceMetrics, GossipObservation, ModeStatus, NodeHealth, RecentBlockFeeRewards,
@@ -20,13 +21,17 @@ pub use snapshot::{collect_snapshot, ensure_economics_supported};
 use aggregate::reward_epoch_block_range;
 pub(crate) use jito::JitoClient;
 pub(crate) use model::MAX_UPCOMING_LEADER_SLOTS;
-pub(crate) use model::{AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample};
+pub(crate) use model::{
+    AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample, TrilliumBlockRewards,
+    TrilliumMevCapture, TrilliumTransactionMetrics,
+};
 #[cfg(test)]
 pub(crate) use model::{
     EconomicsMetrics, EpochCreditsSample, NodeMetrics, NodeVotingStatus, ScopeMetrics,
     ValidatorRecord, ValidatorStatus,
 };
 pub(crate) use rpc::{BlockProduction, ClusterNode, EpochInfo, VoteAccounts};
+pub(crate) use trillium::TrilliumClient;
 
 #[cfg(test)]
 use aggregate::{

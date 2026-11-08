@@ -480,6 +480,7 @@ pub(super) fn build_economics_metrics(
     target: &EconomicsTarget,
     balances: AccountBalances,
     jito_mev_reward: Option<super::JitoMevReward>,
+    trillium_mev_capture: Option<super::TrilliumMevCapture>,
     recent_block_fee_rewards: Option<super::RecentBlockFeeRewards>,
 ) -> EconomicsMetrics {
     let vat_reserve_lamports = balances
@@ -498,6 +499,7 @@ pub(super) fn build_economics_metrics(
         vat_next_epoch_funded: vat_reserve_lamports
             .map(|reserve| reserve >= VAT_LAMPORTS_PER_EPOCH),
         jito_mev_reward,
+        trillium_mev_capture,
         recent_block_fee_rewards,
     }
 }

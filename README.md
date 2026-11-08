@@ -56,6 +56,7 @@ Keep credentials in the ignored root `.env`. Connector names are stable referenc
 | `historical-data` | Retained prior-epoch rewards and block production |
 | `block-fee-rewards` | Confirmed validator block-fee reward reads |
 | `jito-mev-rewards` | Settled Jito validator rewards through its provider API |
+| `trillium-mev-capture` | Completed-epoch MEV, block rewards, priority and signature fees, transactions, compute use, stake, Jito tips, leader slots, and block production through the public Trillium API |
 
 Run a profile directly with:
 
@@ -106,7 +107,7 @@ automatic rollback, backup/restore procedure, and release gate.
 
 Readiness requires five consecutive clean polling rounds. Recoverable collection failures retain the last successful snapshot while marking affected modes and readiness down.
 
-Grafana includes overview, consensus, leadership, and economics dashboards. The economics dashboard compares selected watched validators by inflation reward, reward-epoch blocks, and reward per produced block while keeping configured-target balances, fees, and Jito rewards separate. Missing reward samples render as no data instead of zero. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
+Grafana includes overview, consensus, leadership, economics, and MEV Capture dashboards. The MEV dashboard compares Trillium's latest completed-epoch capture, allocations, block rewards, priority and signature fees, transactions, compute use, Jito tips, stake, leader slots, produced blocks, and efficiency while keeping independent published fields separate. The economics dashboard compares selected watched validators by inflation reward, reward-epoch blocks, and reward per produced block. Missing provider samples render as no data instead of zero. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
 
 ## Published images
 

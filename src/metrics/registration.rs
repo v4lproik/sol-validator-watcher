@@ -570,6 +570,143 @@ impl Metrics {
             ),
             economics_labels,
         )?;
+        let sol_economics_trillium_mev_capture_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_mev_capture_sol",
+                "Total MEV captured in SOL by the validator's blocks in the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_mev_allocation_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_mev_allocation_sol",
+                "MEV allocation in SOL for the latest Trillium completed epoch",
+            ),
+            &["network", "identity", "vote_account", "destination"],
+        )?;
+        let sol_economics_trillium_mev_per_leader_slot_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_mev_per_leader_slot_sol",
+                "MEV captured in SOL per assigned leader slot for the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_mev_commission_pct = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_mev_commission_pct",
+                "MEV commission percentage for the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_total_jito_tips_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_total_jito_tips_sol",
+                "Gross Jito tips in SOL for the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_jito_tip_count = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_jito_tip_count",
+                "Jito tip transactions observed in the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_leader_slots = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_leader_slots",
+                "Assigned leader slots in the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_blocks_produced = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_blocks_produced",
+                "Blocks produced in the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_mev_capture_epoch = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_mev_capture_epoch",
+                "Completed epoch represented by the Trillium MEV capture metrics",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_block_reward_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_block_reward_sol",
+                "Trillium completed-epoch block-reward amount in SOL by bounded component",
+            ),
+            &["network", "identity", "vote_account", "component"],
+        )?;
+        let sol_economics_trillium_per_block_reward_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_per_block_reward_sol",
+                "Trillium completed-epoch per-block reward amount in SOL by component and statistic",
+            ),
+            &[
+                "network",
+                "identity",
+                "vote_account",
+                "component",
+                "statistic",
+            ],
+        )?;
+        let sol_economics_trillium_transactions = IntGaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_transactions",
+                "Transactions in Trillium completed-epoch produced blocks by type and outcome",
+            ),
+            &[
+                "network",
+                "identity",
+                "vote_account",
+                "transaction_type",
+                "outcome",
+            ],
+        )?;
+        let sol_economics_trillium_transactions_per_block = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_transactions_per_block",
+                "Trillium completed-epoch transactions per produced block by type and statistic",
+            ),
+            &[
+                "network",
+                "identity",
+                "vote_account",
+                "transaction_type",
+                "statistic",
+            ],
+        )?;
+        let sol_economics_trillium_transaction_success_pct = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_transaction_success_pct",
+                "Trillium completed-epoch average transaction success percentage by type",
+            ),
+            &["network", "identity", "vote_account", "transaction_type"],
+        )?;
+        let sol_economics_trillium_compute_units_per_block = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_compute_units_per_block",
+                "Trillium completed-epoch compute units per produced block by statistic",
+            ),
+            &["network", "identity", "vote_account", "statistic"],
+        )?;
+        let sol_economics_trillium_activated_stake_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_activated_stake_sol",
+                "Activated stake in SOL represented by the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
+        let sol_economics_trillium_priority_fee_commission_pct = GaugeVec::new(
+            Opts::new(
+                "sol_economics_trillium_priority_fee_commission_pct",
+                "Priority-fee commission percentage for the latest Trillium completed epoch",
+            ),
+            economics_labels,
+        )?;
         let sol_watched_validator_info = IntGaugeVec::new(
             Opts::new(
                 "sol_watched_validator_info",
@@ -824,6 +961,26 @@ impl Metrics {
         register(&registry, &sol_economics_jito_mev_reward_sol)?;
         register(&registry, &sol_economics_jito_mev_commission_pct)?;
         register(&registry, &sol_economics_jito_mev_reward_epoch)?;
+        register(&registry, &sol_economics_trillium_mev_capture_sol)?;
+        register(&registry, &sol_economics_trillium_mev_allocation_sol)?;
+        register(&registry, &sol_economics_trillium_mev_per_leader_slot_sol)?;
+        register(&registry, &sol_economics_trillium_mev_commission_pct)?;
+        register(&registry, &sol_economics_trillium_total_jito_tips_sol)?;
+        register(&registry, &sol_economics_trillium_jito_tip_count)?;
+        register(&registry, &sol_economics_trillium_leader_slots)?;
+        register(&registry, &sol_economics_trillium_blocks_produced)?;
+        register(&registry, &sol_economics_trillium_mev_capture_epoch)?;
+        register(&registry, &sol_economics_trillium_block_reward_sol)?;
+        register(&registry, &sol_economics_trillium_per_block_reward_sol)?;
+        register(&registry, &sol_economics_trillium_transactions)?;
+        register(&registry, &sol_economics_trillium_transactions_per_block)?;
+        register(&registry, &sol_economics_trillium_transaction_success_pct)?;
+        register(&registry, &sol_economics_trillium_compute_units_per_block)?;
+        register(&registry, &sol_economics_trillium_activated_stake_sol)?;
+        register(
+            &registry,
+            &sol_economics_trillium_priority_fee_commission_pct,
+        )?;
         register(&registry, &sol_watched_validator_info)?;
         register(&registry, &sol_watched_validator_gossip_visible)?;
         register(&registry, &sol_watched_validator_gossip_info)?;
@@ -933,6 +1090,23 @@ impl Metrics {
             sol_economics_jito_mev_reward_sol,
             sol_economics_jito_mev_commission_pct,
             sol_economics_jito_mev_reward_epoch,
+            sol_economics_trillium_mev_capture_sol,
+            sol_economics_trillium_mev_allocation_sol,
+            sol_economics_trillium_mev_per_leader_slot_sol,
+            sol_economics_trillium_mev_commission_pct,
+            sol_economics_trillium_total_jito_tips_sol,
+            sol_economics_trillium_jito_tip_count,
+            sol_economics_trillium_leader_slots,
+            sol_economics_trillium_blocks_produced,
+            sol_economics_trillium_mev_capture_epoch,
+            sol_economics_trillium_block_reward_sol,
+            sol_economics_trillium_per_block_reward_sol,
+            sol_economics_trillium_transactions,
+            sol_economics_trillium_transactions_per_block,
+            sol_economics_trillium_transaction_success_pct,
+            sol_economics_trillium_compute_units_per_block,
+            sol_economics_trillium_activated_stake_sol,
+            sol_economics_trillium_priority_fee_commission_pct,
             sol_watched_validator_info,
             sol_watched_validator_gossip_visible,
             sol_watched_validator_gossip_info,

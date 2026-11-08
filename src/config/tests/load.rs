@@ -192,8 +192,11 @@ fn loads_every_committed_profile() -> Result<()> {
             config.metrics_host, expected_metrics_host,
             "profile {relative_path}"
         );
-        let expected_connector_count =
-            usize::from(relative_path == "config/remote/mainnet.toml") + 1;
+        let expected_connector_count = if relative_path == "config/remote/mainnet.toml" {
+            3
+        } else {
+            1
+        };
         assert_eq!(
             config.connectors.len(),
             expected_connector_count,
@@ -264,6 +267,17 @@ fn loads_every_committed_profile() -> Result<()> {
                     .as_ref()
                     .map(|provider_api| provider_api.url.as_str()),
                 Some("https://kobe.mainnet.jito.network/api/v1")
+            );
+            assert_eq!(config.connectors[2].name, "trillium-api");
+            assert_eq!(config.connectors[2].provider, "trillium");
+            assert!(config.connectors[2].has_provider_api());
+            assert!(config.connectors[2].supports(ProviderFeature::TrilliumMevCapture));
+            assert_eq!(
+                config.connectors[2]
+                    .provider_api
+                    .as_ref()
+                    .map(|provider_api| provider_api.url.as_str()),
+                Some("https://api.trillium.so")
             );
         }
     }

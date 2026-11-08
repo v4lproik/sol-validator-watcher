@@ -574,6 +574,7 @@ fn economics_metrics_preserve_rent_and_vat_boundaries() {
         },
         None,
         None,
+        None,
     );
 
     assert_eq!(metrics.vat_reserve_lamports, Some(1_600_000_000));

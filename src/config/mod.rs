@@ -73,6 +73,8 @@ pub struct EconomicsCommands {
     pub recent_block_fee_rewards: Vec<String>,
     /// Connector names used for settled Jito MEV rewards.
     pub jito_mev_rewards: Vec<String>,
+    /// Connector names used for completed-epoch Trillium MEV capture.
+    pub trillium_mev_capture: Vec<String>,
 }
 
 /// Health-mode command routes.
@@ -159,6 +161,7 @@ impl ModesConfig {
             }
             CommandId::JitoMevRewards => &self.economics.commands.jito_mev_rewards,
             CommandId::RecentBlockFeeRewards => &self.economics.commands.recent_block_fee_rewards,
+            CommandId::TrilliumMevCapture => &self.economics.commands.trillium_mev_capture,
         }
     }
 
@@ -722,10 +725,25 @@ impl ConnectorConfig {
                 ProviderFeature::BlockFeeRewards.as_str()
             );
         }
+        if self.supports(ProviderFeature::JitoMevRewards)
+            && self.supports(ProviderFeature::TrilliumMevCapture)
+        {
+            bail!(
+                "connectors[{index}].features cannot combine {:?} and {:?}: provider_api configures one provider endpoint",
+                ProviderFeature::JitoMevRewards.as_str(),
+                ProviderFeature::TrilliumMevCapture.as_str()
+            );
+        }
         if self.supports(ProviderFeature::JitoMevRewards) && !self.has_provider_api() {
             bail!(
                 "connectors[{index}].features entry {:?} requires provider_api",
                 ProviderFeature::JitoMevRewards.as_str()
+            );
+        }
+        if self.supports(ProviderFeature::TrilliumMevCapture) && !self.has_provider_api() {
+            bail!(
+                "connectors[{index}].features entry {:?} requires provider_api",
+                ProviderFeature::TrilliumMevCapture.as_str()
             );
         }
         if self.rpc.is_none() && self.websocket.is_none() && self.provider_api.is_none() {
@@ -944,7 +962,8 @@ impl Config {
                 | CommandId::CurrentLeaderSchedule
                 | CommandId::NextLeaderSchedule
                 | CommandId::JitoMevRewards
-                | CommandId::RecentBlockFeeRewards => false,
+                | CommandId::RecentBlockFeeRewards
+                | CommandId::TrilliumMevCapture => false,
                 CommandId::AccountBalances
                 | CommandId::InflationRewards
                 | CommandId::RewardEpochBlockProduction => self.modes.economics.enabled,

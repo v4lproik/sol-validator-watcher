@@ -62,6 +62,11 @@ operator-facing semantics.
   exist only when economics mode, a valid provider-API route, and a settled
   target reward all exist. Missing settlement or route failure remains no data,
   never a zero reward.
+- Trillium completed-epoch MEV, block-reward, fee, transaction, compute, stake,
+  and production series are snapshot-owned and exist only after the optional
+  route returns a valid target record. Reset every family together. Preserve
+  provider values independently; never force allocation and fee fields into an
+  exact accounting identity or carry a prior epoch through valid absence.
 - Help text states operator meaning, not implementation details.
 
 ## Dashboard Invariants
@@ -94,9 +99,10 @@ operator-facing semantics.
   receiver injection, resolved notifications, grouping, and critical-over-
   warning inhibition. Escalation ownership and receiver availability remain
   external operator responsibilities.
-- Keep overview, consensus, leadership, and economics dashboards separate.
-  Mode dashboards consume only their mode's command health, routes, sources,
-  and domain metrics.
+- Keep overview, consensus, leadership, economics, and MEV Capture dashboards
+  separate. Mode dashboards consume only their mode's command health, routes,
+  sources, and domain metrics; the MEV dashboard remains an economics-mode
+  provider drill-down.
 - Keep generated/public Pages output out of source edits; the site build owns it.
 
 ## Review Gates

@@ -3,7 +3,8 @@ use crate::{
     collector::{
         ClusterPerformanceMetrics, EconomicsMetrics, GossipObservation, JitoMevReward, ModeStatus,
         NodeHealth, NodeMetrics, NodeVotingStatus, RecentBlockFeeRewards, ScopeMetrics, Snapshot,
-        SnapshotDataSource, ValidatorStatus, WatchedValidatorMetrics,
+        SnapshotDataSource, TrilliumBlockRewards, TrilliumMevCapture, TrilliumTransactionMetrics,
+        ValidatorStatus, WatchedValidatorMetrics,
     },
     config::{
         Config, ConnectorConfig, ConsensusCommands, ConsensusModeConfig, EconomicsCommands,
@@ -130,6 +131,16 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 feature: Some(ProviderFeature::JitoMevRewards),
                 precedence: 1,
             },
+            SnapshotDataSource {
+                mode: ModeId::Economics,
+                command: CommandId::TrilliumMevCapture,
+                connector: Arc::from("trillium-api"),
+                provider: Arc::from("trillium"),
+                transport: Transport::ProviderApi,
+                solana_rpc_compatibility: None,
+                feature: Some(ProviderFeature::TrilliumMevCapture),
+                precedence: 1,
+            },
         ],
         mode_statuses: vec![
             ModeStatus {
@@ -166,6 +177,52 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 epoch: 41,
                 reward_lamports: 123_456_789,
                 commission_bps: 800,
+            }),
+            trillium_mev_capture: Some(TrilliumMevCapture {
+                epoch: 41,
+                captured_sol: Some(1.25),
+                validator_sol: Some(0.25),
+                stakers_sol: Some(0.9),
+                block_engine_sol: Some(0.05),
+                tip_router_sol: Some(0.05),
+                per_leader_slot_sol: Some(0.0125),
+                commission_pct: Some(20.0),
+                total_jito_tips_sol: Some(1.3),
+                total_jito_tip_count: Some(125),
+                leader_slots: 100,
+                blocks_produced: 98,
+                activated_stake_sol: Some(200_000.0),
+                block_rewards: TrilliumBlockRewards {
+                    after_burn_sol: Some(2.1),
+                    priority_fees_sol: Some(1.5),
+                    validator_priority_fees_sol: Some(1.2),
+                    delegator_priority_fees_sol: Some(0.3),
+                    validator_signature_fees_sol: Some(0.2),
+                    average_mev_per_block_sol: Some(0.012),
+                    median_mev_per_block_sol: Some(0.009),
+                    average_priority_fees_per_block_sol: Some(0.015),
+                    median_priority_fees_per_block_sol: Some(0.011),
+                    average_signature_fees_per_block_sol: Some(0.002),
+                    median_signature_fees_per_block_sol: Some(0.001),
+                    average_jito_tips_per_block_sol: Some(0.013),
+                    median_jito_tips_per_block_sol: Some(0.008),
+                    priority_fee_commission_pct: Some(15.0),
+                },
+                transactions: TrilliumTransactionMetrics {
+                    successful: Some(8_000),
+                    failed: Some(2_000),
+                    successful_user: Some(6_000),
+                    failed_user: Some(2_000),
+                    average_per_block: Some(100.0),
+                    average_user_per_block: Some(80.0),
+                    average_vote_per_block: Some(20.0),
+                    median_per_block: Some(90.0),
+                    median_user_per_block: Some(70.0),
+                    average_success_pct: Some(80.0),
+                    average_user_success_pct: Some(75.0),
+                    average_compute_units_per_block: Some(14_000_000.0),
+                    median_compute_units_per_block: Some(13_000_000.0),
+                },
             }),
             recent_block_fee_rewards: Some(RecentBlockFeeRewards {
                 latest_slot: 1_230,
@@ -232,6 +289,15 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 )),
                 ..ConnectorConfig::default()
             },
+            ConnectorConfig {
+                name: "trillium-api".to_string(),
+                provider: "trillium".to_string(),
+                features: vec![ProviderFeature::TrilliumMevCapture],
+                provider_api: Some(crate::config::HttpTransportConfig::new(
+                    "https://api.trillium.so".to_string(),
+                )),
+                ..ConnectorConfig::default()
+            },
         ],
         modes: modes_for(
             &["local-validator", "helius-rpc", "extended-rpc"],
@@ -244,6 +310,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     config.modes.health.commands.ws_health =
         vec!["local-validator".to_string(), "helius-ws".to_string()];
     config.modes.economics.commands.jito_mev_rewards = vec!["jito-api".to_string()];
+    config.modes.economics.commands.trillium_mev_capture = vec!["trillium-api".to_string()];
     config.modes.economics.commands.recent_block_fee_rewards = vec!["helius-rpc".to_string()];
     let sources =
         SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
@@ -270,6 +337,9 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_connector_info{connector=\"jito-api\",declaration_order=\"5\",has_provider_api=\"true\",has_rpc=\"false\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"jito\",solana_rpc_compatibility=\"\"} 1"));
     assert!(rendered.contains("sol_connector_feature_info{connector=\"jito-api\",feature=\"jito-mev-rewards\",network=\"mainnet-beta\",provider=\"jito\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
+    assert!(rendered.contains("sol_connector_info{connector=\"trillium-api\",declaration_order=\"6\",has_provider_api=\"true\",has_rpc=\"false\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"trillium\",solana_rpc_compatibility=\"\"} 1"));
+    assert!(rendered.contains("sol_connector_feature_info{connector=\"trillium-api\",feature=\"trillium-mev-capture\",network=\"mainnet-beta\",provider=\"trillium\"} 1"));
+    assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"trillium-mev-capture\",connector=\"trillium-api\",feature=\"trillium-mev-capture\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"trillium\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_connector_feature_info{connector=\"helius-rpc\",feature=\"block-fee-rewards\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"recent-block-fee-rewards\",connector=\"helius-rpc\",feature=\"block-fee-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
@@ -278,6 +348,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_mode_command_source_info{command=\"epoch-info\",connector=\"local-validator\",feature=\"\",mode=\"consensus\",network=\"mainnet-beta\",precedence=\"1\",provider=\"solana-validator\",required_solana_rpc_compatibility=\"core\",solana_rpc_compatibility=\"core\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-data\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
+    assert!(rendered.contains("sol_mode_command_source_info{command=\"trillium-mev-capture\",connector=\"trillium-api\",feature=\"trillium-mev-capture\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"trillium\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"recent-block-fee-rewards\",connector=\"helius-rpc\",feature=\"block-fee-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1"));
     assert!(rendered.contains("sol_mode_up{mode=\"leadership\",network=\"mainnet-beta\"} 1"));
@@ -309,6 +380,27 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_economics_jito_mev_reward_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.123456789"));
     assert!(rendered.contains("sol_economics_jito_mev_commission_pct{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 8"));
     assert!(rendered.contains("sol_economics_jito_mev_reward_epoch{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 41"));
+    assert!(rendered.contains("sol_economics_trillium_mev_capture_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.25"));
+    assert!(rendered.contains("sol_economics_trillium_mev_allocation_sol{destination=\"validator\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.25"));
+    assert!(rendered.contains("sol_economics_trillium_mev_allocation_sol{destination=\"stakers\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.9"));
+    assert!(rendered.contains("sol_economics_trillium_mev_allocation_sol{destination=\"jito-block-engine\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.05"));
+    assert!(rendered.contains("sol_economics_trillium_mev_allocation_sol{destination=\"jito-tip-router\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.05"));
+    assert!(rendered.contains("sol_economics_trillium_mev_per_leader_slot_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.0125"));
+    assert!(rendered.contains("sol_economics_trillium_mev_commission_pct{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 20"));
+    assert!(rendered.contains("sol_economics_trillium_total_jito_tips_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.3"));
+    assert!(rendered.contains("sol_economics_trillium_jito_tip_count{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 125"));
+    assert!(rendered.contains("sol_economics_trillium_leader_slots{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 100"));
+    assert!(rendered.contains("sol_economics_trillium_blocks_produced{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 98"));
+    assert!(rendered.contains("sol_economics_trillium_mev_capture_epoch{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 41"));
+    assert!(rendered.contains("sol_economics_trillium_block_reward_sol{component=\"after-burn\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2.1"));
+    assert!(rendered.contains("sol_economics_trillium_block_reward_sol{component=\"priority-fees-total\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.5"));
+    assert!(rendered.contains("sol_economics_trillium_per_block_reward_sol{component=\"mev\",identity=\"id-1\",network=\"mainnet-beta\",statistic=\"average\",vote_account=\"vote-1\"} 0.012"));
+    assert!(rendered.contains("sol_economics_trillium_transactions{identity=\"id-1\",network=\"mainnet-beta\",outcome=\"successful\",transaction_type=\"all\",vote_account=\"vote-1\"} 8000"));
+    assert!(rendered.contains("sol_economics_trillium_transactions_per_block{identity=\"id-1\",network=\"mainnet-beta\",statistic=\"average\",transaction_type=\"all\",vote_account=\"vote-1\"} 100"));
+    assert!(rendered.contains("sol_economics_trillium_transaction_success_pct{identity=\"id-1\",network=\"mainnet-beta\",transaction_type=\"all\",vote_account=\"vote-1\"} 80"));
+    assert!(rendered.contains("sol_economics_trillium_compute_units_per_block{identity=\"id-1\",network=\"mainnet-beta\",statistic=\"average\",vote_account=\"vote-1\"} 14000000"));
+    assert!(rendered.contains("sol_economics_trillium_activated_stake_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 200000"));
+    assert!(rendered.contains("sol_economics_trillium_priority_fee_commission_pct{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 15"));
     assert!(rendered.contains("sol_validator_status_count{network=\"mainnet-beta\",scope=\"scope:watched\",status=\"current\"} 1"));
     assert!(rendered
         .contains("sol_epoch_reward_sol{network=\"mainnet-beta\",scope=\"scope:watched\"} 6"));
@@ -416,6 +508,7 @@ fn economics_balances_render_when_rent_and_vat_are_unavailable() -> Result<()> {
             vat_epochs_available: None,
             vat_next_epoch_funded: None,
             jito_mev_reward: None,
+            trillium_mev_capture: None,
             recent_block_fee_rewards: None,
         }),
         ..Snapshot::default()
@@ -561,6 +654,29 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
                 reward_lamports: 1,
                 commission_bps: 0,
             }),
+            trillium_mev_capture: Some(TrilliumMevCapture {
+                epoch: 0,
+                captured_sol: Some(1.0),
+                validator_sol: Some(0.1),
+                stakers_sol: Some(0.8),
+                block_engine_sol: Some(0.05),
+                tip_router_sol: Some(0.05),
+                per_leader_slot_sol: Some(0.01),
+                commission_pct: Some(10.0),
+                total_jito_tips_sol: Some(1.05),
+                total_jito_tip_count: Some(10),
+                leader_slots: 100,
+                blocks_produced: 99,
+                activated_stake_sol: Some(1.0),
+                block_rewards: TrilliumBlockRewards {
+                    after_burn_sol: Some(1.0),
+                    ..TrilliumBlockRewards::default()
+                },
+                transactions: TrilliumTransactionMetrics {
+                    successful: Some(1),
+                    ..TrilliumTransactionMetrics::default()
+                },
+            }),
             recent_block_fee_rewards: Some(RecentBlockFeeRewards {
                 latest_slot: 1,
                 latest_reward_lamports: 1,
@@ -569,6 +685,51 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             }),
         }),
     });
+    metrics.update_snapshot(&Snapshot {
+        network: network.to_string(),
+        economics: Some(EconomicsMetrics {
+            identity: "partial-id".to_string(),
+            vote_account: "partial-vote".to_string(),
+            identity_balance_lamports: 0,
+            vote_account_balance_lamports: 0,
+            vote_account_rent_exempt_minimum_lamports: None,
+            vat_reserve_lamports: None,
+            vat_epochs_available: None,
+            vat_next_epoch_funded: None,
+            jito_mev_reward: None,
+            trillium_mev_capture: Some(TrilliumMevCapture {
+                epoch: 1,
+                captured_sol: Some(2.0),
+                validator_sol: None,
+                stakers_sol: None,
+                block_engine_sol: None,
+                tip_router_sol: None,
+                per_leader_slot_sol: None,
+                commission_pct: None,
+                total_jito_tips_sol: None,
+                total_jito_tip_count: None,
+                leader_slots: 10,
+                blocks_produced: 9,
+                activated_stake_sol: None,
+                block_rewards: TrilliumBlockRewards::default(),
+                transactions: TrilliumTransactionMetrics::default(),
+            }),
+            recent_block_fee_rewards: None,
+        }),
+        ..Snapshot::default()
+    });
+    let partial = metrics.render()?;
+    assert!(partial.contains("sol_economics_trillium_mev_capture_sol{identity=\"partial-id\",network=\"mainnet-beta\",vote_account=\"partial-vote\"} 2"));
+    assert!(!partial.contains("sol_economics_trillium_mev_allocation_sol{"));
+    assert!(!partial.contains("sol_economics_trillium_block_reward_sol{"));
+    assert!(!partial.contains("sol_economics_trillium_per_block_reward_sol{"));
+    assert!(!partial.contains("sol_economics_trillium_transactions{"));
+    assert!(!partial.contains("sol_economics_trillium_transactions_per_block{"));
+    assert!(!partial.contains("sol_economics_trillium_transaction_success_pct{"));
+    assert!(!partial.contains("sol_economics_trillium_compute_units_per_block{"));
+    assert!(!partial.contains("sol_economics_trillium_activated_stake_sol{"));
+    assert!(!partial.contains("sol_economics_trillium_priority_fee_commission_pct{"));
+
     metrics.update_snapshot(&Snapshot {
         network: network.to_string(),
         epoch: 2,
@@ -647,6 +808,9 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_economics_block_fee_reward_slot{"));
     assert!(!rendered.contains("sol_economics_recent_block_fee_reward_average_sol{"));
     assert!(!rendered.contains("sol_economics_recent_block_fee_reward_sample_count{"));
+    assert!(!rendered.contains("sol_economics_trillium_block_reward_sol{"));
+    assert!(!rendered.contains("sol_economics_trillium_transactions{"));
+    assert!(!rendered.contains("sol_economics_trillium_activated_stake_sol{"));
 
     Ok(())
 }
@@ -869,6 +1033,7 @@ fn modes_for(
                     .unwrap_or_default(),
                 recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
+                trillium_mev_capture: vec![],
             },
         },
     }

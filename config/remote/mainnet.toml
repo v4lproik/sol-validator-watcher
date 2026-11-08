@@ -33,6 +33,14 @@ url = "${JITO_API_URL:-https://kobe.mainnet.jito.network/api/v1}"
 request_timeout_sec = 30
 connect_timeout_sec = 10
 
+[[connectors]]
+name = "trillium-api"
+provider = "trillium"
+features = ["trillium-mev-capture"]
+[connectors.provider_api]
+url = "${TRILLIUM_API_URL:-https://api.trillium.so}"
+request_timeout_sec = 30
+connect_timeout_sec = 10
 # Keep custom labels stable; current/delinquent voting state comes from each
 # polling snapshot and must not be encoded here.
 
@@ -71,9 +79,9 @@ next_leader_schedule = ["mainnet-rpc"]
 enabled = false
 # Enable economics only on RPC endpoints that can serve getMultipleAccounts,
 # getMinimumBalanceForRentExemption, getInflationReward, and previous-epoch
-# getBlockProduction, then add all required RPC routes and a target. The optional
-# Jito route publishes settled MEV rewards without making them required for each
-# polling round:
+# getBlockProduction, then add all required RPC routes and a target. Optional
+# Jito and Trillium routes publish settled and completed-epoch MEV data without
+# making either provider required for each polling round:
 #
 # [modes.economics.commands]
 # account_balances = ["mainnet-rpc"]
@@ -81,6 +89,7 @@ enabled = false
 # reward_epoch_block_production = ["mainnet-rpc"]
 # recent_block_fee_rewards = ["mainnet-rpc"]
 # jito_mev_rewards = ["jito-api"]
+# trillium_mev_capture = ["trillium-api"]
 #
 # [modes.economics.validator]
 # vote_account = "PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp"

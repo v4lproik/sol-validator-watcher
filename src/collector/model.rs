@@ -149,6 +149,104 @@ pub struct JitoMevReward {
     /// Validator MEV commission in basis points.
     pub commission_bps: u16,
 }
+/// Completed-epoch block-reward economics published by Trillium.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TrilliumBlockRewards {
+    /// Validator block rewards after protocol burn, in SOL.
+    pub after_burn_sol: Option<f64>,
+    /// Total priority fees paid by produced blocks, in SOL.
+    pub priority_fees_sol: Option<f64>,
+    /// Priority fees allocated to the validator, in SOL.
+    pub validator_priority_fees_sol: Option<f64>,
+    /// Priority fees allocated to delegators, in SOL.
+    pub delegator_priority_fees_sol: Option<f64>,
+    /// Signature fees allocated to the validator, in SOL.
+    pub validator_signature_fees_sol: Option<f64>,
+    /// Average MEV captured per produced block, in SOL.
+    pub average_mev_per_block_sol: Option<f64>,
+    /// Median MEV captured per produced block, in SOL.
+    pub median_mev_per_block_sol: Option<f64>,
+    /// Average priority fees per produced block, in SOL.
+    pub average_priority_fees_per_block_sol: Option<f64>,
+    /// Median priority fees per produced block, in SOL.
+    pub median_priority_fees_per_block_sol: Option<f64>,
+    /// Average signature fees per produced block, in SOL.
+    pub average_signature_fees_per_block_sol: Option<f64>,
+    /// Median signature fees per produced block, in SOL.
+    pub median_signature_fees_per_block_sol: Option<f64>,
+    /// Average gross Jito tips per produced block, in SOL.
+    pub average_jito_tips_per_block_sol: Option<f64>,
+    /// Median gross Jito tips per produced block, in SOL.
+    pub median_jito_tips_per_block_sol: Option<f64>,
+    /// Validator priority-fee commission percentage.
+    pub priority_fee_commission_pct: Option<f64>,
+}
+
+/// Completed-epoch transaction and compute throughput published by Trillium.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TrilliumTransactionMetrics {
+    /// Successful transactions included in produced blocks.
+    pub successful: Option<u64>,
+    /// Failed transactions included in produced blocks.
+    pub failed: Option<u64>,
+    /// Successful user transactions included in produced blocks.
+    pub successful_user: Option<u64>,
+    /// Failed user transactions included in produced blocks.
+    pub failed_user: Option<u64>,
+    /// Average transactions per produced block.
+    pub average_per_block: Option<f64>,
+    /// Average user transactions per produced block.
+    pub average_user_per_block: Option<f64>,
+    /// Average vote transactions per produced block.
+    pub average_vote_per_block: Option<f64>,
+    /// Median transactions per produced block.
+    pub median_per_block: Option<f64>,
+    /// Median user transactions per produced block.
+    pub median_user_per_block: Option<f64>,
+    /// Average transaction success percentage.
+    pub average_success_pct: Option<f64>,
+    /// Average user-transaction success percentage.
+    pub average_user_success_pct: Option<f64>,
+    /// Average compute units consumed per produced block.
+    pub average_compute_units_per_block: Option<f64>,
+    /// Median compute units consumed per produced block.
+    pub median_compute_units_per_block: Option<f64>,
+}
+
+/// Latest completed-epoch validator economics published by Trillium.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TrilliumMevCapture {
+    /// Completed epoch represented by these values.
+    pub epoch: u64,
+    /// Total MEV captured by the validator's blocks, in SOL.
+    pub captured_sol: Option<f64>,
+    /// MEV allocated to the validator, in SOL.
+    pub validator_sol: Option<f64>,
+    /// MEV allocated to delegators, in SOL.
+    pub stakers_sol: Option<f64>,
+    /// Jito block-engine fee, in SOL.
+    pub block_engine_sol: Option<f64>,
+    /// Jito tip-router fee, in SOL.
+    pub tip_router_sol: Option<f64>,
+    /// MEV captured per assigned leader slot, in SOL.
+    pub per_leader_slot_sol: Option<f64>,
+    /// Validator MEV commission percentage.
+    pub commission_pct: Option<f64>,
+    /// Gross Jito tips deposited for the epoch, in SOL.
+    pub total_jito_tips_sol: Option<f64>,
+    /// Jito tip transactions observed for the epoch.
+    pub total_jito_tip_count: Option<u64>,
+    /// Assigned leader slots in the epoch.
+    pub leader_slots: u64,
+    /// Blocks produced in the epoch.
+    pub blocks_produced: u64,
+    /// Activated stake represented by the epoch, in SOL.
+    pub activated_stake_sol: Option<f64>,
+    /// Block-reward components and per-block reward distributions.
+    pub block_rewards: TrilliumBlockRewards,
+    /// Transaction outcomes, per-block throughput, and compute consumption.
+    pub transactions: TrilliumTransactionMetrics,
+}
 /// Validator fee rewards sampled from recent confirmed blocks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RecentBlockFeeRewards {
@@ -194,6 +292,8 @@ pub struct EconomicsMetrics {
     pub vat_next_epoch_funded: Option<bool>,
     /// Settled Jito MEV reward, when a configured Jito route has published the epoch.
     pub jito_mev_reward: Option<JitoMevReward>,
+    /// Completed-epoch MEV capture when a configured Trillium route has data.
+    pub trillium_mev_capture: Option<TrilliumMevCapture>,
     /// Recent confirmed validator fee rewards, including Harmonic priority-fee tips.
     pub recent_block_fee_rewards: Option<RecentBlockFeeRewards>,
 }
