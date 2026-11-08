@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Moved MEV Capture availability and source directly below the completed-epoch summary, widened dense reward and transaction comparisons, removed redundant selected-network and target prefixes from their legends, and rendered SOL units consistently.
 - Changed every Grafana `Network` variable to a required single selection without `All` and made panel and dependent-variable network matchers exact, preventing cross-network aggregation.
 - Added snapshot-reset Trillium completed-epoch MEV capture, allocation, fee, commission, Jito-tip, block-reward, priority-fee, transaction, compute, stake, leader-slot, and produced-block metrics; a dedicated network-scoped drill-down dashboard that defaults to the configured Mainnet source; and tested alerts for unavailable configured capture and high block miss rate.
 - Added snapshot-reset watched-validator gossip visibility and software metadata metrics plus overview panels that distinguish validators missing from a successful public gossip view from unavailable collection without exposing node addresses.
