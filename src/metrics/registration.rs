@@ -503,21 +503,21 @@ impl Metrics {
         let sol_economics_vat_reserve_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_vat_reserve_sol",
-                "Vote account balance above rent exemption available for future VAT charges",
+                "Configured economics vote account balance above rent exemption available for future VAT charges",
             ),
             economics_labels,
         )?;
         let sol_economics_vat_epochs_available = IntGaugeVec::new(
             Opts::new(
                 "sol_economics_vat_epochs_available",
-                "Complete future 0.8 SOL VAT charges funded above rent exemption",
+                "Complete future 0.8 SOL VAT charges funded by the configured economics vote account",
             ),
             economics_labels,
         )?;
         let sol_economics_vat_next_epoch_funded = IntGaugeVec::new(
             Opts::new(
                 "sol_economics_vat_next_epoch_funded",
-                "Whether the vote account can fund the next 0.8 SOL VAT charge above rent exemption",
+                "Whether the configured economics vote account can fund the next 0.8 SOL VAT charge above rent exemption",
             ),
             economics_labels,
         )?;
@@ -749,6 +749,49 @@ impl Metrics {
                 "Activated stake in SOL for each watched validator",
             ),
             &["network", "identity", "vote_account", "status"],
+        )?;
+        let watched_validator_labels = &["network", "identity", "vote_account", "status"];
+        let sol_watched_validator_identity_balance_sol = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_identity_balance_sol",
+                "Identity account balance in SOL for each watched validator",
+            ),
+            watched_validator_labels,
+        )?;
+        let sol_watched_validator_vote_account_balance_sol = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_vote_account_balance_sol",
+                "Vote account balance in SOL for each watched validator",
+            ),
+            watched_validator_labels,
+        )?;
+        let sol_watched_validator_vote_account_rent_exempt_minimum_sol = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_vote_account_rent_exempt_minimum_sol",
+                "Rent-exempt minimum in SOL for each watched validator vote account",
+            ),
+            watched_validator_labels,
+        )?;
+        let sol_watched_validator_vat_reserve_sol = GaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_vat_reserve_sol",
+                "Watched-validator vote account balance above rent exemption available for future VAT charges",
+            ),
+            watched_validator_labels,
+        )?;
+        let sol_watched_validator_vat_epochs_available = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_vat_epochs_available",
+                "Complete future 0.8 SOL VAT charges funded for each watched validator",
+            ),
+            watched_validator_labels,
+        )?;
+        let sol_watched_validator_vat_next_epoch_funded = IntGaugeVec::new(
+            Opts::new(
+                "sol_watched_validator_vat_next_epoch_funded",
+                "Whether each watched validator vote account can fund the next 0.8 SOL VAT charge above rent exemption",
+            ),
+            watched_validator_labels,
         )?;
         let sol_watched_validator_vote_credits_latest_epoch = GaugeVec::new(
             Opts::new(
@@ -986,6 +1029,15 @@ impl Metrics {
         register(&registry, &sol_watched_validator_gossip_info)?;
         register(&registry, &sol_watched_validator_scope_info)?;
         register(&registry, &sol_watched_validator_activated_stake_sol)?;
+        register(&registry, &sol_watched_validator_identity_balance_sol)?;
+        register(&registry, &sol_watched_validator_vote_account_balance_sol)?;
+        register(
+            &registry,
+            &sol_watched_validator_vote_account_rent_exempt_minimum_sol,
+        )?;
+        register(&registry, &sol_watched_validator_vat_reserve_sol)?;
+        register(&registry, &sol_watched_validator_vat_epochs_available)?;
+        register(&registry, &sol_watched_validator_vat_next_epoch_funded)?;
         register(&registry, &sol_watched_validator_vote_credits_latest_epoch)?;
         register(&registry, &sol_watched_validator_epoch_reward_sol)?;
         register(
@@ -1112,6 +1164,12 @@ impl Metrics {
             sol_watched_validator_gossip_info,
             sol_watched_validator_scope_info,
             sol_watched_validator_activated_stake_sol,
+            sol_watched_validator_identity_balance_sol,
+            sol_watched_validator_vote_account_balance_sol,
+            sol_watched_validator_vote_account_rent_exempt_minimum_sol,
+            sol_watched_validator_vat_reserve_sol,
+            sol_watched_validator_vat_epochs_available,
+            sol_watched_validator_vat_next_epoch_funded,
             sol_watched_validator_vote_credits_latest_epoch,
             sol_watched_validator_epoch_reward_sol,
             sol_watched_validator_rewarded_blocks_latest_epoch,

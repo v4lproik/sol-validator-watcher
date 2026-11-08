@@ -138,6 +138,10 @@ probes, and economics collection.
   constant and reject duplicate request or response identifiers.
 - Merge batches with saturating arithmetic where provider totals can approach
   integer limits.
+- Batch watched-validator identity/vote-account balance pairs at the production
+  target limit, deduplicate vote-account rent lookups by account data size, and
+  preserve target order. A missing non-target account omits only that
+  validator's funding series; the configured economics target remains required.
 - Avoid duplicate prerequisite RPCs inside one collection cycle unless the
   second read intentionally checks freshness or a separately routed
   node-local source.

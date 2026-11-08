@@ -118,10 +118,22 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         snapshot.watched_validators[0].seconds_until_next_leader,
         Some(0.0)
     );
+    let funding = snapshot.watched_validators[0]
+        .funding
+        .context("missing watched-validator funding metrics")?;
+    assert_eq!(funding.identity_balance_lamports, 3_000_000_000);
+    assert_eq!(funding.vote_account_balance_lamports, 2_500_000_000);
+    assert_eq!(
+        funding.vote_account_rent_exempt_minimum_lamports,
+        Some(900_000_000)
+    );
+    assert_eq!(funding.vat_reserve_lamports, Some(1_600_000_000));
+    assert_eq!(funding.vat_epochs_available, Some(2));
+    assert_eq!(funding.vat_next_epoch_funded, Some(true));
     let economics = snapshot
         .economics
         .as_ref()
-        .ok_or_else(|| anyhow!("missing economics metrics"))?;
+        .context("missing economics metrics")?;
     assert_eq!(economics.identity_balance_lamports, 3_000_000_000);
     assert_eq!(economics.vote_account_balance_lamports, 2_500_000_000);
     assert_eq!(

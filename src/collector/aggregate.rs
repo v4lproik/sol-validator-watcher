@@ -6,8 +6,8 @@
 use super::{
     model::{
         AccountBalances, EconomicsMetrics, EpochCreditsSample, GossipObservation, RewardSample,
-        ScopeMetrics, Snapshot, ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics,
-        MAX_UPCOMING_LEADER_SLOTS,
+        ScopeMetrics, Snapshot, ValidatorFundingMetrics, ValidatorRecord, ValidatorStatus,
+        WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS,
     },
     rpc::{SlotRange, VoteAccountInfo, VoteAccounts},
 };
@@ -15,7 +15,7 @@ use crate::{
     config::Config,
     labels::{LabelMatcher, LABEL_SCOPE_ALL_NETWORK, LABEL_SCOPE_NETWORK, LABEL_SCOPE_WATCHED},
 };
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::{
     collections::{BTreeMap, BinaryHeap, HashMap},
     time::{SystemTime, UNIX_EPOCH},
@@ -388,6 +388,7 @@ pub(super) fn build_watched_validator_metrics(
         gossip: GossipObservation::Unavailable,
         scopes: record.scopes.clone(),
         activated_stake_lamports: record.activated_stake_lamports,
+        funding: None,
         latest_epoch_vote_credits,
         vote_efficiency_pct,
         last_vote_slot_lag: record.last_vote_slot_lag(current_slot),
@@ -476,20 +477,14 @@ pub(super) fn resolve_economics_target(
 }
 
 /// Derives vote-account VAT reserve and 0.8 SOL runway values from current balances.
-pub(super) fn build_economics_metrics(
-    target: &EconomicsTarget,
+pub(super) fn build_validator_funding_metrics(
     balances: AccountBalances,
-    jito_mev_reward: Option<super::JitoMevReward>,
-    trillium_mev_capture: Option<super::TrilliumMevCapture>,
-    recent_block_fee_rewards: Option<super::RecentBlockFeeRewards>,
-) -> EconomicsMetrics {
+) -> ValidatorFundingMetrics {
     let vat_reserve_lamports = balances
         .vote_account_rent_exempt_minimum_lamports
         .map(|minimum| balances.vote_account_lamports.saturating_sub(minimum));
 
-    EconomicsMetrics {
-        identity: target.identity.clone(),
-        vote_account: target.vote_account.clone(),
+    ValidatorFundingMetrics {
         identity_balance_lamports: balances.identity_lamports,
         vote_account_balance_lamports: balances.vote_account_lamports,
         vote_account_rent_exempt_minimum_lamports: balances
@@ -498,6 +493,46 @@ pub(super) fn build_economics_metrics(
         vat_epochs_available: vat_reserve_lamports.map(|reserve| reserve / VAT_LAMPORTS_PER_EPOCH),
         vat_next_epoch_funded: vat_reserve_lamports
             .map(|reserve| reserve >= VAT_LAMPORTS_PER_EPOCH),
+    }
+}
+
+/// Attaches one ordered funding result to each watched validator.
+pub(super) fn apply_validator_funding_metrics(
+    validators: &mut [WatchedValidatorMetrics],
+    balances: Vec<Option<AccountBalances>>,
+) -> Result<()> {
+    if validators.len() != balances.len() {
+        bail!(
+            "account balance collection returned {} validators for {} watched validators",
+            balances.len(),
+            validators.len()
+        );
+    }
+    for (validator, balances) in validators.iter_mut().zip(balances) {
+        validator.funding = balances.map(build_validator_funding_metrics);
+    }
+    Ok(())
+}
+
+/// Combines configured-target funding, provider, and block-fee values.
+pub(super) fn build_economics_metrics(
+    target: &EconomicsTarget,
+    balances: AccountBalances,
+    jito_mev_reward: Option<super::JitoMevReward>,
+    trillium_mev_capture: Option<super::TrilliumMevCapture>,
+    recent_block_fee_rewards: Option<super::RecentBlockFeeRewards>,
+) -> EconomicsMetrics {
+    let funding = build_validator_funding_metrics(balances);
+    EconomicsMetrics {
+        identity: target.identity.clone(),
+        vote_account: target.vote_account.clone(),
+        identity_balance_lamports: funding.identity_balance_lamports,
+        vote_account_balance_lamports: funding.vote_account_balance_lamports,
+        vote_account_rent_exempt_minimum_lamports: funding
+            .vote_account_rent_exempt_minimum_lamports,
+        vat_reserve_lamports: funding.vat_reserve_lamports,
+        vat_epochs_available: funding.vat_epochs_available,
+        vat_next_epoch_funded: funding.vat_next_epoch_funded,
         jito_mev_reward,
         trillium_mev_capture,
         recent_block_fee_rewards,

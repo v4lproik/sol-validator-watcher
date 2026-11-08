@@ -58,6 +58,13 @@ operator-facing semantics.
   the identity; an unconfigured or exhausted route publishes neither visibility
   nor metadata. Version, feature-set, and shred-version labels remain bounded by
   the configured watched validators.
+- Watched-validator identity balance, vote-account balance, rent exemption, VAT
+  reserve, VAT runway, and next-charge funding are snapshot-owned. Emit each
+  validator independently when its account data is present; never copy the
+  configured economics target's balances onto another watched validator.
+- Keep `sol_economics_*` balance and VAT series scoped to the configured
+  economics target because production alerts consume that contract. Publish
+  multi-validator funding through distinct `sol_watched_validator_*` series.
 - Jito MEV reward, commission, and reward-epoch series are snapshot-owned and
   exist only when economics mode, a valid provider-API route, and a settled
   target reward all exist. Missing settlement or route failure remains no data,

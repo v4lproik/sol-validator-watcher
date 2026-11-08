@@ -4,9 +4,9 @@
 //! remain the responsibility of the source chain.
 
 use super::{
-    AccountBalances, BlockProduction, ClusterNode, ClusterPerformanceMetrics, EpochInfo,
-    JitoClient, JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards, RewardSample,
-    RpcClient, TrilliumClient, TrilliumMevCapture, VoteAccounts,
+    AccountBalanceTarget, AccountBalances, BlockProduction, ClusterNode, ClusterPerformanceMetrics,
+    EpochInfo, JitoClient, JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards,
+    RewardSample, RpcClient, TrilliumClient, TrilliumMevCapture, VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
@@ -254,22 +254,20 @@ impl SourceCommand for GetNextLeaderSchedule {
     }
 }
 
-/// Required identity and vote-account balance command.
+/// Required watched-validator account balance command.
 pub(crate) struct GetAccountBalances<'a> {
-    /// Validator identity account address.
-    pub identity: &'a str,
-    /// Validator vote-account address.
-    pub vote_account: &'a str,
+    /// Validator identity and vote-account pairs requested in stable output order.
+    pub targets: &'a [AccountBalanceTarget<'a>],
 }
 
 impl SourceCommand for GetAccountBalances<'_> {
     const ID: CommandId = CommandId::AccountBalances;
     type Transport = RpcCommandTransport;
-    type Output = AccountBalances;
+    type Output = Vec<Option<AccountBalances>>;
 
     async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
         client
-            .get_account_balances(self.identity, self.vote_account)
+            .get_account_balances(self.targets)
             .await
             .context("account balance collection failed")
     }

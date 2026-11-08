@@ -306,6 +306,59 @@ async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
 }
 
 #[tokio::test]
+async fn get_account_balances_batches_targets_and_preserves_absence() -> Result<()> {
+    let (rpc_url, server_task, methods) =
+        start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let client = RpcClient::try_new(
+        &rpc_transport(&rpc_url, 5),
+        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+    )?;
+    let addresses = (0..51)
+        .map(|index| {
+            if index == 50 {
+                ("missing-id".to_string(), "missing-vote".to_string())
+            } else {
+                (format!("id-{index}"), format!("vote-{index}"))
+            }
+        })
+        .collect::<Vec<_>>();
+    let targets = addresses
+        .iter()
+        .map(|(identity, vote_account)| AccountBalanceTarget {
+            identity,
+            vote_account,
+        })
+        .collect::<Vec<_>>();
+
+    let balances = client.get_account_balances(&targets).await?;
+    let methods = methods.lock().await;
+    let multiple_accounts_requests = methods
+        .iter()
+        .filter(|method| method.as_str() == "getMultipleAccounts")
+        .count();
+    let rent_requests = methods
+        .iter()
+        .filter(|method| method.as_str() == "getMinimumBalanceForRentExemption")
+        .count();
+    drop(methods);
+    server_task.abort();
+
+    assert_eq!(balances.len(), 51);
+    assert_eq!(
+        balances[0],
+        Some(AccountBalances {
+            identity_lamports: 3_000_000_000,
+            vote_account_lamports: 2_500_000_000,
+            vote_account_rent_exempt_minimum_lamports: Some(900_000_000),
+        })
+    );
+    assert_eq!(balances[50], None);
+    assert_eq!(multiple_accounts_requests, 2);
+    assert_eq!(rent_requests, 1);
+    Ok(())
+}
+
+#[tokio::test]
 async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result<()> {
     let (rpc_url, server_task) =
         start_mock_rpc_server_with_profile(MockRpcProfile::NoAccountSpace).await?;
@@ -314,22 +367,18 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
         crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
-    let balances = client.get_account_balances("id-1", "vote-1").await?;
+    let targets = [AccountBalanceTarget {
+        identity: "id-1",
+        vote_account: "vote-1",
+    }];
+    let balances = client.get_account_balances(&targets).await?;
     server_task.abort();
-    assert_eq!(balances.identity_lamports, 3_000_000_000);
-    assert_eq!(balances.vote_account_lamports, 2_500_000_000);
-    assert_eq!(balances.vote_account_rent_exempt_minimum_lamports, None);
+    let balance = balances[0].context("missing account balances")?;
+    assert_eq!(balance.identity_lamports, 3_000_000_000);
+    assert_eq!(balance.vote_account_lamports, 2_500_000_000);
+    assert_eq!(balance.vote_account_rent_exempt_minimum_lamports, None);
 
-    let metrics = build_economics_metrics(
-        &EconomicsTarget {
-            identity: "id-1".to_string(),
-            vote_account: "vote-1".to_string(),
-        },
-        balances,
-        None,
-        None,
-        None,
-    );
+    let metrics = build_validator_funding_metrics(balance);
     assert_eq!(metrics.vat_reserve_lamports, None);
     assert_eq!(metrics.vat_epochs_available, None);
     assert_eq!(metrics.vat_next_epoch_funded, None);

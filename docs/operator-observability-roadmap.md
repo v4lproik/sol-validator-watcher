@@ -83,9 +83,10 @@ The exporter and mode dashboards now publish:
 - `sol_watched_validator_current_epoch_scheduled_leader_slots`,
   `sol_watched_validator_scheduled_leader_slots_per_hour`, and the bounded
   `sol_watched_validator_upcoming_leader_slot` schedule
-- economics-target identity and vote-account balances, vote-account rent
-  exemption, VAT reserve, complete funded VAT epochs, next-epoch VAT funding
-  status, `sol_economics_jito_mev_reward_sol`,
+- watched-validator `sol_watched_validator_identity_balance_sol`,
+  `sol_watched_validator_vote_account_balance_sol`, rent exemption, VAT reserve,
+  complete funded VAT epochs, and next-epoch VAT funding status
+- economics-target `sol_economics_jito_mev_reward_sol`,
   `sol_economics_jito_mev_commission_pct`, and
   `sol_economics_jito_mev_reward_epoch`
 
@@ -99,10 +100,13 @@ earliest 16 current- or next-epoch assignments, share of all activated network
 stake, and selected-scope skip-rate gap against the all-network baseline.
 Schedule rows remain absent unless both leader schedules succeed; frequency
 remains absent without the current schedule or a valid slot-duration sample.
-VAT runway is the current vote-account balance above rent exemption divided by
-the current 0.8 SOL epoch charge; it excludes future rewards and transfers. If
-an RPC omits the vote account's data size, account balances remain available
-while rent and VAT series are omitted.
+VAT runway is each watched validator's current vote-account balance above rent
+exemption divided by the current 0.8 SOL epoch charge; it excludes future
+rewards and transfers. If an RPC omits a vote account or its data size, that
+validator's unavailable balance, rent, and VAT series remain absent without
+removing independently available watched validators.
+The corresponding `sol_economics_*` balance and VAT series remain scoped to the
+configured economics target because the production VAT alert consumes them.
 Configured Jito reward routes use the economics target's vote account. Missing
 settlement data or an exhausted optional route omits the Jito series instead of
 publishing zero; required economics RPC failures remain fail-closed.
@@ -151,11 +155,12 @@ Recent validator block-fee economics are exposed through
 block sample includes Harmonic priority fees when Harmonic built a sampled
 block, but Solana does not expose provider attribution for that fee reward.
 
-The economics dashboard exposes watched-validator filtering and keeps
-per-validator protocol reward, reward-epoch block production, and reward per
-produced block comparisons separate from the configured economics target's
-balances, block fees, and Jito rewards. Missing inflation-reward samples remain
-absent while independently collected reward-epoch block counts stay visible.
+The economics dashboard exposes watched-validator filtering and compares
+per-validator protocol rewards, reward-epoch block production, reward per
+produced block, identity and vote-account balances, VAT reserve, and VAT
+runway. Configured-target block fees and Jito rewards remain separate. Missing
+inflation-reward or account samples stay absent while independently collected
+values remain visible.
 
 The MEV Capture dashboard uses Trillium's public completed-epoch validator
 rewards feed. It displays `mev_earned`, independently published
