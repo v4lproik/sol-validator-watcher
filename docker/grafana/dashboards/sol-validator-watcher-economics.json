@@ -163,7 +163,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"})) or vector(3))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=\"$network\",mode=\"economics\"}) * ((1 + max(sol_mode_up{network=\"$network\",mode=\"economics\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Economics status",
           "range": false,
@@ -222,7 +222,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sol_mode_command_route_info{network=~\"$network\",mode=\"economics\"} == 1",
+          "expr": "sol_mode_command_route_info{network=\"$network\",mode=\"economics\"} == 1",
           "format": "table",
           "instant": true,
           "legendFormat": "{{mode}} / {{command}} / {{connector}}",
@@ -329,7 +329,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sol_mode_command_source_info{network=~\"$network\",mode=\"economics\"} == 1",
+          "expr": "sol_mode_command_source_info{network=\"$network\",mode=\"economics\"} == 1",
           "format": "table",
           "instant": true,
           "legendFormat": "{{mode}} / {{command}} / {{connector}}",
@@ -537,7 +537,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_info{identity=~\"$validator\",network=\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
           "range": false,
@@ -546,7 +546,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1), \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1), \"validator_key\", \" / \", \"network\", \"vote_account\"))",
           "instant": true,
           "legendFormat": "{{network}} / {{identity}}",
           "range": false,
@@ -641,7 +641,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_reward_sample_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_reward_sample_epoch{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{network}} · reward epoch",
           "range": false,
@@ -710,7 +710,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(100 * count(sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)) / clamp_min(count(sol_watched_validator_info{identity=~\"$validator\",network=~\"$network\"}), 1)) or vector(0)",
+          "expr": "(100 * count(sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)) / clamp_min(count(sol_watched_validator_info{identity=~\"$validator\",network=\"$network\"}), 1)) or vector(0)",
           "instant": true,
           "legendFormat": "selected validators",
           "range": false,
@@ -757,7 +757,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_watched_validator_epoch_reward_sol{identity=~\"$validator\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": false,
           "legendFormat": "{{network}} · {{identity}}",
           "range": true,
@@ -803,7 +803,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_watched_validator_rewarded_blocks_latest_epoch{identity=~\"$validator\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": false,
           "legendFormat": "{{network}} · {{identity}}",
           "range": true,
@@ -849,7 +849,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_watched_validator_reward_per_block_sol{identity=~\"$validator\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_watched_validator_reward_per_block_sol{identity=~\"$validator\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": false,
           "legendFormat": "{{network}} · {{identity}}",
           "range": true,
@@ -909,7 +909,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_epoch_reward_sol{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_epoch_reward_sol{scope=\"focus:economics\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{network}} · protocol inflation",
           "range": false,
@@ -956,7 +956,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_reward_sample_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_reward_sample_epoch{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{network}} · protocol sample epoch",
           "range": false,
@@ -1003,7 +1003,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_rewarded_blocks_latest_epoch{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_rewarded_blocks_latest_epoch{scope=\"focus:economics\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{network}} · produced blocks",
           "range": false,
@@ -1050,7 +1050,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_epoch_reward_sol{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_epoch_reward_sol{scope=\"focus:economics\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "legendFormat": "{{network}} · protocol inflation",
           "range": true,
           "refId": "A"
@@ -1095,7 +1095,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_reward_per_block_sol{scope=\"focus:economics\",network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_reward_per_block_sol{scope=\"focus:economics\",network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "legendFormat": "{{network}} · protocol reward / block",
           "range": true,
           "refId": "A"
@@ -1156,7 +1156,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_block_fee_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_block_fee_reward_sol{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · latest block fee",
           "range": false,
@@ -1204,7 +1204,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_recent_block_fee_reward_average_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_recent_block_fee_reward_average_sol{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · recent average",
           "range": false,
@@ -1252,7 +1252,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_block_fee_reward_slot{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_block_fee_reward_slot{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · latest sampled slot",
           "range": false,
@@ -1300,7 +1300,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_recent_block_fee_reward_sample_count{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_recent_block_fee_reward_sample_count{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · sampled blocks",
           "range": false,
@@ -1346,7 +1346,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_block_fee_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_block_fee_reward_sol{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "legendFormat": "{{identity}} · latest block fee",
           "range": true,
           "refId": "A"
@@ -1391,7 +1391,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_recent_block_fee_reward_average_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_recent_block_fee_reward_average_sol{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "legendFormat": "{{identity}} · recent block fee average",
           "range": true,
           "refId": "A"
@@ -1452,7 +1452,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_jito_mev_reward_sol{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · MEV reward",
           "range": false,
@@ -1502,7 +1502,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_jito_mev_commission_pct{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · Commission",
           "range": false,
@@ -1550,7 +1550,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_jito_mev_reward_epoch{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_jito_mev_reward_epoch{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "instant": true,
           "legendFormat": "{{identity}} · Reward epoch",
           "range": false,
@@ -1596,7 +1596,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_jito_mev_reward_sol{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_jito_mev_reward_sol{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "legendFormat": "{{identity}} · Jito MEV reward",
           "range": true,
           "refId": "A"
@@ -1643,7 +1643,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_jito_mev_commission_pct{network=~\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) == 1)",
+          "expr": "sol_economics_jito_mev_commission_pct{network=\"$network\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
           "legendFormat": "{{identity}} · Jito commission",
           "range": true,
           "refId": "A"
@@ -1894,7 +1894,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_economics_identity_balance_sol{network=~\"$network\"}",
+          "expr": "sol_economics_identity_balance_sol{network=\"$network\"}",
           "instant": true,
           "legendFormat": "{{identity}} · Identity Balance",
           "range": false,
@@ -1902,7 +1902,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vote_account_balance_sol{network=~\"$network\"}",
+          "expr": "sol_economics_vote_account_balance_sol{network=\"$network\"}",
           "instant": true,
           "legendFormat": "{{identity}} · Vote Balance",
           "range": false,
@@ -1910,7 +1910,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vote_account_rent_exempt_minimum_sol{network=~\"$network\"}",
+          "expr": "sol_economics_vote_account_rent_exempt_minimum_sol{network=\"$network\"}",
           "instant": true,
           "legendFormat": "{{identity}} · Rent Minimum",
           "range": false,
@@ -1918,7 +1918,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vat_reserve_sol{network=~\"$network\"}",
+          "expr": "sol_economics_vat_reserve_sol{network=\"$network\"}",
           "instant": true,
           "legendFormat": "{{identity}} · VAT Reserve",
           "range": false,
@@ -1926,7 +1926,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vat_epochs_available{network=~\"$network\"}",
+          "expr": "sol_economics_vat_epochs_available{network=\"$network\"}",
           "instant": true,
           "legendFormat": "{{identity}} · VAT Runway",
           "range": false,
@@ -1934,7 +1934,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sol_economics_vat_next_epoch_funded{network=~\"$network\"}",
+          "expr": "sol_economics_vat_next_epoch_funded{network=\"$network\"}",
           "instant": true,
           "legendFormat": "{{identity}} · Next VAT",
           "range": false,
@@ -2057,7 +2057,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max(sol_epoch_progress_pct{network=~\"$network\"})",
+          "expr": "max(sol_epoch_progress_pct{network=\"$network\"})",
           "instant": true,
           "legendFormat": "Epoch Progress",
           "range": false,
@@ -2065,7 +2065,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max(sol_average_slot_time_seconds{network=~\"$network\"})",
+          "expr": "max(sol_average_slot_time_seconds{network=\"$network\"})",
           "instant": true,
           "legendFormat": "Average Slot",
           "range": false,
@@ -2073,7 +2073,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "max(sol_estimated_epoch_end_unixtime{network=~\"$network\"}) * 1000",
+          "expr": "max(sol_estimated_epoch_end_unixtime{network=\"$network\"}) * 1000",
           "instant": true,
           "legendFormat": "Epoch End",
           "range": false,
@@ -2081,7 +2081,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "min(sol_watched_validator_seconds_until_next_leader{network=~\"$network\"} * on(network, identity, vote_account) group_left() sol_watched_validator_scope_info{network=~\"$network\",scope=\"focus:economics\"})",
+          "expr": "min(sol_watched_validator_seconds_until_next_leader{network=\"$network\"} * on(network, identity, vote_account) group_left() sol_watched_validator_scope_info{network=\"$network\",scope=\"focus:economics\"})",
           "instant": true,
           "legendFormat": "Next Leader",
           "range": false,
@@ -2104,20 +2104,19 @@
   "templating": {
     "list": [
       {
-        "allValue": ".*",
         "current": {
-          "selected": true,
-          "text": "All",
-          "value": ".*"
+          "selected": false,
+          "text": "",
+          "value": ""
         },
         "datasource": {
           "type": "prometheus",
           "uid": "prometheus"
         },
         "definition": "label_values(sol_watcher_up, network)",
-        "includeAll": true,
+        "includeAll": false,
         "label": "Network",
-        "multi": true,
+        "multi": false,
         "name": "network",
         "options": [],
         "query": {
@@ -2139,14 +2138,14 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(sol_watched_validator_info{network=~\"$network\"}, identity)",
+        "definition": "label_values(sol_watched_validator_info{network=\"$network\"}, identity)",
         "includeAll": true,
         "label": "Validators",
         "multi": true,
         "name": "validator",
         "options": [],
         "query": {
-          "query": "label_values(sol_watched_validator_info{network=~\"$network\"}, identity)",
+          "query": "label_values(sol_watched_validator_info{network=\"$network\"}, identity)",
           "refId": "PrometheusVariableQueryEditor-Validator"
         },
         "refresh": 2,
@@ -2163,6 +2162,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 8,
+  "version": 9,
   "weekStart": ""
 }
