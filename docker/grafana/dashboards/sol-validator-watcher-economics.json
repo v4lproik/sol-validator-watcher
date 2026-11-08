@@ -45,6 +45,15 @@
       "title": "Leadership",
       "type": "link",
       "url": "/d/sol-validator-watcher-leadership"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "MEV Capture",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-mev-capture"
     }
   ],
   "liveNow": true,

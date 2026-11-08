@@ -687,6 +687,7 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
                     reward_epoch_block_production: vec!["primary".to_string()],
                     recent_block_fee_rewards: vec![],
                     jito_mev_rewards: vec![],
+                    trillium_mev_capture: vec![],
                 },
             },
             ..modes_for("primary", None, false)
@@ -819,6 +820,57 @@ fn validates_jito_provider_api_feature_and_route() -> Result<()> {
     assert!(error
         .to_string()
         .contains("requires provider feature \"jito-mev-rewards\""));
+    Ok(())
+}
+
+#[test]
+fn validates_trillium_provider_api_feature_and_route() -> Result<()> {
+    let missing_endpoint = ConnectorConfig {
+        name: "trillium".to_string(),
+        provider: "trillium".to_string(),
+        features: vec![ProviderFeature::TrilliumMevCapture],
+        websocket: Some(crate::config::WebsocketTransportConfig::new(
+            "wss://example.invalid".to_string(),
+        )),
+        ..ConnectorConfig::default()
+    };
+    let Err(error) = missing_endpoint.into_validated(0) else {
+        anyhow::bail!("Trillium feature without provider API endpoint should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("features entry \"trillium-mev-capture\" requires provider_api"));
+
+    let trillium = ConnectorConfig {
+        name: "trillium".to_string(),
+        provider: "trillium".to_string(),
+        features: vec![ProviderFeature::TrilliumMevCapture],
+        provider_api: Some(crate::config::HttpTransportConfig::new(
+            "https://api.trillium.so".to_string(),
+        )),
+        ..ConnectorConfig::default()
+    }
+    .into_validated(1)?;
+    let mut config = Config {
+        connectors: vec![rpc_connector("primary"), trillium],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    config.modes.economics.validator = Some(WatchedValidatorConfig {
+        identity: Some("id-1".to_string()),
+        vote_account: Some("vote-1".to_string()),
+        labels: vec![],
+    });
+    config.modes.economics.commands.trillium_mev_capture = vec!["trillium".to_string()];
+    let mut config = config.into_validated()?;
+
+    config.connectors[1].features.clear();
+    let Err(error) = config.into_validated() else {
+        anyhow::bail!("Trillium route without declared feature should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("requires provider feature \"trillium-mev-capture\""));
     Ok(())
 }
 

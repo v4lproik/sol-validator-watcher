@@ -104,6 +104,23 @@ pub struct Metrics {
     sol_economics_jito_mev_reward_sol: GaugeVec,
     sol_economics_jito_mev_commission_pct: GaugeVec,
     sol_economics_jito_mev_reward_epoch: IntGaugeVec,
+    sol_economics_trillium_mev_capture_sol: GaugeVec,
+    sol_economics_trillium_mev_allocation_sol: GaugeVec,
+    sol_economics_trillium_mev_per_leader_slot_sol: GaugeVec,
+    sol_economics_trillium_mev_commission_pct: GaugeVec,
+    sol_economics_trillium_total_jito_tips_sol: GaugeVec,
+    sol_economics_trillium_jito_tip_count: IntGaugeVec,
+    sol_economics_trillium_leader_slots: IntGaugeVec,
+    sol_economics_trillium_blocks_produced: IntGaugeVec,
+    sol_economics_trillium_mev_capture_epoch: IntGaugeVec,
+    sol_economics_trillium_block_reward_sol: GaugeVec,
+    sol_economics_trillium_per_block_reward_sol: GaugeVec,
+    sol_economics_trillium_transactions: IntGaugeVec,
+    sol_economics_trillium_transactions_per_block: GaugeVec,
+    sol_economics_trillium_transaction_success_pct: GaugeVec,
+    sol_economics_trillium_compute_units_per_block: GaugeVec,
+    sol_economics_trillium_activated_stake_sol: GaugeVec,
+    sol_economics_trillium_priority_fee_commission_pct: GaugeVec,
     sol_watched_validator_info: IntGaugeVec,
     sol_watched_validator_gossip_visible: IntGaugeVec,
     sol_watched_validator_gossip_info: IntGaugeVec,
@@ -604,6 +621,234 @@ impl Metrics {
                     .with_label_values(&labels)
                     .set(metric_count(jito_reward.epoch));
             }
+            if let Some(capture) = economics.trillium_mev_capture {
+                if let Some(value) = capture.captured_sol {
+                    self.sol_economics_trillium_mev_capture_sol
+                        .with_label_values(&labels)
+                        .set(value);
+                }
+                for (destination, value) in [
+                    ("validator", capture.validator_sol),
+                    ("stakers", capture.stakers_sol),
+                    ("jito-block-engine", capture.block_engine_sol),
+                    ("jito-tip-router", capture.tip_router_sol),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_mev_allocation_sol
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                destination,
+                            ])
+                            .set(value);
+                    }
+                }
+                if let Some(value) = capture.per_leader_slot_sol {
+                    self.sol_economics_trillium_mev_per_leader_slot_sol
+                        .with_label_values(&labels)
+                        .set(value);
+                }
+                if let Some(value) = capture.commission_pct {
+                    self.sol_economics_trillium_mev_commission_pct
+                        .with_label_values(&labels)
+                        .set(value);
+                }
+                if let Some(value) = capture.total_jito_tips_sol {
+                    self.sol_economics_trillium_total_jito_tips_sol
+                        .with_label_values(&labels)
+                        .set(value);
+                }
+                if let Some(value) = capture.total_jito_tip_count {
+                    self.sol_economics_trillium_jito_tip_count
+                        .with_label_values(&labels)
+                        .set(metric_count(value));
+                }
+                self.sol_economics_trillium_leader_slots
+                    .with_label_values(&labels)
+                    .set(metric_count(capture.leader_slots));
+                self.sol_economics_trillium_blocks_produced
+                    .with_label_values(&labels)
+                    .set(metric_count(capture.blocks_produced));
+                self.sol_economics_trillium_mev_capture_epoch
+                    .with_label_values(&labels)
+                    .set(metric_count(capture.epoch));
+                for (component, value) in [
+                    ("after-burn", capture.block_rewards.after_burn_sol),
+                    (
+                        "priority-fees-total",
+                        capture.block_rewards.priority_fees_sol,
+                    ),
+                    (
+                        "priority-fees-validator",
+                        capture.block_rewards.validator_priority_fees_sol,
+                    ),
+                    (
+                        "priority-fees-delegator",
+                        capture.block_rewards.delegator_priority_fees_sol,
+                    ),
+                    (
+                        "signature-fees-validator",
+                        capture.block_rewards.validator_signature_fees_sol,
+                    ),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_block_reward_sol
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                component,
+                            ])
+                            .set(value);
+                    }
+                }
+                for (component, statistic, value) in [
+                    (
+                        "mev",
+                        "average",
+                        capture.block_rewards.average_mev_per_block_sol,
+                    ),
+                    (
+                        "mev",
+                        "median",
+                        capture.block_rewards.median_mev_per_block_sol,
+                    ),
+                    (
+                        "priority-fee",
+                        "average",
+                        capture.block_rewards.average_priority_fees_per_block_sol,
+                    ),
+                    (
+                        "priority-fee",
+                        "median",
+                        capture.block_rewards.median_priority_fees_per_block_sol,
+                    ),
+                    (
+                        "signature-fee",
+                        "average",
+                        capture.block_rewards.average_signature_fees_per_block_sol,
+                    ),
+                    (
+                        "signature-fee",
+                        "median",
+                        capture.block_rewards.median_signature_fees_per_block_sol,
+                    ),
+                    (
+                        "jito-tip",
+                        "average",
+                        capture.block_rewards.average_jito_tips_per_block_sol,
+                    ),
+                    (
+                        "jito-tip",
+                        "median",
+                        capture.block_rewards.median_jito_tips_per_block_sol,
+                    ),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_per_block_reward_sol
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                component,
+                                statistic,
+                            ])
+                            .set(value);
+                    }
+                }
+                for (transaction_type, outcome, value) in [
+                    ("all", "successful", capture.transactions.successful),
+                    ("all", "failed", capture.transactions.failed),
+                    ("user", "successful", capture.transactions.successful_user),
+                    ("user", "failed", capture.transactions.failed_user),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_transactions
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                transaction_type,
+                                outcome,
+                            ])
+                            .set(metric_count(value));
+                    }
+                }
+                for (transaction_type, statistic, value) in [
+                    ("all", "average", capture.transactions.average_per_block),
+                    ("all", "median", capture.transactions.median_per_block),
+                    (
+                        "user",
+                        "average",
+                        capture.transactions.average_user_per_block,
+                    ),
+                    ("user", "median", capture.transactions.median_user_per_block),
+                    (
+                        "vote",
+                        "average",
+                        capture.transactions.average_vote_per_block,
+                    ),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_transactions_per_block
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                transaction_type,
+                                statistic,
+                            ])
+                            .set(value);
+                    }
+                }
+                for (transaction_type, value) in [
+                    ("all", capture.transactions.average_success_pct),
+                    ("user", capture.transactions.average_user_success_pct),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_transaction_success_pct
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                transaction_type,
+                            ])
+                            .set(value);
+                    }
+                }
+                for (statistic, value) in [
+                    (
+                        "average",
+                        capture.transactions.average_compute_units_per_block,
+                    ),
+                    (
+                        "median",
+                        capture.transactions.median_compute_units_per_block,
+                    ),
+                ] {
+                    if let Some(value) = value {
+                        self.sol_economics_trillium_compute_units_per_block
+                            .with_label_values(&[
+                                snapshot.network.as_str(),
+                                economics.identity.as_str(),
+                                economics.vote_account.as_str(),
+                                statistic,
+                            ])
+                            .set(value);
+                    }
+                }
+                if let Some(value) = capture.activated_stake_sol {
+                    self.sol_economics_trillium_activated_stake_sol
+                        .with_label_values(&labels)
+                        .set(value);
+                }
+                if let Some(value) = capture.block_rewards.priority_fee_commission_pct {
+                    self.sol_economics_trillium_priority_fee_commission_pct
+                        .with_label_values(&labels)
+                        .set(value);
+                }
+            }
         }
 
         for (scope, metrics) in &snapshot.scopes {
@@ -721,6 +966,24 @@ impl Metrics {
         self.sol_economics_jito_mev_reward_sol.reset();
         self.sol_economics_jito_mev_commission_pct.reset();
         self.sol_economics_jito_mev_reward_epoch.reset();
+        self.sol_economics_trillium_mev_capture_sol.reset();
+        self.sol_economics_trillium_mev_allocation_sol.reset();
+        self.sol_economics_trillium_mev_per_leader_slot_sol.reset();
+        self.sol_economics_trillium_mev_commission_pct.reset();
+        self.sol_economics_trillium_total_jito_tips_sol.reset();
+        self.sol_economics_trillium_jito_tip_count.reset();
+        self.sol_economics_trillium_leader_slots.reset();
+        self.sol_economics_trillium_blocks_produced.reset();
+        self.sol_economics_trillium_mev_capture_epoch.reset();
+        self.sol_economics_trillium_block_reward_sol.reset();
+        self.sol_economics_trillium_per_block_reward_sol.reset();
+        self.sol_economics_trillium_transactions.reset();
+        self.sol_economics_trillium_transactions_per_block.reset();
+        self.sol_economics_trillium_transaction_success_pct.reset();
+        self.sol_economics_trillium_compute_units_per_block.reset();
+        self.sol_economics_trillium_activated_stake_sol.reset();
+        self.sol_economics_trillium_priority_fee_commission_pct
+            .reset();
         self.sol_validator_status_count.reset();
         self.sol_validator_status_stake_sol.reset();
         self.sol_activated_stake_sol.reset();

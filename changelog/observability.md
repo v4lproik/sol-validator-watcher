@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added snapshot-reset Trillium completed-epoch MEV capture, allocation, fee, commission, Jito-tip, block-reward, priority-fee, transaction, compute, stake, leader-slot, and produced-block metrics; a dedicated drill-down dashboard; and tested alerts for unavailable configured capture and high block miss rate.
 - Added snapshot-reset watched-validator gossip visibility and software metadata metrics plus overview panels that distinguish validators missing from a successful public gossip view from unavailable collection without exposing node addresses.
 - Corrected the overview attention count to union delinquency, last-vote lag, and skip-rate conditions per watched validator, so current validators with high lag or skip rates are included and overlapping conditions count once.
 - Added a persistent light/dark Pages theme with system-default initialization, pre-paint application, accessible controls, and responsive homepage and 404 surfaces.

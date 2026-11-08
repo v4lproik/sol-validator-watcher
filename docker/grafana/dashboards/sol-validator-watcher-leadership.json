@@ -45,6 +45,15 @@
       "title": "Economics",
       "type": "link",
       "url": "/d/sol-validator-watcher-economics"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "MEV Capture",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-mev-capture"
     }
   ],
   "liveNow": true,

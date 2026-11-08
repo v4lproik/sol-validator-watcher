@@ -195,3 +195,56 @@ groups:
         annotations:
           summary: "Block-fee cache is ineffective for {{ $labels.connector }}"
           description: "The finalized block-fee route has a sustained cache-miss majority and is sending excessive getBlock methods."
+
+      - alert: SolValidatorTrilliumMevCaptureUnavailable
+        expr: |
+          (
+            (
+              max by (job, instance, deployment, network) (
+                sol_mode_command_route_info{
+                  mode="economics",
+                  command="trillium-mev-capture",
+                  available="true"
+                }
+              ) == 1
+            )
+            and on(job, instance, deployment, network)
+            (sol_mode_up{mode="economics"} == 1)
+            unless on(job, instance, deployment, network)
+            sol_economics_trillium_mev_capture_epoch
+          )
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Trillium MEV capture is unavailable for {{ $labels.network }}"
+          description: "The configured Trillium route has not published a completed-epoch MEV capture while economics collection is healthy."
+
+      - alert: SolValidatorTrilliumBlockMissRateHigh
+        expr: |
+          (
+            100 * (
+              sol_economics_trillium_leader_slots
+              - sol_economics_trillium_blocks_produced
+            )
+            / clamp_min(sol_economics_trillium_leader_slots, 1)
+            > 10
+          )
+          and on(job, instance, deployment, network, identity, vote_account)
+          (sol_economics_trillium_leader_slots >= 32)
+          and on(job, instance, network)
+          (
+            time() - sol_last_successful_snapshot_timestamp_seconds
+            <= clamp_min(4 * sol_watcher_poll_interval_seconds, 120)
+          )
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validator {{ $labels.identity }} missed more than 10% of Trillium leader slots"
+          description: "The latest Trillium completed epoch reports at least 32 leader slots and a block miss rate above 10% for vote account {{ $labels.vote_account }}."

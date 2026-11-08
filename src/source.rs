@@ -6,7 +6,7 @@
 use crate::{
     collector::{
         command::{CommandClients, CommandTransport, SourceCommand},
-        JitoClient, RpcClient,
+        JitoClient, RpcClient, TrilliumClient,
     },
     config::{Config, ConnectorConfig},
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
@@ -148,11 +148,24 @@ impl Connector {
         let jito_client = config
             .provider_api
             .as_ref()
+            .filter(|_| config.supports(ProviderFeature::JitoMevRewards))
             .map(JitoClient::try_new)
             .transpose()
             .with_context(|| {
                 format!(
-                    "failed to build provider API client for connector {:?}",
+                    "failed to build Jito API client for connector {:?}",
+                    config.name
+                )
+            })?;
+        let trillium_client = config
+            .provider_api
+            .as_ref()
+            .filter(|_| config.supports(ProviderFeature::TrilliumMevCapture))
+            .map(TrilliumClient::try_new)
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "failed to build Trillium API client for connector {:?}",
                     config.name
                 )
             })?;
@@ -178,7 +191,7 @@ impl Connector {
             provider: Arc::from(config.provider.as_str()),
             solana_rpc_compatibility: config.solana_rpc_compatibility,
             features: config.features.clone(),
-            command_clients: CommandClients::new(rpc_client, jito_client),
+            command_clients: CommandClients::new(rpc_client, jito_client, trillium_client),
             ws_client,
         })
     }
@@ -202,7 +215,13 @@ impl Connector {
         let transport_available = match requirement.transport {
             Transport::Rpc => self.command_clients.rpc().is_some(),
             Transport::Websocket => self.ws_client.is_some(),
-            Transport::ProviderApi => self.command_clients.jito_api().is_some(),
+            Transport::ProviderApi => match requirement.feature {
+                Some(ProviderFeature::JitoMevRewards) => self.command_clients.jito_api().is_some(),
+                Some(ProviderFeature::TrilliumMevCapture) => {
+                    self.command_clients.trillium_api().is_some()
+                }
+                _ => false,
+            },
         };
         let solana_rpc_compatible = requirement.solana_rpc_compatibility.is_none_or(|required| {
             self.solana_rpc_compatibility

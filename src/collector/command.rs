@@ -6,7 +6,7 @@
 use super::{
     AccountBalances, BlockProduction, ClusterNode, ClusterPerformanceMetrics, EpochInfo,
     JitoClient, JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards, RewardSample,
-    RpcClient, VoteAccounts,
+    RpcClient, TrilliumClient, TrilliumMevCapture, VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
@@ -16,12 +16,21 @@ use std::collections::HashMap;
 pub(crate) struct CommandClients {
     rpc: Option<RpcClient>,
     jito_api: Option<JitoClient>,
+    trillium_api: Option<TrilliumClient>,
 }
 
 impl CommandClients {
     /// Groups the connector's available typed command clients.
-    pub(crate) fn new(rpc: Option<RpcClient>, jito_api: Option<JitoClient>) -> Self {
-        Self { rpc, jito_api }
+    pub(crate) fn new(
+        rpc: Option<RpcClient>,
+        jito_api: Option<JitoClient>,
+        trillium_api: Option<TrilliumClient>,
+    ) -> Self {
+        Self {
+            rpc,
+            jito_api,
+            trillium_api,
+        }
     }
 
     /// Returns the connector's standard Solana RPC client.
@@ -32,6 +41,11 @@ impl CommandClients {
     /// Returns the connector's Jito validator-API client.
     pub(crate) fn jito_api(&self) -> Option<&JitoClient> {
         self.jito_api.as_ref()
+    }
+
+    /// Returns the connector's Trillium validator-analytics client.
+    pub(crate) fn trillium_api(&self) -> Option<&TrilliumClient> {
+        self.trillium_api.as_ref()
     }
 }
 
@@ -63,6 +77,17 @@ impl CommandTransport for JitoApiCommandTransport {
 
     fn client(clients: &CommandClients) -> Option<&Self::Client> {
         clients.jito_api.as_ref()
+    }
+}
+
+/// Trillium validator analytics HTTP API command transport.
+pub(crate) enum TrilliumApiCommandTransport {}
+
+impl CommandTransport for TrilliumApiCommandTransport {
+    type Client = TrilliumClient;
+
+    fn client(clients: &CommandClients) -> Option<&Self::Client> {
+        clients.trillium_api.as_ref()
     }
 }
 
@@ -321,6 +346,25 @@ impl SourceCommand for GetJitoMevReward<'_> {
             .get_mev_reward(self.vote_account, self.epoch)
             .await
             .context("Jito MEV reward collection failed")
+    }
+}
+
+/// Optional latest completed-epoch Trillium MEV capture command.
+pub(crate) struct GetTrilliumMevCapture<'a> {
+    /// Validator vote account whose completed-epoch capture is requested.
+    pub vote_account: &'a str,
+}
+
+impl SourceCommand for GetTrilliumMevCapture<'_> {
+    const ID: CommandId = CommandId::TrilliumMevCapture;
+    type Transport = TrilliumApiCommandTransport;
+    type Output = Option<TrilliumMevCapture>;
+
+    async fn execute(&self, client: &TrilliumClient) -> Result<Self::Output> {
+        client
+            .get_latest_mev_capture(self.vote_account)
+            .await
+            .context("Trillium MEV capture collection failed")
     }
 }
 

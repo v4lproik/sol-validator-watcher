@@ -70,6 +70,7 @@ mod aggregate;
 mod collection;
 mod jito;
 mod rpc;
+mod trillium;
 
 fn rpc_transport(url: &str, timeout_sec: u64) -> crate::config::RpcTransportConfig {
     crate::config::RpcTransportConfig {
@@ -673,6 +674,7 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
                 reward_epoch_block_production: economics_enabled.then(route).unwrap_or_default(),
                 recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
+                trillium_mev_capture: vec![],
             },
         },
     }

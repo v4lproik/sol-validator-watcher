@@ -16,6 +16,10 @@ probes, and economics collection.
 - `collector/jito.rs` owns bounded Jito validator-reward HTTP decoding and the
   epoch-stable response cache. It consumes the same validated provider-API
   header, redirect, and timeout contract.
+- `collector/trillium.rs` owns bounded public Trillium validator-reward decoding,
+  latest-epoch selection, basis-point commission conversion, conditional HTTP
+  revalidation, and short-lived absence caching. Published allocation and fee
+  fields remain independent; do not impose an exact accounting identity.
 - `collector/command.rs` maps typed source commands to their compile-time RPC or
   provider-API client and output.
 - `collector/model.rs`, `collector/aggregate.rs`, and `collector/snapshot.rs`
@@ -146,6 +150,10 @@ probes, and economics collection.
   validator/epoch reward for the source-chain lifetime; cache absence only for
   the upstream cache window so late settlement can appear without per-poll
   history downloads.
+- Revalidate public Trillium completed-epoch rewards with `Last-Modified`,
+  accept a valid validator-not-found response as optional absence, and keep
+  absence caching short enough for delayed publication to appear. Never require
+  independently published allocation and fee values to sum exactly.
 - Cache immutable finalized `getBlock` fee samples by slot for the client
   lifetime. Confirmed samples are never cached because they can be rolled back.
   Request only finalized cache misses, preserve input ordering, and export

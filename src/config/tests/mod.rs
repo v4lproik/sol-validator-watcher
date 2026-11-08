@@ -85,6 +85,7 @@ fn modes_for(rpc: &str, ws: Option<&str>, economics_enabled: bool) -> ModesConfi
                     .unwrap_or_default(),
                 recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
+                trillium_mev_capture: vec![],
             },
         },
     }
