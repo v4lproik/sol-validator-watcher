@@ -725,6 +725,15 @@ impl ConnectorConfig {
                 ProviderFeature::BlockFeeRewards.as_str()
             );
         }
+        if self.supports(ProviderFeature::JitoMevRewards)
+            && self.supports(ProviderFeature::TrilliumMevCapture)
+        {
+            bail!(
+                "connectors[{index}].features cannot combine {:?} and {:?}: provider_api configures one provider endpoint",
+                ProviderFeature::JitoMevRewards.as_str(),
+                ProviderFeature::TrilliumMevCapture.as_str()
+            );
+        }
         if self.supports(ProviderFeature::JitoMevRewards) && !self.has_provider_api() {
             bail!(
                 "connectors[{index}].features entry {:?} requires provider_api",

@@ -144,7 +144,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_capture_epoch{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · Published Epoch",
+          "legendFormat": "{{network}} · {{identity}} · Published Epoch",
           "range": false,
           "refId": "A"
         }
@@ -208,7 +208,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_total_jito_tips_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · Gross Jito Tips",
+          "legendFormat": "{{network}} · {{identity}} · Gross Jito Tips",
           "range": false,
           "refId": "A"
         }
@@ -272,7 +272,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_capture_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · MEV Captured",
+          "legendFormat": "{{network}} · {{identity}} · MEV Captured",
           "range": false,
           "refId": "A"
         }
@@ -336,7 +336,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_per_leader_slot_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · MEV / Leader Slot",
+          "legendFormat": "{{network}} · {{identity}} · MEV / Leader Slot",
           "range": false,
           "refId": "A"
         }
@@ -400,7 +400,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_commission_pct{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · MEV Commission",
+          "legendFormat": "{{network}} · {{identity}} · MEV Commission",
           "range": false,
           "refId": "A"
         }
@@ -464,7 +464,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_jito_tip_count{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · Jito Tip Transactions",
+          "legendFormat": "{{network}} · {{identity}} · Jito Tip Transactions",
           "range": false,
           "refId": "A"
         }
@@ -533,7 +533,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_allocation_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{destination}}",
+          "legendFormat": "{{network}} · {{identity}} · {{destination}}",
           "range": false,
           "refId": "A"
         }
@@ -625,7 +625,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_total_jito_tips_sol{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · Gross Jito tips",
+          "legendFormat": "{{network}} · {{identity}} · Gross Jito tips",
           "range": true,
           "refId": "A"
         },
@@ -637,7 +637,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_capture_sol{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · MEV captured",
+          "legendFormat": "{{network}} · {{identity}} · MEV captured",
           "range": true,
           "refId": "B"
         }
@@ -701,7 +701,7 @@
           "editorMode": "code",
           "expr": "100 * sol_economics_trillium_blocks_produced{network=~\"$network\"} / clamp_min(sol_economics_trillium_leader_slots{network=~\"$network\"}, 1)",
           "instant": true,
-          "legendFormat": "{{identity}} · Block production",
+          "legendFormat": "{{network}} · {{identity}} · Block production",
           "range": false,
           "refId": "A"
         }
@@ -765,7 +765,7 @@
           "editorMode": "code",
           "expr": "100 * sol_economics_trillium_mev_capture_sol{network=~\"$network\"} / clamp_min(sol_economics_trillium_total_jito_tips_sol{network=~\"$network\"}, 0.000000001)",
           "instant": true,
-          "legendFormat": "{{identity}} · Published MEV / Gross Tips",
+          "legendFormat": "{{network}} · {{identity}} · Published MEV / Gross Tips",
           "range": false,
           "refId": "A"
         }
@@ -829,7 +829,7 @@
           "editorMode": "code",
           "expr": "100 * sol_economics_trillium_mev_allocation_sol{network=~\"$network\",destination=\"validator\"} / clamp_min(sol_economics_trillium_mev_capture_sol{network=~\"$network\"}, 0.000000001)",
           "instant": true,
-          "legendFormat": "{{identity}} · Validator share",
+          "legendFormat": "{{network}} · {{identity}} · Validator share",
           "range": false,
           "refId": "A"
         }
@@ -911,7 +911,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_block_reward_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{component}}",
+          "legendFormat": "{{network}} · {{identity}} · {{component}}",
           "range": false,
           "refId": "A"
         }
@@ -979,7 +979,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_per_block_reward_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{component}} · {{statistic}}",
+          "legendFormat": "{{network}} · {{identity}} · {{component}} · {{statistic}}",
           "range": false,
           "refId": "A"
         }
@@ -1043,7 +1043,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_activated_stake_sol{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · Activated Stake",
+          "legendFormat": "{{network}} · {{identity}} · Activated Stake",
           "range": false,
           "refId": "A"
         }
@@ -1107,7 +1107,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_priority_fee_commission_pct{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · Priority Fee Commission",
+          "legendFormat": "{{network}} · {{identity}} · Priority Fee Commission",
           "range": false,
           "refId": "A"
         }
@@ -1189,7 +1189,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_transactions{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{transaction_type}} · {{outcome}}",
+          "legendFormat": "{{network}} · {{identity}} · {{transaction_type}} · {{outcome}}",
           "range": false,
           "refId": "A"
         }
@@ -1257,7 +1257,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_transactions_per_block{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{transaction_type}} · {{statistic}}",
+          "legendFormat": "{{network}} · {{identity}} · {{transaction_type}} · {{statistic}}",
           "range": false,
           "refId": "A"
         }
@@ -1325,7 +1325,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_transaction_success_pct{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{transaction_type}}",
+          "legendFormat": "{{network}} · {{identity}} · {{transaction_type}}",
           "range": false,
           "refId": "A"
         }
@@ -1393,7 +1393,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_compute_units_per_block{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "{{identity}} · {{statistic}}",
+          "legendFormat": "{{network}} · {{identity}} · {{statistic}}",
           "range": false,
           "refId": "A"
         }
@@ -1499,7 +1499,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_total_jito_tips_sol{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · Gross Jito tips",
+          "legendFormat": "{{network}} · {{identity}} · Gross Jito tips",
           "range": true,
           "refId": "A"
         },
@@ -1511,7 +1511,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_capture_sol{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · MEV captured",
+          "legendFormat": "{{network}} · {{identity}} · MEV captured",
           "range": true,
           "refId": "B"
         }
@@ -1603,7 +1603,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_per_leader_slot_sol{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · MEV / leader slot",
+          "legendFormat": "{{network}} · {{identity}} · MEV / leader slot",
           "range": true,
           "refId": "A"
         }
@@ -1695,7 +1695,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_allocation_sol{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · {{destination}}",
+          "legendFormat": "{{network}} · {{identity}} · {{destination}}",
           "range": true,
           "refId": "A"
         }
@@ -1787,7 +1787,7 @@
           "editorMode": "code",
           "expr": "sol_economics_trillium_mev_commission_pct{network=~\"$network\"}",
           "instant": false,
-          "legendFormat": "{{identity}} · MEV commission",
+          "legendFormat": "{{network}} · {{identity}} · MEV commission",
           "range": true,
           "refId": "A"
         }
@@ -1901,9 +1901,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"economics\"})) or vector(3))) or vector(0)",
+          "expr": "(max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max by (network) (sol_mode_up{network=~\"$network\",mode=\"economics\"})) or (3 * max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"})))) or vector(0)",
           "instant": true,
-          "legendFormat": "Economics status",
+          "legendFormat": "{{network}} · Economics status",
           "range": false,
           "refId": "A"
         }
@@ -1967,7 +1967,7 @@
           "editorMode": "code",
           "expr": "time() - sol_last_successful_snapshot_timestamp_seconds{network=~\"$network\"}",
           "instant": true,
-          "legendFormat": "Snapshot Age",
+          "legendFormat": "{{network}} · Snapshot Age",
           "range": false,
           "refId": "A"
         }
@@ -2029,9 +2029,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (connector, provider, precedence) (sol_mode_command_source_info{network=~\"$network\",command=\"trillium-mev-capture\"})",
+          "expr": "max by (network, connector, provider, precedence) (sol_mode_command_source_info{network=~\"$network\",command=\"trillium-mev-capture\"})",
           "instant": true,
-          "legendFormat": "{{connector}} · {{provider}} · priority {{precedence}}",
+          "legendFormat": "{{network}} · {{connector}} · {{provider}} · priority {{precedence}}",
           "range": false,
           "refId": "A",
           "format": "table"

@@ -841,6 +841,20 @@ fn validates_trillium_provider_api_feature_and_route() -> Result<()> {
         .to_string()
         .contains("features entry \"trillium-mev-capture\" requires provider_api"));
 
+    let incompatible_provider_features = ConnectorConfig {
+        name: "mixed-provider-api".to_string(),
+        provider: "mixed".to_string(),
+        features: vec![
+            ProviderFeature::JitoMevRewards,
+            ProviderFeature::TrilliumMevCapture,
+        ],
+        provider_api: Some(crate::config::HttpTransportConfig::new(
+            "https://api.trillium.so".to_string(),
+        )),
+        ..ConnectorConfig::default()
+    };
+    assert!(incompatible_provider_features.into_validated(1).is_err());
+
     let trillium = ConnectorConfig {
         name: "trillium".to_string(),
         provider: "trillium".to_string(),
