@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Documented the single-network Grafana selection and exact-matcher invariant in repository engineering guidance.
-- Documented bounded Trillium validator-reward collection, conditional revalidation, basis-point commission conversion, independent upstream values, snapshot-reset metrics, and dashboard no-data semantics in repository engineering guidance.
+- Documented bounded Trillium validator-reward collection, conditional revalidation, basis-point commission conversion, independent upstream values, snapshot-reset metrics, dashboard no-data semantics, and the Mainnet profile that publishes the Trillium data.
 - Extended the exact-image container smoke RPC fixture with a valid `getClusterNodes` response so it satisfies the declared core compatibility profile.
 - Documented routed public cluster-node collection, watched-validator gossip availability semantics, bounded software-version labels, and dashboard no-data handling in repository engineering guidance.
 - Fingerprinted the shared Pages theme interaction on both the homepage and custom 404 page.
