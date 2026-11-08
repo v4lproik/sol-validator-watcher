@@ -45,7 +45,7 @@ Each watcher process loads one self-contained TOML profile. Start from the commi
 - [`config/compose/surfpool.toml`](config/compose/surfpool.toml) — local Surfpool stack
 - [`config/compose/validator.toml`](config/compose/validator.toml) — validator Compose stack
 - [`config/remote/devnet.toml`](config/remote/devnet.toml) — hosted Devnet endpoints
-- [`config/remote/mainnet.toml`](config/remote/mainnet.toml) — hosted Mainnet endpoints
+- [`config/remote/mainnet.toml`](config/remote/mainnet.toml) — hosted Mainnet monitoring with Puffin economics and Trillium MEV capture enabled
 
 Keep credentials in the ignored root `.env`. Connector names are stable references used by ordered command routes; the first successful connector wins.
 

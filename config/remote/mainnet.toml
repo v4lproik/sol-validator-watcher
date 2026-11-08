@@ -76,21 +76,16 @@ current_leader_schedule = ["mainnet-rpc"]
 next_leader_schedule = ["mainnet-rpc"]
 
 [modes.economics]
-enabled = false
-# Enable economics only on RPC endpoints that can serve getMultipleAccounts,
-# getMinimumBalanceForRentExemption, getInflationReward, and previous-epoch
-# getBlockProduction, then add all required RPC routes and a target. Optional
-# Jito and Trillium routes publish settled and completed-epoch MEV data without
-# making either provider required for each polling round:
-#
-# [modes.economics.commands]
-# account_balances = ["mainnet-rpc"]
-# inflation_rewards = ["mainnet-rpc"]
-# reward_epoch_block_production = ["mainnet-rpc"]
-# recent_block_fee_rewards = ["mainnet-rpc"]
-# jito_mev_rewards = ["jito-api"]
-# trillium_mev_capture = ["trillium-api"]
-#
-# [modes.economics.validator]
-# vote_account = "PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp"
-# labels = ["validator:puffin", "focus:economics"]
+enabled = true
+
+[modes.economics.commands]
+account_balances = ["mainnet-rpc"]
+inflation_rewards = ["mainnet-rpc"]
+reward_epoch_block_production = ["mainnet-rpc"]
+recent_block_fee_rewards = ["mainnet-rpc"]
+jito_mev_rewards = ["jito-api"]
+trillium_mev_capture = ["trillium-api"]
+
+[modes.economics.validator]
+vote_account = "PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp"
+labels = ["validator:puffin"]
