@@ -279,6 +279,20 @@ fn loads_every_committed_profile() -> Result<()> {
                     .map(|provider_api| provider_api.url.as_str()),
                 Some("https://api.trillium.so")
             );
+            assert!(config.modes.economics.enabled);
+            assert_eq!(
+                config.modes.route(CommandId::TrilliumMevCapture),
+                ["trillium-api"]
+            );
+            assert_eq!(
+                config
+                    .modes
+                    .economics
+                    .validator
+                    .as_ref()
+                    .and_then(|validator| validator.vote_account.as_deref()),
+                Some("PUFFiNkUHF2DMfbKeUcYTSQckDDtkswfxZCDv5WQqwp")
+            );
         }
     }
 

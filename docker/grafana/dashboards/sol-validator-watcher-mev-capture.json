@@ -2055,9 +2055,9 @@
     "list": [
       {
         "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
+          "selected": true,
+          "text": "mainnet-beta",
+          "value": "mainnet-beta"
         },
         "datasource": {
           "type": "prometheus",
@@ -2087,6 +2087,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher MEV Capture",
   "uid": "sol-validator-watcher-mev-capture",
-  "version": 6,
+  "version": 7,
   "weekStart": ""
 }
