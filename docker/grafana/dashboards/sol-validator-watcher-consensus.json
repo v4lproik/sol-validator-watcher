@@ -163,7 +163,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max(sol_mode_enabled{network=~\"$network\",mode=\"consensus\"}) * ((1 + max(sol_mode_up{network=~\"$network\",mode=\"consensus\"})) or vector(3))) or vector(0)",
+          "expr": "(max(sol_mode_enabled{network=\"$network\",mode=\"consensus\"}) * ((1 + max(sol_mode_up{network=\"$network\",mode=\"consensus\"})) or vector(3))) or vector(0)",
           "instant": true,
           "legendFormat": "Consensus status",
           "range": false,
@@ -222,7 +222,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sol_mode_command_route_info{network=~\"$network\",mode=\"consensus\"} == 1",
+          "expr": "sol_mode_command_route_info{network=\"$network\",mode=\"consensus\"} == 1",
           "format": "table",
           "instant": true,
           "legendFormat": "{{mode}} / {{command}} / {{connector}}",
@@ -329,7 +329,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sol_mode_command_source_info{network=~\"$network\",mode=\"consensus\"} == 1",
+          "expr": "sol_mode_command_source_info{network=\"$network\",mode=\"consensus\"} == 1",
           "format": "table",
           "instant": true,
           "legendFormat": "{{mode}} / {{command}} / {{connector}}",
@@ -429,7 +429,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (scope) (sol_delinquent_validator_count{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "sum by (scope) (sol_delinquent_validator_count{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -469,7 +469,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * sum by (scope) (sol_delinquent_validator_count{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}) / clamp_min(sum by (scope) (sol_validator_status_count{status=~\"current|delinquent\",scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}), 1e-9)",
+          "expr": "100 * sum by (scope) (sol_delinquent_validator_count{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"}) / clamp_min(sum by (scope) (sol_validator_status_count{status=~\"current|delinquent\",scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"}), 1e-9)",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -509,7 +509,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "avg by (scope) (sol_vote_efficiency_pct{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "avg by (scope) (sol_vote_efficiency_pct{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -549,7 +549,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "avg by (scope) (sol_last_vote_slot_lag{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "avg by (scope) (sol_last_vote_slot_lag{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -602,7 +602,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "avg by (scope) (sol_root_slot_lag{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "avg by (scope) (sol_root_slot_lag{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -642,7 +642,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (scope) (sol_delinquent_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "sum by (scope) (sol_delinquent_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -682,7 +682,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (scope) (sol_activated_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "sum by (scope) (sol_activated_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -722,7 +722,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "avg by (scope) (sol_average_commission_pct{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"})",
+          "expr": "avg by (scope) (sol_average_commission_pct{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"})",
           "legendFormat": "{{scope}}",
           "range": true,
           "refId": "A"
@@ -776,21 +776,21 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_cluster_transactions_per_second{network=~\"$network\"}",
+          "expr": "sol_cluster_transactions_per_second{network=\"$network\"}",
           "legendFormat": "{{network}} · total",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sol_cluster_vote_transactions_per_second{network=~\"$network\"}",
+          "expr": "sol_cluster_vote_transactions_per_second{network=\"$network\"}",
           "legendFormat": "{{network}} · vote",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "sol_cluster_non_vote_transactions_per_second{network=~\"$network\"}",
+          "expr": "sol_cluster_non_vote_transactions_per_second{network=\"$network\"}",
           "legendFormat": "{{network}} · non-vote",
           "range": true,
           "refId": "C"
@@ -831,7 +831,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_cluster_slots_per_second{network=~\"$network\"}",
+          "expr": "sol_cluster_slots_per_second{network=\"$network\"}",
           "legendFormat": "{{network}}",
           "range": true,
           "refId": "A"
@@ -872,7 +872,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sol_average_slot_time_seconds{network=~\"$network\"}",
+          "expr": "sol_average_slot_time_seconds{network=\"$network\"}",
           "legendFormat": "{{network}}",
           "range": true,
           "refId": "A"
@@ -926,7 +926,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * sum by (network, scope) (sol_delinquent_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}) / clamp_min(sum by (network, scope) (sol_activated_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}), 1e-9)",
+          "expr": "100 * sum by (network, scope) (sol_delinquent_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"}) / clamp_min(sum by (network, scope) (sol_activated_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"}), 1e-9)",
           "legendFormat": "{{network}} · {{scope}}",
           "range": true,
           "refId": "A"
@@ -967,7 +967,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * sum by (network, scope) (sol_activated_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=~\"$network\"}) / on (network) group_left clamp_min(max by (network) (sol_activated_stake_sol{scope=\"scope:all-network\",network=~\"$network\"}), 1e-9)",
+          "expr": "100 * sum by (network, scope) (sol_activated_stake_sol{scope=~\"${breakdown}:.*\",scope!~\"scope:.*\",network=\"$network\"}) / on (network) group_left clamp_min(max by (network) (sol_activated_stake_sol{scope=\"scope:all-network\",network=\"$network\"}), 1e-9)",
           "legendFormat": "{{network}} · {{scope}}",
           "range": true,
           "refId": "A"
@@ -989,20 +989,19 @@
   "templating": {
     "list": [
       {
-        "allValue": ".*",
         "current": {
-          "selected": true,
-          "text": "All",
-          "value": ".*"
+          "selected": false,
+          "text": "",
+          "value": ""
         },
         "datasource": {
           "type": "prometheus",
           "uid": "prometheus"
         },
         "definition": "label_values(sol_watcher_up, network)",
-        "includeAll": true,
+        "includeAll": false,
         "label": "Network",
-        "multi": true,
+        "multi": false,
         "name": "network",
         "options": [],
         "query": {
@@ -1024,14 +1023,14 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(sol_activated_stake_sol{network=~\"$network\",scope!~\"scope:.*\"}, scope)",
+        "definition": "label_values(sol_activated_stake_sol{network=\"$network\",scope!~\"scope:.*\"}, scope)",
         "includeAll": true,
         "label": "Breakdown",
         "multi": false,
         "name": "breakdown",
         "options": [],
         "query": {
-          "query": "label_values(sol_activated_stake_sol{network=~\"$network\",scope!~\"scope:.*\"}, scope)",
+          "query": "label_values(sol_activated_stake_sol{network=\"$network\",scope!~\"scope:.*\"}, scope)",
           "refId": "PrometheusVariableQueryEditor-Breakdown"
         },
         "refresh": 2,
@@ -1049,6 +1048,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Consensus",
   "uid": "sol-validator-watcher-consensus",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

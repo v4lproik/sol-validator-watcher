@@ -75,6 +75,9 @@ operator-facing semantics.
   variables against every query that consumes them.
 - Prefer operationally actionable ordering and breakdowns. Network, watched,
   custom scope, and source provenance must remain distinguishable.
+- Every dashboard exposes `Network` as a required single-select variable without
+  an `All` option. Network selectors use exact `network="$network"` matching so
+  a panel cannot aggregate or compare multiple networks.
 - Dashboard changes must preserve datasource/provisioning compatibility with the
   repository Compose stack.
 - No-data, zero, stale, and dependency-down states are different. Panels and
@@ -89,8 +92,8 @@ operator-facing semantics.
   means no `node_status` route is declared; `UNAVAILABLE` means a declared
   route supplied no node-health series. When node health exists without a
   structured catch-up distance, that panel remains `No data`. Healthy, behind,
-  current-voting, and non-current-voting states remain distinct, and every
-  multi-network result identifies its network.
+  current-voting, and non-current-voting states remain distinct, and rendered
+  labels identify the selected network.
 - The overview gossip row shows the count of watched identities missing from a
   successful public cluster-node view and a version table. No data means no
   watched validator matches the current filters or the route is unconfigured or
