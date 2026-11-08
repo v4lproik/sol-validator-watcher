@@ -1901,7 +1901,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max by (network) (sol_mode_up{network=~\"$network\",mode=\"economics\"})) or (3 * max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"})))) or vector(0)",
+          "expr": "max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"}) * ((1 + max by (network) (sol_mode_up{network=~\"$network\",mode=\"economics\"})) or (3 * max by (network) (sol_mode_enabled{network=~\"$network\",mode=\"economics\"})))",
           "instant": true,
           "legendFormat": "{{network}} · Economics status",
           "range": false,
