@@ -36,6 +36,7 @@ ws_health = ["helius-devnet"]
 [modes.consensus.commands]
 epoch_info = ["helius-devnet"]
 vote_accounts = ["helius-devnet"]
+cluster_nodes = ["helius-devnet"]
 recent_performance_samples = ["helius-devnet"]
 
 [modes.leadership.commands]

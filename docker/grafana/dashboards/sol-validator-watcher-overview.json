@@ -2783,6 +2783,318 @@
       ],
       "title": "Node Identity and Version",
       "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "id": 31,
+      "panels": [],
+      "title": "Watched Gossip and Version Posture",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Watched identities absent from the latest successful public getClusterNodes response. No data means no watched validator matches the current filters or the cluster-nodes route is unconfigured or unavailable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "ALL VISIBLE"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 53
+      },
+      "id": 32,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(1 - max by (network, identity) (sol_watched_validator_gossip_visible{identity=~\"$validator\",network=~\"$network\"}))",
+          "instant": true,
+          "legendFormat": "Missing watched validators",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Missing from Gossip",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Latest public gossip visibility and advertised validator software metadata. Missing rows retain identity and vote-account context; unmatched filters or unavailable collection render no data.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gossip"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": {
+                        "color": "red",
+                        "index": 0,
+                        "text": "MISSING"
+                      },
+                      "1": {
+                        "color": "green",
+                        "index": 1,
+                        "text": "VISIBLE"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Network"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Identity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 360
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Vote Account"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 360
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Version"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 18,
+        "x": 6,
+        "y": 53
+      },
+      "id": 33,
+      "options": {
+        "cellHeight": "md",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Gossip"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status) (label_join(sol_watched_validator_gossip_visible{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (validator_key, network, identity, vote_account, status, version, feature_set, shred_version) (label_join(sol_watched_validator_gossip_info{identity=~\"$validator\",network=~\"$network\"}, \"validator_key\", \" / \", \"network\", \"vote_account\"))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{network}} / {{identity}}",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "validator_key",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Value #B": true,
+              "__name__": true,
+              "__name__ 1": true,
+              "identity 1": true,
+              "network 1": true,
+              "status 1": true,
+              "validator_key": true,
+              "validator_key 1": true,
+              "vote_account 1": true
+            },
+            "indexByName": {
+              "network": 0,
+              "identity": 1,
+              "vote_account": 2,
+              "status": 3,
+              "Value #A": 4,
+              "version": 5,
+              "feature_set": 6,
+              "shred_version": 7
+            },
+            "renameByName": {
+              "Value #A": "Gossip",
+              "feature_set": "Feature Set",
+              "identity": "Identity",
+              "network": "Network",
+              "shred_version": "Shred Version",
+              "status": "Vote Status",
+              "version": "Version",
+              "vote_account": "Vote Account"
+            }
+          }
+        }
+      ],
+      "title": "Watched Validator Gossip Versions",
+      "type": "table"
     }
   ],
   "refresh": "15s",
@@ -2856,6 +3168,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }

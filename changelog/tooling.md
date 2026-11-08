@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extended the exact-image container smoke RPC fixture with a valid `getClusterNodes` response so it satisfies the declared core compatibility profile.
+- Documented routed public cluster-node collection, watched-validator gossip availability semantics, bounded software-version labels, and dashboard no-data handling in repository engineering guidance.
 - Fingerprinted the shared Pages theme interaction on both the homepage and custom 404 page.
 - Added README badges for required CI, security scanning, Pages deployment, coverage, multi-architecture Docker delivery, and the repository license.
 - Fingerprinted the Pages CSS and JavaScript filenames from their content during site assembly so new HTML cannot reuse stale cached runtime assets after deployment.

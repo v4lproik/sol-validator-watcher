@@ -119,6 +119,9 @@ liveness files, signals, and shutdown.
   identity,
   version, block height, health, and vote-set state; route exhaustion omits
   those dynamic series and marks health mode down.
+  A configured optional `consensus.cluster_nodes` route contributes watched
+  identity gossip visibility and software metadata; route exhaustion omits
+  those series without failing the required consensus snapshot.
 - Verify every declared standard Solana RPC compatibility profile before
   dependency health or collection. When economics enables a configured Jito
   route, verify that provider API against the resolved target and reward epoch.

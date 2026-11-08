@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the optional consensus `cluster_nodes` route to every committed profile and included `getClusterNodes` in validated core RPC compatibility probes.
 - Removed static Mainnet watched-validator state labels so current/delinquent status remains derived from each polling snapshot instead of persisting stale configuration.
 - Reworked configuration normalization and validation as consuming transformations that return fully validated values, restricting mutation to bounded deduplication and merge accumulators without changing validation order or profile semantics.
 - Added a validated connector-local `response_size_limit_bytes` setting with a 32 MiB default and explicit values in every committed RPC profile; the Mainnet block-fee source now uses finalized commitment so cached blocks cannot be rolled back.

@@ -5,8 +5,8 @@
 
 use super::{
     model::{
-        AccountBalances, EconomicsMetrics, EpochCreditsSample, RewardSample, ScopeMetrics,
-        Snapshot, ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics,
+        AccountBalances, EconomicsMetrics, EpochCreditsSample, GossipObservation, RewardSample,
+        ScopeMetrics, Snapshot, ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics,
         MAX_UPCOMING_LEADER_SLOTS,
     },
     rpc::{SlotRange, VoteAccountInfo, VoteAccounts},
@@ -385,6 +385,7 @@ pub(super) fn build_watched_validator_metrics(
         identity: record.identity.clone(),
         vote_account: record.vote_account.clone(),
         status: record.status,
+        gossip: GossipObservation::Unavailable,
         scopes: record.scopes.clone(),
         activated_stake_lamports: record.activated_stake_lamports,
         latest_epoch_vote_credits,

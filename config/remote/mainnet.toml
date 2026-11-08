@@ -59,6 +59,7 @@ ws_health = ["mainnet-rpc"]
 [modes.consensus.commands]
 epoch_info = ["mainnet-rpc"]
 vote_accounts = ["mainnet-rpc"]
+cluster_nodes = ["mainnet-rpc"]
 recent_performance_samples = ["mainnet-rpc"]
 
 [modes.leadership.commands]

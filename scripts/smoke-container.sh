@@ -55,6 +55,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             }
         elif method == "getVoteAccounts":
             result = {"current": [], "delinquent": []}
+        elif method == "getClusterNodes":
+            result = []
         elif method == "getIdentity":
             result = {"identity": "11111111111111111111111111111111"}
         elif method == "getVersion":

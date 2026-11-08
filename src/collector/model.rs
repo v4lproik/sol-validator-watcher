@@ -198,6 +198,25 @@ pub struct EconomicsMetrics {
     pub recent_block_fee_rewards: Option<RecentBlockFeeRewards>,
 }
 
+/// Result of matching a watched validator to one `getClusterNodes` response.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum GossipObservation {
+    /// No configured gossip route succeeded, so presence is unknown.
+    #[default]
+    Unavailable,
+    /// The command succeeded but did not contain the watched identity.
+    Missing,
+    /// The command returned the watched identity and its advertised metadata.
+    Present {
+        /// Validator client version when advertised.
+        version: Option<String>,
+        /// Feature-set identifier when advertised.
+        feature_set: Option<u32>,
+        /// Shred protocol version when advertised.
+        shred_version: Option<u16>,
+    },
+}
+
 /// Per-validator values exported for explicitly watched validators.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WatchedValidatorMetrics {
@@ -207,6 +226,8 @@ pub struct WatchedValidatorMetrics {
     pub vote_account: String,
     /// Current or delinquent cluster status.
     pub status: ValidatorStatus,
+    /// Presence and software metadata in the latest available public gossip view.
+    pub gossip: GossipObservation,
     /// Metric scopes to which this validator contributes.
     pub scopes: Vec<String>,
     /// Activated stake delegated to the vote account, in lamports.

@@ -11,8 +11,8 @@ mod rpc;
 mod snapshot;
 
 pub use model::{
-    ClusterPerformanceMetrics, ModeStatus, NodeHealth, RecentBlockFeeRewards, Snapshot,
-    SnapshotDataSource, WatchedValidatorMetrics,
+    ClusterPerformanceMetrics, GossipObservation, ModeStatus, NodeHealth, RecentBlockFeeRewards,
+    Snapshot, SnapshotDataSource, WatchedValidatorMetrics,
 };
 pub use rpc::RpcClient;
 pub use snapshot::{collect_snapshot, ensure_economics_supported};
@@ -26,7 +26,7 @@ pub(crate) use model::{
     EconomicsMetrics, EpochCreditsSample, NodeMetrics, NodeVotingStatus, ScopeMetrics,
     ValidatorRecord, ValidatorStatus,
 };
-pub(crate) use rpc::{BlockProduction, EpochInfo, VoteAccounts};
+pub(crate) use rpc::{BlockProduction, ClusterNode, EpochInfo, VoteAccounts};
 
 #[cfg(test)]
 use aggregate::{

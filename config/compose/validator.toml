@@ -26,6 +26,7 @@ node_status = ["external-validator"]
 [modes.consensus.commands]
 epoch_info = ["external-validator"]
 vote_accounts = ["external-validator"]
+cluster_nodes = ["external-validator"]
 recent_performance_samples = []
 
 [modes.leadership.commands]

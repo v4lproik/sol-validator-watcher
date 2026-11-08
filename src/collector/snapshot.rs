@@ -9,8 +9,11 @@ use super::{
         ratio, resolve_economics_target, RecordBuildContext,
     },
     command,
-    model::{ModeStatus, NodeVotingStatus, Snapshot, ValidatorStatus},
-    rpc::{BlockProduction, MAX_RECENT_BLOCK_FEE_REWARD_SLOTS},
+    model::{
+        GossipObservation, ModeStatus, NodeVotingStatus, Snapshot, ValidatorStatus,
+        WatchedValidatorMetrics,
+    },
+    rpc::{BlockProduction, ClusterNode, MAX_RECENT_BLOCK_FEE_REWARD_SLOTS},
 };
 use crate::{
     config::Config,
@@ -87,9 +90,10 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     let vote_accounts_command = command::GetVoteAccounts {
         delinquent_slot_distance: config.delinquent_slot_distance,
     };
-    let (epoch_info, vote_accounts, recent_performance, node_status) = tokio::join!(
+    let (epoch_info, vote_accounts, cluster_nodes, recent_performance, node_status) = tokio::join!(
         sources.required(&epoch_command),
         sources.required(&vote_accounts_command),
+        sources.optional(&command::GetClusterNodes),
         sources.optional(&command::GetRecentPerformanceSamples),
         sources.optional(&command::GetNodeStatus),
     );
@@ -322,12 +326,16 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         up: true,
     }))
     .collect();
-    let snapshot = aggregate_records(
+    let mut snapshot = aggregate_records(
         config.network.clone(),
         epoch_info.value.epoch,
         current_slot,
         &records,
     );
+    if let Some(resolved) = cluster_nodes {
+        data_sources.push(resolved.source.into());
+        apply_gossip_observations(&mut snapshot.watched_validators, resolved.value);
+    }
 
     Ok(Snapshot {
         epoch_slots: epoch_info.value.slots_in_epoch,
@@ -344,6 +352,36 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         mode_statuses,
         ..snapshot
     })
+}
+
+fn apply_gossip_observations(
+    validators: &mut [WatchedValidatorMetrics],
+    cluster_nodes: Vec<ClusterNode>,
+) {
+    for validator in &mut *validators {
+        validator.gossip = GossipObservation::Missing;
+    }
+    // `aggregate_records` sorts by identity, so each matching range is contiguous.
+    for node in cluster_nodes {
+        let start = validators
+            .partition_point(|validator| validator.identity.as_str() < node.pubkey.as_str());
+        let count =
+            validators[start..].partition_point(|validator| validator.identity == node.pubkey);
+        if count == 0 {
+            continue;
+        }
+        let observation = GossipObservation::Present {
+            version: node.version,
+            feature_set: node.feature_set,
+            shred_version: node.shred_version,
+        };
+        if let Some((last, preceding)) = validators[start..start + count].split_last_mut() {
+            for validator in preceding {
+                validator.gossip = observation.clone();
+            }
+            last.gossip = observation;
+        }
+    }
 }
 
 fn recent_completed_leader_slots(

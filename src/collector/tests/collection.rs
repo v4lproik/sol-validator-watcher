@@ -62,6 +62,18 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         .data_sources
         .iter()
         .any(|source| source.command == CommandId::NodeStatus));
+    assert!(snapshot
+        .data_sources
+        .iter()
+        .any(|source| source.command == CommandId::ClusterNodes));
+    assert_eq!(
+        snapshot.watched_validators[0].gossip,
+        GossipObservation::Present {
+            version: Some("3.1.8".to_string()),
+            feature_set: Some(2_891_131_721),
+            shred_version: Some(56_123),
+        }
+    );
     assert_eq!(snapshot.vote_credits_sample_epoch, Some(8));
     assert_eq!(snapshot.reward_sample_epoch, Some(8));
     assert_eq!(snapshot.watched_validators.len(), 1);
@@ -131,6 +143,79 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     assert!(snapshot.data_sources.iter().any(|source| {
         source.command == CommandId::RecentBlockFeeRewards && source.connector.as_ref() == "primary"
     }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn gossip_observation_distinguishes_missing_identity_from_unavailable_route() -> Result<()> {
+    let (missing_url, missing_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::MissingWatchedClusterNode).await?;
+    let missing_config = Config {
+        network: "devnet".to_string(),
+        connectors: vec![ConnectorConfig {
+            name: "primary".to_string(),
+            provider: "mock-solana".to_string(),
+            features: Vec::new(),
+            rpc: Some(crate::config::RpcTransportConfig::new(missing_url)),
+            ..ConnectorConfig::default()
+        }],
+        modes: modes_for(&["primary"], false),
+        watched_validators: vec![WatchedValidatorConfig {
+            identity: Some("id-1".to_string()),
+            vote_account: Some("vote-1".to_string()),
+            labels: Vec::new(),
+        }],
+        ..Config::default()
+    };
+    let missing_sources = SourceChain::from_config(
+        &missing_config,
+        crate::watcher_state::RpcTelemetry::unobserved(),
+    )?;
+    let missing_snapshot = collect_snapshot(&missing_sources, &missing_config).await?;
+    missing_task.abort();
+    assert_eq!(
+        missing_snapshot.watched_validators[0].gossip,
+        GossipObservation::Missing
+    );
+
+    let (unavailable_url, unavailable_task) = start_mock_rpc_server().await?;
+    let mut unavailable_config = Config {
+        network: "devnet".to_string(),
+        connectors: vec![ConnectorConfig {
+            name: "primary".to_string(),
+            provider: "mock-solana".to_string(),
+            features: Vec::new(),
+            rpc: Some(crate::config::RpcTransportConfig::new(unavailable_url)),
+            ..ConnectorConfig::default()
+        }],
+        modes: modes_for(&["primary"], false),
+        watched_validators: vec![WatchedValidatorConfig {
+            identity: Some("id-1".to_string()),
+            vote_account: Some("vote-1".to_string()),
+            labels: Vec::new(),
+        }],
+        ..Config::default()
+    };
+    unavailable_config
+        .modes
+        .consensus
+        .commands
+        .cluster_nodes
+        .clear();
+    let unavailable_sources = SourceChain::from_config(
+        &unavailable_config,
+        crate::watcher_state::RpcTelemetry::unobserved(),
+    )?;
+    let unavailable_snapshot = collect_snapshot(&unavailable_sources, &unavailable_config).await?;
+    unavailable_task.abort();
+    assert_eq!(
+        unavailable_snapshot.watched_validators[0].gossip,
+        GossipObservation::Unavailable
+    );
+    assert!(!unavailable_snapshot
+        .data_sources
+        .iter()
+        .any(|source| source.command == CommandId::ClusterNodes));
     Ok(())
 }
 

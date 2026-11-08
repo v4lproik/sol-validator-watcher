@@ -53,6 +53,11 @@ operator-facing semantics.
   catch-up distance, and block height are snapshot-owned dynamic series. Reset
   them together. A healthy node has catch-up distance zero; an unhealthy node
   without structured distance data has no distance series, not zero.
+- Watched-validator gossip visibility and software metadata are snapshot-owned.
+  Publish visibility zero only when a successful `getClusterNodes` result omits
+  the identity; an unconfigured or exhausted route publishes neither visibility
+  nor metadata. Version, feature-set, and shred-version labels remain bounded by
+  the configured watched validators.
 - Jito MEV reward, commission, and reward-epoch series are snapshot-owned and
   exist only when economics mode, a valid provider-API route, and a settled
   target reward all exist. Missing settlement or route failure remains no data,
@@ -81,6 +86,10 @@ operator-facing semantics.
   structured catch-up distance, that panel remains `No data`. Healthy, behind,
   current-voting, and non-current-voting states remain distinct, and every
   multi-network result identifies its network.
+- The overview gossip row shows the count of watched identities missing from a
+  successful public cluster-node view and a version table. No data means no
+  watched validator matches the current filters or the route is unconfigured or
+  unavailable; it must not render as zero missing validators.
 - The production stack provisions Alertmanager routing with secret-file
   receiver injection, resolved notifications, grouping, and critical-over-
   warning inhibition. Escalation ownership and receiver availability remain

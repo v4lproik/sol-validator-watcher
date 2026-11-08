@@ -1,8 +1,8 @@
 use super::{bool_label, Metrics, BUILD_REVISION};
 use crate::{
     collector::{
-        ClusterPerformanceMetrics, EconomicsMetrics, JitoMevReward, ModeStatus, NodeHealth,
-        NodeMetrics, NodeVotingStatus, RecentBlockFeeRewards, ScopeMetrics, Snapshot,
+        ClusterPerformanceMetrics, EconomicsMetrics, GossipObservation, JitoMevReward, ModeStatus,
+        NodeHealth, NodeMetrics, NodeVotingStatus, RecentBlockFeeRewards, ScopeMetrics, Snapshot,
         SnapshotDataSource, ValidatorStatus, WatchedValidatorMetrics,
     },
     config::{
@@ -61,6 +61,11 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
             identity: "id-1".to_string(),
             vote_account: "vote-1".to_string(),
             status: ValidatorStatus::Current,
+            gossip: GossipObservation::Present {
+                version: Some("3.1.8".to_string()),
+                feature_set: Some(2_891_131_721),
+                shred_version: Some(56_123),
+            },
             scopes: vec![
                 "scope:all-network".to_string(),
                 "scope:watched".to_string(),
@@ -316,6 +321,8 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         "sol_vote_efficiency_pct{network=\"mainnet-beta\",scope=\"scope:watched\"} 91.5"
     ));
     assert!(rendered.contains("sol_watched_validator_info{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1"));
+    assert!(rendered.contains("sol_watched_validator_gossip_visible{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1"));
+    assert!(rendered.contains("sol_watched_validator_gossip_info{feature_set=\"2891131721\",identity=\"id-1\",network=\"mainnet-beta\",shred_version=\"56123\",status=\"current\",version=\"3.1.8\",vote_account=\"vote-1\"} 1"));
     assert!(rendered.contains("sol_watched_validator_scope_info{identity=\"id-1\",network=\"mainnet-beta\",scope=\"region:sbg\",vote_account=\"vote-1\"} 1"));
     assert!(rendered.contains("sol_watched_validator_activated_stake_sol{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 1.5"));
     assert!(rendered.contains("sol_watched_validator_vote_credits_latest_epoch{identity=\"id-1\",network=\"mainnet-beta\",status=\"current\",vote_account=\"vote-1\"} 11"));
@@ -348,6 +355,7 @@ fn scheduled_frequency_requires_a_valid_epoch_duration() -> Result<()> {
         identity: "id-1".to_string(),
         vote_account: "vote-1".to_string(),
         status: ValidatorStatus::Current,
+        gossip: GossipObservation::Unavailable,
         scopes: vec!["scope:watched".to_string()],
         activated_stake_lamports: 1,
         latest_epoch_vote_credits: None,
@@ -493,6 +501,11 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             identity: "old-id".to_string(),
             vote_account: "old-vote".to_string(),
             status: ValidatorStatus::Current,
+            gossip: GossipObservation::Present {
+                version: Some("old-version".to_string()),
+                feature_set: Some(1),
+                shred_version: Some(2),
+            },
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 1_000_000_000,
             latest_epoch_vote_credits: Some(1),
@@ -572,6 +585,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             identity: "current-id".to_string(),
             vote_account: "current-vote".to_string(),
             status: ValidatorStatus::Current,
+            gossip: GossipObservation::Missing,
             scopes: vec!["scope:watched".to_string()],
             activated_stake_lamports: 1_000_000_000,
             latest_epoch_vote_credits: None,
@@ -605,6 +619,8 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_node_health{"));
     assert!(!rendered.contains("sol_node_catchup_distance_slots{"));
     assert!(rendered.contains("sol_watched_validator_info{identity=\"current-id\""));
+    assert!(rendered.contains("sol_watched_validator_gossip_visible{identity=\"current-id\",network=\"mainnet-beta\",status=\"current\",vote_account=\"current-vote\"} 0"));
+    assert!(!rendered.contains("sol_watched_validator_gossip_info{"));
     assert!(!rendered.contains("sol_vote_credits_sample_epoch{"));
     assert!(!rendered.contains("sol_reward_sample_epoch{"));
     assert!(!rendered.contains("sol_watched_validator_vote_credits_latest_epoch{"));
@@ -831,6 +847,7 @@ fn modes_for(
             commands: ConsensusCommands {
                 epoch_info: rpc_route(),
                 vote_accounts: rpc_route(),
+                cluster_nodes: rpc_route(),
                 recent_performance_samples: rpc_route(),
             },
         },

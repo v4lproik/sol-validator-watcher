@@ -30,6 +30,7 @@ node_status = ["surfpool"]
 [modes.consensus.commands]
 epoch_info = ["surfpool"]
 vote_accounts = ["surfpool"]
+cluster_nodes = ["surfpool"]
 recent_performance_samples = ["surfpool"]
 
 [modes.leadership.commands]

@@ -4,9 +4,9 @@
 //! remain the responsibility of the source chain.
 
 use super::{
-    AccountBalances, BlockProduction, ClusterPerformanceMetrics, EpochInfo, JitoClient,
-    JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards, RewardSample, RpcClient,
-    VoteAccounts,
+    AccountBalances, BlockProduction, ClusterNode, ClusterPerformanceMetrics, EpochInfo,
+    JitoClient, JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards, RewardSample,
+    RpcClient, VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
@@ -140,6 +140,22 @@ impl SourceCommand for GetVoteAccounts {
             .get_vote_accounts(self.delinquent_slot_distance)
             .await
             .context("getVoteAccounts failed")
+    }
+}
+
+/// Optional public gossip-peer and validator-version command.
+pub(crate) struct GetClusterNodes;
+
+impl SourceCommand for GetClusterNodes {
+    const ID: CommandId = CommandId::ClusterNodes;
+    type Transport = RpcCommandTransport;
+    type Output = Vec<ClusterNode>;
+
+    async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
+        client
+            .get_cluster_nodes()
+            .await
+            .context("getClusterNodes failed")
     }
 }
 
