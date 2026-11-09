@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replaced the combined Economics timing summary with a bounded epoch-progress gauge, recent-slot and time-to-epoch-end sparklines, and per-validator next-leader bars so network timing and validator opportunity remain visually distinct.
+- Refreshed the Pages product story and live Grafana captures around all five provisioned dashboards, including watched-validator gossip, per-validator account runway, and completed-epoch MEV capture, with an accessible four-view gallery and revised responsive content hierarchy.
 - Moved watched-validator gossip and version posture directly below Operator State in the Overview dashboard and removed the node-local health section.
 - Published distinct snapshot-reset `sol_watched_validator_*` balance, rent-exemption, VAT reserve, VAT runway, and next-charge funding series for every watched validator while preserving target-only `sol_economics_*` alert inputs; replaced the single-target funding display with a filterable per-validator table plus per-validator next-leader timing.
 - Moved MEV Capture availability and source directly below the completed-epoch summary, widened dense reward and transaction comparisons, removed redundant selected-network and target prefixes from their legends, and rendered SOL units consistently.
