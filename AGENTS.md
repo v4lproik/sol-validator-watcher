@@ -90,7 +90,7 @@ or site scripts directly.
 | Command | Purpose |
 | --- | --- |
 | `just production check <env-file>` | Validate digest-pinned production Compose, Prometheus, alert rules, and Alertmanager |
-| `just production canary <env-file> <image@digest>` | Run the candidate image through five clean polls without replacing production |
+| `just production canary <env-file> <image@digest>` | Run the candidate image through five successful polls without replacing production |
 | `just production rollout <env-file> <image@digest>` | Deploy a canary-proven image and automatically restore the previous digest on failure |
 | `just production rollback <env-file>` | Restore the image retained by the latest rollout |
 | `just production test-alert-delivery` | Send a synthetic alert through the committed Alertmanager route |

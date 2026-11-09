@@ -9,18 +9,21 @@ use crate::{
         JitoClient, RpcClient, TrilliumClient,
     },
     config::{Config, ConnectorConfig},
+    failover::{
+        classify_failure, CircuitTransitions, FailoverAttempt, FailoverAttemptDecision,
+        FailoverController, FailoverGateIndices, FailoverKey, FailoverScope, FailoverTransition,
+    },
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport, COMMAND_COUNT},
-    watcher_state::RpcTelemetry,
+    watcher_state::RuntimeTelemetry,
     websocket::WebsocketProbeClient,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fmt,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
-use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 /// Provenance for the connector that successfully supplied one command result.
@@ -134,24 +137,6 @@ impl std::error::Error for RouteExhaustedError {}
 
 const FAILOVER_COOLDOWN: Duration = Duration::from_secs(60);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum AttemptKind {
-    Normal(u64),
-    RecoveryProbe(u64),
-}
-
-impl AttemptKind {
-    const fn is_recovery(self) -> bool {
-        matches!(self, Self::RecoveryProbe(_))
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum AttemptDecision {
-    Attempt(AttemptKind),
-    Skip,
-}
-
 #[derive(Clone, Copy)]
 enum RoutePolicy {
     Required,
@@ -172,152 +157,7 @@ impl RoutePolicy {
 #[derive(Clone, Copy)]
 struct CompiledRouteEntry {
     connector_index: usize,
-    failover_gate: Option<usize>,
-}
-
-struct FailoverGate {
-    state: Mutex<FailoverState>,
-}
-
-#[derive(Clone, Copy)]
-enum FailoverState {
-    Primary {
-        generation: u64,
-    },
-    Open {
-        generation: u64,
-        retry_at: Instant,
-        failed_command: CommandId,
-    },
-    RecoveryProbe {
-        generation: u64,
-        failed_command: CommandId,
-    },
-}
-
-struct FailoverController {
-    cooldown: Duration,
-    gates: Vec<FailoverGate>,
-}
-
-impl FailoverController {
-    fn new(gate_count: usize, cooldown: Duration) -> Self {
-        let gates = (0..gate_count)
-            .map(|_| FailoverGate {
-                state: Mutex::new(FailoverState::Primary { generation: 0 }),
-            })
-            .collect();
-        Self { cooldown, gates }
-    }
-
-    async fn begin_attempt(&self, gate_index: usize, command: CommandId) -> AttemptDecision {
-        self.begin_attempt_at(gate_index, command, Instant::now())
-            .await
-    }
-
-    async fn begin_attempt_at(
-        &self,
-        gate_index: usize,
-        command: CommandId,
-        now: Instant,
-    ) -> AttemptDecision {
-        let mut state = self.gates[gate_index].state.lock().await;
-        match *state {
-            FailoverState::Primary { generation } => {
-                AttemptDecision::Attempt(AttemptKind::Normal(generation))
-            }
-            FailoverState::Open {
-                generation,
-                retry_at,
-                failed_command,
-            } if failed_command == command && now >= retry_at => {
-                *state = FailoverState::RecoveryProbe {
-                    generation,
-                    failed_command,
-                };
-                AttemptDecision::Attempt(AttemptKind::RecoveryProbe(generation))
-            }
-            FailoverState::Open { .. } | FailoverState::RecoveryProbe { .. } => {
-                AttemptDecision::Skip
-            }
-        }
-    }
-
-    async fn record_failure(
-        &self,
-        gate_index: usize,
-        command: CommandId,
-        attempt: AttemptKind,
-    ) -> &'static str {
-        self.record_failure_at(gate_index, command, attempt, Instant::now())
-            .await
-    }
-
-    async fn record_failure_at(
-        &self,
-        gate_index: usize,
-        command: CommandId,
-        attempt: AttemptKind,
-        now: Instant,
-    ) -> &'static str {
-        let mut state = self.gates[gate_index].state.lock().await;
-        match (*state, attempt) {
-            (FailoverState::Primary { generation }, AttemptKind::Normal(attempt_generation))
-                if generation == attempt_generation =>
-            {
-                *state = FailoverState::Open {
-                    generation,
-                    retry_at: now + self.cooldown,
-                    failed_command: command,
-                };
-                "activated"
-            }
-            (
-                FailoverState::RecoveryProbe {
-                    generation,
-                    failed_command,
-                },
-                AttemptKind::RecoveryProbe(attempt_generation),
-            ) if generation == attempt_generation && failed_command == command => {
-                *state = FailoverState::Open {
-                    generation,
-                    retry_at: now + self.cooldown,
-                    failed_command,
-                };
-                "recovery-probe-failed"
-            }
-            (FailoverState::Primary { .. }, _) => "stale-attempt",
-            (FailoverState::Open { .. } | FailoverState::RecoveryProbe { .. }, _) => {
-                "already-active"
-            }
-        }
-    }
-
-    async fn record_success(
-        &self,
-        gate_index: usize,
-        command: CommandId,
-        attempt: AttemptKind,
-    ) -> bool {
-        let AttemptKind::RecoveryProbe(attempt_generation) = attempt else {
-            return false;
-        };
-        let mut state = self.gates[gate_index].state.lock().await;
-        if matches!(
-            *state,
-            FailoverState::RecoveryProbe {
-                generation,
-                failed_command,
-            } if generation == attempt_generation && failed_command == command
-        ) {
-            *state = FailoverState::Primary {
-                generation: attempt_generation.wrapping_add(1),
-            };
-            true
-        } else {
-            false
-        }
-    }
+    failover_gates: Option<FailoverGateIndices>,
 }
 
 struct Connector {
@@ -330,7 +170,7 @@ struct Connector {
 }
 
 impl Connector {
-    fn from_config(config: &ConnectorConfig, telemetry: RpcTelemetry) -> Result<Self> {
+    fn from_config(config: &ConnectorConfig, telemetry: &RuntimeTelemetry) -> Result<Self> {
         let rpc_client = config
             .rpc
             .as_ref()
@@ -431,27 +271,31 @@ impl Connector {
     }
 }
 
-/// Connector clients, immutable command routes, and source-requirement failover state.
+/// Connector clients, immutable command routes, and hierarchical failover state.
 pub struct SourceChain {
     connectors: Vec<Connector>,
     routes: [Vec<CompiledRouteEntry>; COMMAND_COUNT],
     failovers: FailoverController,
+    failover_inventory: Vec<FailoverKey>,
+    telemetry: RuntimeTelemetry,
 }
 
 impl SourceChain {
     /// Builds clients once and compiles validated connector names into route indices.
-    pub fn from_config(config: &Config, telemetry: RpcTelemetry) -> Result<Self> {
+    pub fn from_config(config: &Config, telemetry: RuntimeTelemetry) -> Result<Self> {
         let connectors = config
             .connectors
             .iter()
-            .map(|connector| Connector::from_config(connector, telemetry.clone()))
+            .map(|connector| Connector::from_config(connector, &telemetry))
             .collect::<Result<Vec<_>>>()?;
         let connector_indices = connectors
             .iter()
             .enumerate()
             .map(|(index, connector)| (connector.name.as_ref(), index))
             .collect::<HashMap<_, _>>();
-        let mut failover_gate_indices = HashMap::new();
+        let mut source_requirement_gate_indices = HashMap::new();
+        let mut command_gate_indices = HashMap::new();
+        let mut failover_inventory = BTreeSet::new();
         let mut routes: [Vec<CompiledRouteEntry>; COMMAND_COUNT] =
             std::array::from_fn(|_| Vec::new());
 
@@ -474,15 +318,38 @@ impl SourceChain {
                         )
                     })?;
                 let backups = config.connectors[connector_index].backups.get(&requirement);
-                let failover_gate = backups.map(|_| {
-                    let next_index = failover_gate_indices.len();
-                    *failover_gate_indices
+                let failover_gates = backups.map(|_| {
+                    let next_source_requirement_index = source_requirement_gate_indices.len();
+                    let source_requirement = *source_requirement_gate_indices
                         .entry((connector_index, requirement))
-                        .or_insert(next_index)
+                        .or_insert(next_source_requirement_index);
+                    let next_command_index = command_gate_indices.len();
+                    let command_gate = *command_gate_indices
+                        .entry((connector_index, command))
+                        .or_insert(next_command_index);
+                    let connector = &connectors[connector_index];
+                    failover_inventory.insert(FailoverKey {
+                        connector: Arc::clone(&connector.name),
+                        provider: Arc::clone(&connector.provider),
+                        source_requirement: requirement,
+                        scope: FailoverScope::SourceRequirement,
+                        command: None,
+                    });
+                    failover_inventory.insert(FailoverKey {
+                        connector: Arc::clone(&connector.name),
+                        provider: Arc::clone(&connector.provider),
+                        source_requirement: requirement,
+                        scope: FailoverScope::Command,
+                        command: Some(command),
+                    });
+                    FailoverGateIndices {
+                        source_requirement,
+                        command: command_gate,
+                    }
                 });
                 route.push(CompiledRouteEntry {
                     connector_index,
-                    failover_gate,
+                    failover_gates,
                 });
                 offset += 1;
 
@@ -517,7 +384,7 @@ impl SourceChain {
                             })?;
                         route.push(CompiledRouteEntry {
                             connector_index: backup_index,
-                            failover_gate: None,
+                            failover_gates: None,
                         });
                         offset += 1;
                     }
@@ -525,18 +392,29 @@ impl SourceChain {
             }
         }
 
-        let failovers = FailoverController::new(failover_gate_indices.len(), FAILOVER_COOLDOWN);
+        let failovers = FailoverController::new(
+            source_requirement_gate_indices.len(),
+            command_gate_indices.len(),
+            FAILOVER_COOLDOWN,
+        );
         Ok(Self {
             connectors,
             routes,
             failovers,
+            failover_inventory: failover_inventory.into_iter().collect(),
+            telemetry,
         })
     }
 
     #[cfg(test)]
     pub(crate) fn with_failover_cooldown(mut self, cooldown: Duration) -> Self {
-        self.failovers = FailoverController::new(self.failovers.gates.len(), cooldown);
+        self.failovers = self.failovers.with_cooldown(cooldown);
         self
+    }
+
+    /// Returns every configured failover circuit in deterministic order.
+    pub(crate) fn failover_inventory(&self) -> &[FailoverKey] {
+        &self.failover_inventory
     }
 
     /// Iterates every declared route entry in command and precedence order.
@@ -594,14 +472,15 @@ impl SourceChain {
         entry: CompiledRouteEntry,
         connector: &Connector,
         command: CommandId,
-    ) -> AttemptDecision {
-        let Some(gate_index) = entry.failover_gate else {
-            return AttemptDecision::Attempt(AttemptKind::Normal(0));
+    ) -> Result<FailoverAttemptDecision> {
+        let Some(gates) = entry.failover_gates else {
+            return Ok(FailoverAttemptDecision::Attempt(FailoverAttempt::ungated()));
         };
-        let decision = self.failovers.begin_attempt(gate_index, command).await;
+        let (decision, transitions) = self.failovers.begin_attempt(gates).await;
+        self.publish_failover_transitions(connector, command, transitions)?;
         if matches!(
             decision,
-            AttemptDecision::Attempt(AttemptKind::RecoveryProbe(_))
+            FailoverAttemptDecision::Attempt(attempt) if attempt.is_recovery_probe()
         ) {
             info!(
                 mode = command.mode().as_str(),
@@ -609,10 +488,41 @@ impl SourceChain {
                 connector = connector.name.as_ref(),
                 provider = connector.provider.as_ref(),
                 source_requirement = command.source_requirement().as_str(),
-                "probing failed command on primary connector after failover cooldown"
+                "probing primary connector after failover cooldown"
             );
         }
-        decision
+        Ok(decision)
+    }
+
+    fn publish_failover_transitions(
+        &self,
+        connector: &Connector,
+        command: CommandId,
+        transitions: CircuitTransitions,
+    ) -> Result<()> {
+        for transition in transitions.into_iter().flatten() {
+            self.telemetry
+                .record_failover_transition(FailoverTransition {
+                    key: FailoverKey {
+                        connector: Arc::clone(&connector.name),
+                        provider: Arc::clone(&connector.provider),
+                        source_requirement: command.source_requirement(),
+                        scope: transition.scope,
+                        command: (transition.scope == FailoverScope::Command).then_some(command),
+                    },
+                    status: transition.status,
+                    kind: transition.kind,
+                })
+                .with_context(|| {
+                    format!(
+                        "failed to publish {} failover transition for connector {:?} command {:?}",
+                        transition.scope.as_str(),
+                        connector.name,
+                        command.as_str()
+                    )
+                })?;
+        }
+        Ok(())
     }
 
     async fn record_missing_client(
@@ -620,9 +530,9 @@ impl SourceChain {
         entry: CompiledRouteEntry,
         connector: &Connector,
         command: CommandId,
-        attempt: AttemptKind,
+        attempt: FailoverAttempt,
         policy: RoutePolicy,
-    ) -> anyhow::Error {
+    ) -> Result<anyhow::Error> {
         let error = anyhow!(
             "connector {:?} provider {:?} has no client for command {:?}",
             connector.name,
@@ -630,8 +540,8 @@ impl SourceChain {
             command.as_str()
         );
         self.record_route_failure(entry, connector, command, attempt, policy, &error)
-            .await;
-        error
+            .await?;
+        Ok(error)
     }
 
     async fn record_route_success(
@@ -639,25 +549,13 @@ impl SourceChain {
         entry: CompiledRouteEntry,
         connector: &Connector,
         command: CommandId,
-        attempt: AttemptKind,
-    ) {
-        let Some(gate_index) = entry.failover_gate else {
-            return;
+        attempt: FailoverAttempt,
+    ) -> Result<()> {
+        let Some(gates) = entry.failover_gates else {
+            return Ok(());
         };
-        if self
-            .failovers
-            .record_success(gate_index, command, attempt)
-            .await
-        {
-            info!(
-                mode = command.mode().as_str(),
-                command = command.as_str(),
-                connector = connector.name.as_ref(),
-                provider = connector.provider.as_ref(),
-                source_requirement = command.source_requirement().as_str(),
-                "primary connector recovered; ending source failover"
-            );
-        }
+        let transitions = self.failovers.record_success(gates, attempt).await;
+        self.publish_failover_transitions(connector, command, transitions)
     }
 
     async fn record_route_failure(
@@ -665,30 +563,35 @@ impl SourceChain {
         entry: CompiledRouteEntry,
         connector: &Connector,
         command: CommandId,
-        attempt: AttemptKind,
+        attempt: FailoverAttempt,
         policy: RoutePolicy,
         error: &anyhow::Error,
-    ) {
-        let failover_transition = match entry.failover_gate {
-            Some(gate_index) => {
+    ) -> Result<()> {
+        let failure_scope = classify_failure(error);
+        let transitions = match entry.failover_gates {
+            Some(gates) => {
                 self.failovers
-                    .record_failure(gate_index, command, attempt)
+                    .record_failure(gates, attempt, failure_scope)
                     .await
             }
-            None => "not-configured",
+            None => [None, None],
         };
+        let failover_transition_count = transitions.iter().flatten().count();
+        self.publish_failover_transitions(connector, command, transitions)?;
         warn!(
             mode = command.mode().as_str(),
             command = command.as_str(),
             connector = connector.name.as_ref(),
             provider = connector.provider.as_ref(),
             source_requirement = command.source_requirement().as_str(),
+            failure_scope = failure_scope.as_str(),
             route_policy = policy.as_str(),
-            recovery_probe = attempt.is_recovery(),
-            failover_transition,
+            recovery_probe = attempt.is_recovery_probe(),
+            failover_transition_count,
             error = ?error,
             "connector command attempt failed; advancing source route"
         );
+        Ok(())
     }
 
     /// Executes a required command against its route until one connector succeeds.
@@ -702,15 +605,15 @@ impl SourceChain {
         let mut failures = Vec::new();
         for (index, entry) in route.iter().copied().enumerate() {
             let connector = &self.connectors[entry.connector_index];
-            let AttemptDecision::Attempt(attempt) =
-                self.begin_route_attempt(entry, connector, C::ID).await
+            let FailoverAttemptDecision::Attempt(attempt) =
+                self.begin_route_attempt(entry, connector, C::ID).await?
             else {
                 continue;
             };
             let Some(client) = C::Transport::client(&connector.command_clients) else {
                 let error = self
                     .record_missing_client(entry, connector, C::ID, attempt, RoutePolicy::Required)
-                    .await;
+                    .await?;
                 failures.push(ConnectorAttemptFailure {
                     connector: Arc::clone(&connector.name),
                     provider: Arc::clone(&connector.provider),
@@ -721,7 +624,7 @@ impl SourceChain {
             match command.execute(client).await {
                 Ok(value) => {
                     self.record_route_success(entry, connector, C::ID, attempt)
-                        .await;
+                        .await?;
                     return Ok(Sourced {
                         value,
                         source: connector.selection(C::ID, index + 1),
@@ -736,7 +639,7 @@ impl SourceChain {
                         RoutePolicy::Required,
                         &error,
                     )
-                    .await;
+                    .await?;
                     failures.push(ConnectorAttemptFailure {
                         connector: Arc::clone(&connector.name),
                         provider: Arc::clone(&connector.provider),
@@ -762,31 +665,31 @@ impl SourceChain {
     /// Executes an optional command against its route until one connector succeeds.
     ///
     /// Every failed attempt remains observable, but route exhaustion returns
-    /// `None` rather than failing the polling round.
-    pub async fn optional<C>(&self, command: &C) -> Option<Sourced<C::Output>>
+    /// `Ok(None)` rather than failing the polling round.
+    pub async fn optional<C>(&self, command: &C) -> Result<Option<Sourced<C::Output>>>
     where
         C: SourceCommand,
     {
         for (index, entry) in self.routes[C::ID.index()].iter().copied().enumerate() {
             let connector = &self.connectors[entry.connector_index];
-            let AttemptDecision::Attempt(attempt) =
-                self.begin_route_attempt(entry, connector, C::ID).await
+            let FailoverAttemptDecision::Attempt(attempt) =
+                self.begin_route_attempt(entry, connector, C::ID).await?
             else {
                 continue;
             };
             let Some(client) = C::Transport::client(&connector.command_clients) else {
                 self.record_missing_client(entry, connector, C::ID, attempt, RoutePolicy::Optional)
-                    .await;
+                    .await?;
                 continue;
             };
             match command.execute(client).await {
                 Ok(value) => {
                     self.record_route_success(entry, connector, C::ID, attempt)
-                        .await;
-                    return Some(Sourced {
+                        .await?;
+                    return Ok(Some(Sourced {
                         value,
                         source: connector.selection(C::ID, index + 1),
-                    });
+                    }));
                 }
                 Err(error) => {
                     self.record_route_failure(
@@ -797,12 +700,12 @@ impl SourceChain {
                         RoutePolicy::Optional,
                         &error,
                     )
-                    .await;
+                    .await?;
                 }
             }
         }
 
-        None
+        Ok(None)
     }
 
     /// Probes the configured WebSocket health route with source failover.
@@ -816,8 +719,8 @@ impl SourceChain {
         let mut failures = Vec::new();
         for (index, entry) in route.iter().copied().enumerate() {
             let connector = &self.connectors[entry.connector_index];
-            let AttemptDecision::Attempt(attempt) =
-                self.begin_route_attempt(entry, connector, command).await
+            let FailoverAttemptDecision::Attempt(attempt) =
+                self.begin_route_attempt(entry, connector, command).await?
             else {
                 continue;
             };
@@ -830,7 +733,7 @@ impl SourceChain {
                         attempt,
                         RoutePolicy::WebsocketHealth,
                     )
-                    .await;
+                    .await?;
                 failures.push(ConnectorAttemptFailure {
                     connector: Arc::clone(&connector.name),
                     provider: Arc::clone(&connector.provider),
@@ -841,7 +744,7 @@ impl SourceChain {
             match client.probe().await {
                 Ok(()) => {
                     self.record_route_success(entry, connector, command, attempt)
-                        .await;
+                        .await?;
                     return Ok(Some(connector.selection(command, index + 1)));
                 }
                 Err(error) => {
@@ -853,7 +756,7 @@ impl SourceChain {
                         RoutePolicy::WebsocketHealth,
                         &error,
                     )
-                    .await;
+                    .await?;
                     failures.push(ConnectorAttemptFailure {
                         connector: Arc::clone(&connector.name),
                         provider: Arc::clone(&connector.provider),

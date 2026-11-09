@@ -4,7 +4,7 @@ use crate::{
     config::{Config, ConnectorConfig},
     mode::{CommandId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
-    watcher_state::RpcTelemetry,
+    watcher_state::RuntimeTelemetry,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -296,7 +296,7 @@ async fn economics_snapshot_publishes_trillium_capture_with_source_provenance() 
     let (api_url, trillium_server, requests, _, _) =
         start_mock_trillium_server(StatusCode::OK, CAPTURE_RESPONSE, false).await?;
     let config = snapshot_config(rpc_url, api_url);
-    let sources = SourceChain::from_config(&config, RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(&config, RuntimeTelemetry::unobserved())?;
     ensure_economics_supported(&sources, &config).await?;
     assert_eq!(requests.load(Ordering::SeqCst), 0);
 
@@ -328,7 +328,7 @@ async fn trillium_failure_omits_capture_without_failing_economics_snapshot() -> 
     let (api_url, trillium_server, requests, _, _) =
         start_mock_trillium_server(StatusCode::TOO_MANY_REQUESTS, "rate limited", false).await?;
     let config = snapshot_config(rpc_url, api_url);
-    let sources = SourceChain::from_config(&config, RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(&config, RuntimeTelemetry::unobserved())?;
     ensure_economics_supported(&sources, &config).await?;
 
     let snapshot = collect_snapshot(&sources, &config).await?;

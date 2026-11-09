@@ -92,9 +92,11 @@ pub(crate) struct WatcherStateSnapshot {
     pub network: Arc<str>,
     /// Polling rounds completed for the active runtime.
     pub completed_poll_rounds: u64,
-    /// Consecutive rounds without a failed RPC attempt or non-2xx response.
-    pub clean_poll_rounds: u8,
-    /// Whether admission has reached the required clean-round streak.
+    /// Consecutive rounds that published a complete snapshot.
+    pub successful_poll_rounds: u8,
+    /// Whether any configured source failover circuit is open or probing.
+    pub degraded: bool,
+    /// Whether admission has reached the required successful-round streak.
     pub ready: bool,
     /// Cumulative process-lifetime RPC counters.
     pub rpc_responses: RpcResponseCounts,
@@ -106,7 +108,8 @@ impl WatcherStateSnapshot {
         Self {
             network: Arc::from(network),
             completed_poll_rounds: 0,
-            clean_poll_rounds: 0,
+            successful_poll_rounds: 0,
+            degraded: false,
             ready: false,
             rpc_responses: RpcResponseCounts::default(),
         }

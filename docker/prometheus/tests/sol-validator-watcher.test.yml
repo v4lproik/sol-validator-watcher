@@ -40,7 +40,7 @@ tests:
               severity: warning
             exp_annotations:
               summary: "Watcher is not ready for mainnet-beta"
-              description: "The watcher is serving metrics but has not completed five consecutive clean polling rounds."
+              description: "The watcher is serving metrics but has not completed five consecutive successful polling rounds."
       - eval_time: 5m
         alertname: SolValidatorWatcherSnapshotStale
         exp_alerts:
@@ -72,6 +72,32 @@ tests:
             exp_annotations:
               summary: "Watcher snapshot is stale for mainnet-beta"
               description: "No complete snapshot has been published within the configured freshness window."
+
+  - name: source failover preserves readiness while degrading redundancy
+    interval: 1m
+    input_series:
+      - series: 'sol_watcher_up{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '1+0x3'
+      - series: 'sol_watcher_ready{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '1+0x3'
+      - series: 'sol_watcher_degraded{job="sol-validator-watcher",instance="watcher:8000",deployment="mainnet",network="mainnet-beta"}'
+        values: '1+0x3'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SolValidatorWatcherSourceFailoverActive
+        exp_alerts:
+          - exp_labels:
+              deployment: mainnet
+              instance: watcher:8000
+              job: sol-validator-watcher
+              network: mainnet-beta
+              severity: warning
+            exp_annotations:
+              summary: "Watcher source redundancy is degraded for mainnet-beta"
+              description: "A configured source failover circuit is open or probing; snapshots may remain complete through a backup connector."
+      - eval_time: 2m
+        alertname: SolValidatorWatcherNotReady
+        exp_alerts: []
 
   - name: rpc failure burst alert
     interval: 1m

@@ -149,20 +149,24 @@ liveness files, signals, and shutdown.
   A watcher that is retrying failed collection remains process-healthy through
   `/healthz`, but does not advance this data-liveness timestamp.
 - `/healthz` proves only that the HTTP process is serving. `/readyz` admits the
-  current configuration only after five consecutive required polling rounds
-  complete without a failed RPC attempt. A failed attempt, failed whole poll, or
-  accepted configuration reload resets the admission streak.
-- Publish the build revision compiled into the binary, the active configuration
-  fingerprint, and current command fallback state so operators can distinguish
-  deploy, reload, and provider failover changes.
+  current configuration after five consecutive complete polling rounds.
+  Successful backup-sourced rounds advance admission and remain ready while
+  source failover is reported independently as degraded. A failed whole poll
+  resets admission. Candidate reload probes use isolated telemetry and cannot
+  mutate active source circuits. An accepted config-only reload resets admission
+  but preserves source-circuit state; a source-changing reload installs a fresh
+  circuit inventory transactionally.
+- Publish build revision, active configuration fingerprint, readiness,
+  degradation, circuit state/transitions, and latest command fallback so
+  operators can distinguish deploy, reload, availability, and redundancy.
 - The `healthcheck` CLI command probes `/healthz`, not `/readyz`, so container
   health tracks the serving process without restarting on recoverable
   collection failures.
-- The watcher-state actor is the sole writer for readiness, completed rounds,
-  the clean-round streak, their Prometheus samples, and the 30-second state
-  report. Successful and failed poll completions plus accepted-reload events are
-  acknowledged only after the actor publishes a coherent snapshot for HTTP
-  readers.
+- The watcher-state actor is the sole writer for readiness, degradation,
+  completed rounds, the successful-round streak, circuit transitions, their
+  Prometheus samples, and the 30-second state report. Successful and failed poll
+  completions plus accepted-reload events are acknowledged only after the actor
+  publishes a coherent snapshot for HTTP readers.
 - A watcher-state transition failure remains fatal unless process-wide shutdown
   was already requested. During cooperative shutdown, the actor may stop before
   the poller publishes its final transition; treat only that ordering race as

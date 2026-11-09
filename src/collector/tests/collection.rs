@@ -32,12 +32,14 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     config.modes.economics.commands.recent_block_fee_rewards = vec!["primary".to_string()];
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     assert!(client.node_health().await?.is_healthy());
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     ensure_economics_supported(&sources, &config).await?;
     let snapshot = collect_snapshot(&sources, &config).await?;
 
@@ -183,7 +185,7 @@ async fn gossip_observation_distinguishes_missing_identity_from_unavailable_rout
     };
     let missing_sources = SourceChain::from_config(
         &missing_config,
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
     )?;
     let missing_snapshot = collect_snapshot(&missing_sources, &missing_config).await?;
     missing_task.abort();
@@ -218,7 +220,7 @@ async fn gossip_observation_distinguishes_missing_identity_from_unavailable_rout
         .clear();
     let unavailable_sources = SourceChain::from_config(
         &unavailable_config,
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
     )?;
     let unavailable_snapshot = collect_snapshot(&unavailable_sources, &unavailable_config).await?;
     unavailable_task.abort();
@@ -255,8 +257,10 @@ async fn missing_performance_samples_omit_time_estimates_without_failing_collect
         }],
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     let snapshot = collect_snapshot(&sources, &config).await?;
     server_task.abort();
 
@@ -275,14 +279,16 @@ async fn missing_performance_samples_omit_time_estimates_without_failing_collect
 }
 
 #[tokio::test]
-async fn extended_failure_activates_source_requirement_failover() -> Result<()> {
+async fn protocol_failure_activates_only_command_failover() -> Result<()> {
     let (primary_rpc_url, primary_server_task, primary_methods) =
         start_recording_mock_rpc_server(MockRpcProfile::InvalidPerformanceTransactionSplit).await?;
     let (fallback_rpc_url, fallback_server_task, fallback_methods) =
         start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
     let (config, test_dir) = load_extended_backup_config(&primary_rpc_url, &fallback_rpc_url)?;
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     let first = collect_snapshot(&sources, &config).await?;
     let second = collect_snapshot(&sources, &config).await?;
@@ -297,11 +303,11 @@ async fn extended_failure_activates_source_requirement_failover() -> Result<()> 
     );
     assert_eq!(
         selected_connector(&first, CommandId::CurrentBlockProduction),
-        Some("fallback")
+        Some("primary")
     );
     assert_eq!(
         selected_connector(&second, CommandId::CurrentBlockProduction),
-        Some("fallback")
+        Some("primary")
     );
     assert_eq!(
         recorded_method_count(&primary_methods, "getRecentPerformanceSamples").await,
@@ -313,11 +319,11 @@ async fn extended_failure_activates_source_requirement_failover() -> Result<()> 
     );
     assert_eq!(
         recorded_method_count(&primary_methods, "getBlockProduction").await,
-        0
+        2
     );
     assert_eq!(
         recorded_method_count(&fallback_methods, "getBlockProduction").await,
-        2
+        0
     );
     assert_eq!(
         recorded_method_count(&primary_methods, "getEpochInfo").await,
@@ -335,38 +341,78 @@ async fn extended_failure_activates_source_requirement_failover() -> Result<()> 
 }
 
 #[tokio::test]
-async fn failed_command_success_restores_primary_after_failover_cooldown() -> Result<()> {
+async fn transport_failure_activates_source_requirement_failover() -> Result<()> {
+    let primary_listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+    let primary_rpc_url = format!("http://{}", primary_listener.local_addr()?);
+    drop(primary_listener);
+    let (fallback_rpc_url, fallback_server_task, fallback_methods) =
+        start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let (config, test_dir) = load_extended_backup_config(&primary_rpc_url, &fallback_rpc_url)?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
+
+    let failed_command = sources
+        .optional(&crate::collector::command::GetRecentPerformanceSamples)
+        .await?
+        .context("fallback should satisfy the failed transport command")?;
+    assert_eq!(failed_command.source.connector.as_ref(), "fallback");
+
+    let related_command = sources
+        .optional(&crate::collector::command::GetCurrentBlockProduction)
+        .await?
+        .context("related command should use the shared requirement fallback")?;
+    assert_eq!(related_command.source.connector.as_ref(), "fallback");
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getRecentPerformanceSamples").await,
+        1
+    );
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getBlockProduction").await,
+        1
+    );
+
+    fallback_server_task.abort();
+    std::fs::remove_dir_all(&test_dir)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn command_failure_recovers_after_failover_cooldown() -> Result<()> {
     let (primary_rpc_url, primary_server_task, primary_methods) =
         start_recording_mock_rpc_server(MockRpcProfile::InvalidPerformanceTransactionSplitOnce)
             .await?;
     let (fallback_rpc_url, fallback_server_task, fallback_methods) =
         start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
     let (config, test_dir) = load_extended_backup_config(&primary_rpc_url, &fallback_rpc_url)?;
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-            .with_failover_cooldown(std::time::Duration::ZERO);
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?
+    .with_failover_cooldown(std::time::Duration::ZERO);
 
     let failed_command = sources
         .optional(&crate::collector::command::GetRecentPerformanceSamples)
-        .await
+        .await?
         .context("fallback performance command should succeed")?;
     assert_eq!(failed_command.source.connector.as_ref(), "fallback");
 
     let related_command = sources
         .optional(&crate::collector::command::GetCurrentBlockProduction)
-        .await
-        .context("related command should use the backup during failover")?;
-    assert_eq!(related_command.source.connector.as_ref(), "fallback");
+        .await?
+        .context("unrelated command should remain on the primary")?;
+    assert_eq!(related_command.source.connector.as_ref(), "primary");
 
     let recovery = sources
         .optional(&crate::collector::command::GetRecentPerformanceSamples)
-        .await
+        .await?
         .context("failed command should recover on the primary")?;
     assert_eq!(recovery.source.connector.as_ref(), "primary");
 
     let restored = sources
         .optional(&crate::collector::command::GetCurrentBlockProduction)
-        .await
+        .await?
         .context("related command should return to the recovered primary")?;
     assert_eq!(restored.source.connector.as_ref(), "primary");
 
@@ -380,11 +426,11 @@ async fn failed_command_success_restores_primary_after_failover_cooldown() -> Re
     );
     assert_eq!(
         recorded_method_count(&primary_methods, "getBlockProduction").await,
-        1
+        2
     );
     assert_eq!(
         recorded_method_count(&fallback_methods, "getBlockProduction").await,
-        1
+        0
     );
 
     primary_server_task.abort();
@@ -393,6 +439,9 @@ async fn failed_command_success_restores_primary_after_failover_cooldown() -> Re
     Ok(())
 }
 
+static SOURCE_FAILOVER_TEST_DIR_SEQUENCE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 fn load_extended_backup_config(
     primary_rpc_url: &str,
     fallback_rpc_url: &str,
@@ -400,8 +449,11 @@ fn load_extended_backup_config(
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
-    let test_dir =
-        std::env::temp_dir().join(format!("sol-validator-watcher-source-failover-{nonce}"));
+    let sequence =
+        SOURCE_FAILOVER_TEST_DIR_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let test_dir = std::env::temp_dir().join(format!(
+        "sol-validator-watcher-source-failover-{nonce}-{sequence}"
+    ));
     std::fs::create_dir_all(&test_dir)?;
     let config_path = test_dir.join("watcher.toml");
     std::fs::write(
@@ -492,8 +544,10 @@ async fn collect_snapshot_with_connectors_uses_fallback_connector_for_missing_op
         }],
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     let snapshot = collect_snapshot(&sources, &config).await?;
 
     primary_server_task.abort();
@@ -556,8 +610,10 @@ async fn collect_snapshot_with_connectors_uses_fallback_connector_for_missing_re
         modes: modes_for(&["local-validator", "helius-fallback"], false),
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     let snapshot = collect_snapshot(&sources, &config).await?;
 
     primary_server_task.abort();
@@ -610,8 +666,10 @@ async fn collect_snapshot_resolves_each_command_from_its_own_route() -> Result<(
         modes,
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     let snapshot = collect_snapshot(&sources, &config).await?;
 
     first_server_task.abort();
@@ -662,8 +720,10 @@ async fn required_command_preserves_every_failed_route_connector() -> Result<()>
         modes: modes_for(&["first", "second"], false),
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     let Err(error) = collect_snapshot(&sources, &config).await else {
         anyhow::bail!("all failed required command routes must fail collection");
@@ -694,8 +754,10 @@ async fn reward_history_propagates_minimum_ledger_slot_failure() -> Result<()> {
         modes: modes_for(&["historical-rpc"], true),
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     let result = collect_snapshot(&sources, &config).await;
     server_task.abort();
@@ -731,8 +793,10 @@ async fn economics_succeeds_when_optional_leadership_command_is_unavailable() ->
         }],
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     ensure_economics_supported(&sources, &config).await?;
     let snapshot = collect_snapshot(&sources, &config).await?;
@@ -789,8 +853,10 @@ async fn block_fee_reward_identity_mismatch_falls_back_to_the_next_connector() -
     };
     config.modes.economics.commands.recent_block_fee_rewards =
         vec!["wrong-reward".to_string(), "fallback-reward".to_string()];
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     let snapshot = collect_snapshot(&sources, &config).await?;
     wrong_task.abort();

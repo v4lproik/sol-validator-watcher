@@ -47,8 +47,10 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
         delinquent_slot_distance: Some(128),
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     let runtime = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
     runtime
@@ -194,7 +196,7 @@ impl SurfpoolHarness {
                 connect_timeout_sec: 2,
                 ..crate::config::RpcTransportConfig::default()
             },
-            crate::watcher_state::RpcTelemetry::unobserved().for_connector("surfpool"),
+            crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("surfpool"),
         )?;
 
         loop {

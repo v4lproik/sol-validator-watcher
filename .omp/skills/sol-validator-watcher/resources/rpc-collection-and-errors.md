@@ -53,7 +53,7 @@ probes, and economics collection.
   secret-bearing URL.
 - Count each failed RPC attempt and each received HTTP status before returning
   from the protocol boundary. Keep failure totals, response classes, and
-  readiness-critical exact codes bounded; never use a URL, error message, or
+  operator-diagnostic exact codes bounded; never use a URL, error message, or
   request identifier as a metric label.
 
 ### Keep command routing deterministic
@@ -64,13 +64,15 @@ probes, and economics collection.
   connector that succeeds wins, and a failure advances only within the
   resolved route.
 - A failed route connector opens failover only when that connector declares
-  backups for the command's exact source requirement. Subsequent commands
-  sharing the connector and requirement skip it for 60 seconds. After the
-  cooldown, admit one actual attempt of the command that caused the failover;
-  its success restores the connector for the whole source requirement, and its
-  failure restarts the cooldown. Inserted backup entries and connectors without
-  a matching backup declaration remain ungated. Do not substitute a broad
-  capability probe, let another command close the gate, or retain sticky global
+  backups for the command's exact source requirement. Transport and connectivity
+  failures open a circuit shared by that connector and source requirement;
+  HTTP status, response-size, decode, JSON-RPC, missing-result, and semantic
+  failures open only the command circuit. Inserted backup entries and connectors
+  without a matching backup declaration remain ungated.
+- Open circuits skip the primary for 60 seconds. After cooldown, each circuit
+  admits at most one real primary request. Success recovers only the circuits
+  whose probes admitted that request; failure restarts the applicable cooldown.
+  Do not substitute a broad capability probe or retain sticky global
   active-provider state.
 - Connector declaration order is inventory, not fallback policy. Do not add
   numeric priorities, hidden sorting, or global connector-order fallback.

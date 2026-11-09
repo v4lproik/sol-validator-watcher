@@ -10,9 +10,9 @@ These changes do not require new exporter metrics.
 
 - Keep the top row focused on operator state.
   - process health
-  - five-round readiness admission and clean-poll streak
+  - five-round readiness admission, successful-poll streak, and independent source-degradation state
   - RPC and websocket health
-  - failed RPC attempts, HTTP response classes, and readiness-critical status codes
+  - failed RPC attempts, HTTP response classes, and operator-diagnostic status codes
   - metrics freshness
 - Show every watched validator directly in the operator-state row.
   - map each identity to an explicit `ACTIVE` or `DELINQUENT` voting state

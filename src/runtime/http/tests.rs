@@ -1,8 +1,12 @@
 use super::{bind_http_listener, check_health, readiness_handler, run_http_server, AppState};
 use crate::{
+    failover::{
+        FailoverKey, FailoverScope, FailoverStatus, FailoverTransition, FailoverTransitionKind,
+    },
     metrics::Metrics,
+    mode::{CommandId, ModeSourceRequirement},
     tasks::{TaskExit, TaskManager},
-    watcher_state::{WatcherStateMailbox, ADMISSION_CLEAN_POLL_ROUNDS},
+    watcher_state::{WatcherStateMailbox, ADMISSION_SUCCESSFUL_POLL_ROUNDS},
 };
 use anyhow::Result;
 use axum::{extract::State, http::StatusCode, routing::get, Router};
@@ -11,10 +15,21 @@ use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn readiness_handler_tracks_actor_admission() -> Result<()> {
+    let failover_key = FailoverKey {
+        connector: Arc::from("primary"),
+        provider: Arc::from("mock"),
+        source_requirement: ModeSourceRequirement::RpcExtended,
+        scope: FailoverScope::Command,
+        command: Some(CommandId::RecentPerformanceSamples),
+    };
     let mailbox = WatcherStateMailbox::new();
-    let telemetry = mailbox.rpc_telemetry();
+    let telemetry = mailbox.runtime_telemetry();
     let metrics = Arc::new(Metrics::new()?);
-    let (watcher_state, actor) = mailbox.start("readiness-test", Arc::clone(&metrics));
+    let (watcher_state, actor) = mailbox.start(
+        "readiness-test",
+        std::slice::from_ref(&failover_key),
+        Arc::clone(&metrics),
+    );
     let app_state = AppState::new(metrics, watcher_state.clone());
     let mut tasks = TaskManager::new();
     tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
@@ -24,22 +39,38 @@ async fn readiness_handler_tracks_actor_admission() -> Result<()> {
         assert_eq!(
             body,
             format!(
-                "warming up: 0/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+                "warming up: 0/{ADMISSION_SUCCESSFUL_POLL_ROUNDS} consecutive successful polling rounds"
             )
         );
 
-        for _ in 0..ADMISSION_CLEAN_POLL_ROUNDS {
+        for _ in 0..ADMISSION_SUCCESSFUL_POLL_ROUNDS {
             watcher_state.begin_poll().await?;
             telemetry.record_response(200)?;
             watcher_state.complete_poll().await?;
         }
 
+        let (status, body) = readiness_handler(State(app_state.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            format!(
+                "ready: {ADMISSION_SUCCESSFUL_POLL_ROUNDS}/{ADMISSION_SUCCESSFUL_POLL_ROUNDS} consecutive successful polling rounds"
+            )
+        );
+
+        telemetry.record_failover_transition(FailoverTransition {
+            key: failover_key,
+            status: FailoverStatus::Open,
+            kind: FailoverTransitionKind::Activated,
+        })?;
+        watcher_state.begin_poll().await?;
+        watcher_state.complete_poll().await?;
         let (status, body) = readiness_handler(State(app_state)).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
             format!(
-                "ready: {ADMISSION_CLEAN_POLL_ROUNDS}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+                "ready but degraded: {ADMISSION_SUCCESSFUL_POLL_ROUNDS}/{ADMISSION_SUCCESSFUL_POLL_ROUNDS} consecutive successful polling rounds"
             )
         );
         Ok(TaskExit::ShutdownRequested)
@@ -53,7 +84,7 @@ async fn production_server_serves_metrics_health_and_readiness() -> Result<()> {
     let mailbox = WatcherStateMailbox::new();
     let metrics = Arc::new(Metrics::new()?);
     metrics.set_watcher_up("http-test", true);
-    let (watcher_state, actor) = mailbox.start("http-test", Arc::clone(&metrics));
+    let (watcher_state, actor) = mailbox.start("http-test", &[], Arc::clone(&metrics));
     let listener = bind_http_listener("127.0.0.1:0".parse()?).await?;
     let address = listener.local_addr()?;
     let app_state = AppState::new(metrics, watcher_state);
@@ -83,7 +114,9 @@ async fn production_server_serves_metrics_health_and_readiness() -> Result<()> {
         assert_eq!(readiness_response.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(
             readiness_response.text().await?,
-            format!("warming up: 0/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds")
+            format!(
+                "warming up: 0/{ADMISSION_SUCCESSFUL_POLL_ROUNDS} consecutive successful polling rounds"
+            )
         );
         Ok(TaskExit::ShutdownRequested)
     });

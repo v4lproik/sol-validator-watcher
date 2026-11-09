@@ -46,8 +46,8 @@ def metric_value(name):
 
 if metric_value("sol_watcher_ready") != 1:
     raise SystemExit("canary readiness metric did not report admission")
-if metric_value("sol_watcher_clean_poll_streak") < 5:
-    raise SystemExit("canary clean-poll streak did not reach five")
+if metric_value("sol_watcher_successful_poll_streak") < 5:
+    raise SystemExit("canary successful-poll streak did not reach five")
 if "sol_watcher_build_info{" not in metrics or "revision=\"unknown\"" in metrics:
     raise SystemExit("canary image omitted an immutable build revision")
 

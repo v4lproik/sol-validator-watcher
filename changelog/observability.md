@@ -4,6 +4,7 @@
 
 - Rebranded the README and Pages site with the Address Profile key-index mark, public-key-first messaging for monitoring any validator, favicon and social-preview assets, and precise product language throughout.
 - Expanded every MEV Capture panel's Grafana information tooltip with validator-focused definitions, optional-field and completed-epoch semantics, skip-aware per-slot guidance, non-additive reward caveats, and produced-block workload context; the two derived share panels now match labels correctly and render no data when their denominator is zero.
+- Separated snapshot availability from source redundancy with `sol_watcher_degraded`, bounded per-circuit status and transition metrics, a tested source-failover alert, successful-poll readiness terminology, and an Overview source-redundancy panel.
 - Replaced the combined Economics timing summary with a bounded epoch-progress gauge, recent-slot and time-to-epoch-end sparklines, and per-validator next-leader bars so network timing and validator opportunity remain visually distinct.
 - Refreshed the Pages product story and live Grafana captures around all five provisioned dashboards, including watched-validator gossip, per-validator account runway, and completed-epoch MEV capture, with an accessible four-view gallery and revised responsive content hierarchy.
 - Moved watched-validator gossip and version posture directly below Operator State in the Overview dashboard and removed the node-local health section.

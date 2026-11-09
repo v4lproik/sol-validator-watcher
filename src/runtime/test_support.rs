@@ -28,12 +28,14 @@ struct CapabilityProbeState {
     missing_method: Option<&'static str>,
     health_state: Arc<AtomicU8>,
     recent_performance_failure: Arc<AtomicBool>,
+    vote_accounts_failure: Arc<AtomicBool>,
     recorded_requests: Option<RecordedCapabilityProbeRequests>,
 }
 
 pub(super) struct CapabilityProbeControl {
     health_state: Arc<AtomicU8>,
     recent_performance_failure: Arc<AtomicBool>,
+    vote_accounts_failure: Arc<AtomicBool>,
 }
 
 impl CapabilityProbeControl {
@@ -50,6 +52,10 @@ impl CapabilityProbeControl {
     pub(super) fn set_recent_performance_failure(&self, failed: bool) {
         self.recent_performance_failure
             .store(failed, Ordering::Relaxed);
+    }
+
+    pub(super) fn set_vote_accounts_failure(&self, failed: bool) {
+        self.vote_accounts_failure.store(failed, Ordering::Relaxed);
     }
 }
 
@@ -90,10 +96,12 @@ async fn start_capability_probe_server_with_recording(
         .context("failed to read capability probe listener address")?;
     let health_state = Arc::new(AtomicU8::new(HEALTHY));
     let recent_performance_failure = Arc::new(AtomicBool::new(false));
+    let vote_accounts_failure = Arc::new(AtomicBool::new(false));
     let state = CapabilityProbeState {
         missing_method,
         health_state: Arc::clone(&health_state),
         recent_performance_failure: Arc::clone(&recent_performance_failure),
+        vote_accounts_failure: Arc::clone(&vote_accounts_failure),
         recorded_requests,
     };
     let app = Router::new()
@@ -105,6 +113,7 @@ async fn start_capability_probe_server_with_recording(
     let control = CapabilityProbeControl {
         health_state,
         recent_performance_failure,
+        vote_accounts_failure,
     };
 
     Ok((format!("http://{address}"), control, task))
@@ -145,6 +154,16 @@ async fn capability_probe_handler(
             "error": {
                 "code": -32602,
                 "message": "unsupported delinquent slot distance"
+            },
+            "id": 1
+        }));
+    }
+    if method == "getVoteAccounts" && state.vote_accounts_failure.load(Ordering::Relaxed) {
+        return Json(json!({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32000,
+                "message": "temporary vote accounts failure"
             },
             "id": 1
         }));
