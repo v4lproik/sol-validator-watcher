@@ -34,8 +34,9 @@ liveness files, signals, and shutdown.
   must be explicit in a validated profile. Container-loaded profiles use a
   literal `0.0.0.0`; do not route listener policy through an environment value.
 - Keep connectors inline in the profile. Each connector has one stable
-  `provider` name plus an explicit `features` array, which may be empty.
-  Provider names are provenance, not capabilities.
+  `provider` name plus an explicit `features` array, which may be empty, and
+  optional exact source-type backup lists. Provider names are provenance, not
+  capabilities.
 - A connector with an `rpc` transport must declare
   `solana_rpc_compatibility = "core"` or
   `solana_rpc_compatibility = "extended"`. A connector without `rpc` must not
@@ -47,19 +48,30 @@ liveness files, signals, and shutdown.
   Provider-specific APIs and transports require their own typed command,
   capability, endpoint, and verification when the watcher starts consuming
   them.
-- Provider features are `historical-data`, `block-fee-rewards`, and
-  `jito-mev-rewards`; `rpc`, `websocket`, and `provider-api` are transports,
-  not features.
+- Provider features are `historical-data`, `block-fee-rewards`,
+  `jito-mev-rewards`, and `trillium-mev-capture`; `rpc`, `websocket`, and
+  `provider-api` are transports, not features.
 - Core commands are RPC health, node-local status, epoch info, vote accounts,
   and current/next leader schedules. Recent performance samples, current block
   production, account balances, and rent exemption require extended
   compatibility. Prior-epoch inflation rewards and block production additionally
   require `historical-data`. Recent block-fee rewards require an extended RPC
   connector with the `block-fee-rewards` feature and `confirmed` or `finalized`
-  commitment. Jito rewards use provider API independently.
-- Each `modes.<mode>.commands.<command>` array is that command's exact priority
-  and fallback order; connector declaration order is not execution policy.
-  Optional extended routes may be empty in a core-only profile.
+  commitment. Jito rewards and Trillium capture use provider APIs independently.
+- Each `modes.<mode>.commands.<command>` array declares connector entries in
+  priority order. During validation, append each entry's backup list for that
+  command's exact source requirement immediately after the entry. The resulting
+  route is the complete fallback order; connector declaration order is not
+  execution policy. Optional extended routes may be empty in a core-only profile.
+- Backup keys are `rpc-core`, `rpc-extended`, `rpc-historical-data`,
+  `rpc-block-fee-rewards`, `websocket`, `jito-mev-rewards`, and
+  `trillium-mev-capture`. Do not recursively expand a backup connector's own
+  lists. Both the declaring connector and every named backup must satisfy the
+  exact key's transport, compatibility, and feature contract.
+- Failover state belongs to the compiled source chain. A reload that changes
+  connectors or command routes must build and verify the candidate chain before
+  replacing the active chain and resetting its failover gates. A rejected
+  candidate preserves both the active chain and its current gates.
 - Treat each connector's nested `rpc`, `websocket`, and `provider_api` table as
   the complete transport configuration. A present table requires a nonempty
   URL; omission disables that transport. HTTP tables own the complete URL,
@@ -80,8 +92,9 @@ liveness files, signals, and shutdown.
   contradictory timeouts, duplicate connector names, unsupported commitments,
   malformed or hostless transport URLs, unsupported URL schemes, invalid or
   duplicate header names, invalid header values, protocol-owned header
-  overrides, missing required routes, unknown or duplicate route entries, and
-  routes whose connector lacks the required transport, Solana RPC
+  overrides, empty, self-referential, duplicate, unknown, or incompatible
+  backup lists, missing required routes, unknown or duplicate resolved route
+  entries, and routes whose connector lacks the required transport, Solana RPC
   compatibility, or provider feature before client construction.
 - Optional WebSocket routes may contain connectors whose environment-expanded
   `websocket.url` is empty; expose them as unavailable and skip them at

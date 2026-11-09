@@ -1,14 +1,16 @@
 //! Self-contained TOML profile loading, normalization, and validation.
 //!
 //! Configuration is expanded and validated before runtime construction. Command
-//! arrays are the complete ordered fallback policy for their commands.
+//! arrays select connectors; exact source-type backups extend their resolved routes.
 
-use crate::mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport};
+use crate::mode::{
+    CommandId, ModeId, ModeSourceRequirement, ProviderFeature, SolanaRpcCompatibility, Transport,
+};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     env, fmt, fs,
     net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
@@ -162,6 +164,37 @@ impl ModesConfig {
             CommandId::JitoMevRewards => &self.economics.commands.jito_mev_rewards,
             CommandId::RecentBlockFeeRewards => &self.economics.commands.recent_block_fee_rewards,
             CommandId::TrilliumMevCapture => &self.economics.commands.trillium_mev_capture,
+        }
+    }
+
+    fn route_mut(&mut self, command: CommandId) -> &mut Vec<String> {
+        match command {
+            CommandId::RpcHealth => &mut self.health.commands.rpc_health,
+            CommandId::WsHealth => &mut self.health.commands.ws_health,
+            CommandId::NodeStatus => &mut self.health.commands.node_status,
+            CommandId::EpochInfo => &mut self.consensus.commands.epoch_info,
+            CommandId::VoteAccounts => &mut self.consensus.commands.vote_accounts,
+            CommandId::ClusterNodes => &mut self.consensus.commands.cluster_nodes,
+            CommandId::RecentPerformanceSamples => {
+                &mut self.consensus.commands.recent_performance_samples
+            }
+            CommandId::CurrentBlockProduction => {
+                &mut self.leadership.commands.current_block_production
+            }
+            CommandId::CurrentLeaderSchedule => {
+                &mut self.leadership.commands.current_leader_schedule
+            }
+            CommandId::NextLeaderSchedule => &mut self.leadership.commands.next_leader_schedule,
+            CommandId::AccountBalances => &mut self.economics.commands.account_balances,
+            CommandId::InflationRewards => &mut self.economics.commands.inflation_rewards,
+            CommandId::RewardEpochBlockProduction => {
+                &mut self.economics.commands.reward_epoch_block_production
+            }
+            CommandId::JitoMevRewards => &mut self.economics.commands.jito_mev_rewards,
+            CommandId::RecentBlockFeeRewards => {
+                &mut self.economics.commands.recent_block_fee_rewards
+            }
+            CommandId::TrilliumMevCapture => &mut self.economics.commands.trillium_mev_capture,
         }
     }
 
@@ -580,6 +613,9 @@ pub struct ConnectorConfig {
     /// Explicit non-standard provider capabilities.
     pub features: Vec<ProviderFeature>,
     #[serde(default)]
+    /// Ordered backup connector names keyed by the exact source requirement they cover.
+    pub backups: BTreeMap<ModeSourceRequirement, Vec<String>>,
+    #[serde(default)]
     /// Standard Solana RPC method profile, required when `rpc` is present.
     pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
     #[serde(default)]
@@ -609,6 +645,26 @@ impl ConnectorConfig {
         self.websocket.is_some()
     }
 
+    /// Reports whether this connector satisfies one exact command source requirement.
+    fn supports_requirement(&self, requirement: ModeSourceRequirement) -> bool {
+        let transport_available = match requirement.transport() {
+            Transport::Rpc => self.has_rpc(),
+            Transport::Websocket => self.has_ws(),
+            Transport::ProviderApi => self.has_provider_api(),
+        };
+        let solana_rpc_compatible = requirement
+            .solana_rpc_compatibility()
+            .is_none_or(|required| {
+                self.solana_rpc_compatibility
+                    .is_some_and(|declared| declared.supports(required))
+            });
+        let feature_available = requirement
+            .feature()
+            .is_none_or(|feature| self.supports(feature));
+
+        transport_available && solana_rpc_compatible && feature_available
+    }
+
     /// Reports whether this connector declares a provider feature.
     pub fn supports(&self, feature: ProviderFeature) -> bool {
         self.features.contains(&feature)
@@ -619,15 +675,29 @@ impl ConnectorConfig {
             name,
             provider,
             features,
+            backups,
             solana_rpc_compatibility,
             rpc,
             provider_api,
             websocket,
         } = self;
+        let backups = backups
+            .into_iter()
+            .map(|(requirement, names)| {
+                (
+                    requirement,
+                    names
+                        .into_iter()
+                        .map(|name| name.trim().to_string())
+                        .collect(),
+                )
+            })
+            .collect();
         Self {
             name: name.trim().to_string(),
             provider: provider.trim().to_string(),
             features,
+            backups,
             solana_rpc_compatibility,
             rpc: rpc.map(RpcTransportConfig::normalized),
             provider_api: provider_api.map(HttpTransportConfig::normalized),
@@ -642,6 +712,7 @@ impl ConnectorConfig {
             name,
             provider,
             features,
+            backups,
             solana_rpc_compatibility,
             rpc,
             provider_api,
@@ -662,6 +733,7 @@ impl ConnectorConfig {
             name,
             provider,
             features,
+            backups,
             solana_rpc_compatibility,
             rpc,
             provider_api,
@@ -748,6 +820,44 @@ impl ConnectorConfig {
         }
         if self.rpc.is_none() && self.websocket.is_none() && self.provider_api.is_none() {
             bail!("connectors[{index}] must define rpc, websocket, and/or provider_api");
+        }
+        for (requirement, backups) in &self.backups {
+            if !self.supports_requirement(*requirement) {
+                bail!(
+                    "connectors[{index}].backups.{} requires connector {:?} to satisfy that source requirement",
+                    requirement.as_str(),
+                    self.name
+                );
+            }
+            if backups.is_empty() {
+                bail!(
+                    "connectors[{index}].backups.{} must contain at least one connector name",
+                    requirement.as_str()
+                );
+            }
+            let mut seen_backups = HashSet::with_capacity(backups.len());
+            for (backup_index, backup_name) in backups.iter().enumerate() {
+                if backup_name.is_empty() {
+                    bail!(
+                        "connectors[{index}].backups.{}[{backup_index}] must not be empty",
+                        requirement.as_str()
+                    );
+                }
+                if backup_name == &self.name {
+                    bail!(
+                        "connectors[{index}].backups.{} must not reference connector {:?} itself",
+                        requirement.as_str(),
+                        self.name
+                    );
+                }
+                if !seen_backups.insert(backup_name) {
+                    bail!(
+                        "connectors[{index}].backups.{} contains duplicate connector name {:?}",
+                        requirement.as_str(),
+                        backup_name
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -927,7 +1037,8 @@ impl Config {
             .into_iter()
             .map(|watched| normalize_watched_validator(watched, "watched_validators entry"))
             .collect::<Result<Vec<_>>>()?;
-        let (modes, watched_validators) = validate_economics(modes, watched_validators)?;
+        let (mut modes, watched_validators) = validate_economics(modes, watched_validators)?;
+        compile_connector_backups(&connectors, &mut modes)?;
         let config = Self {
             network,
             connectors,
@@ -947,11 +1058,7 @@ impl Config {
     fn validate_routes(&self) -> Result<()> {
         for command in CommandId::ALL {
             let route = self.modes.route(command);
-            let path = format!(
-                "modes.{}.commands.{}",
-                command.mode().as_str(),
-                command.as_str().replace('-', "_")
-            );
+            let path = command_route_path(command);
             let required = match command {
                 CommandId::RpcHealth | CommandId::EpochInfo | CommandId::VoteAccounts => true,
                 CommandId::WsHealth
@@ -992,7 +1099,7 @@ impl Config {
                     .with_context(|| {
                         format!("{path} references unknown connector {connector_name:?}")
                     })?;
-                match requirement.transport {
+                match requirement.transport() {
                     Transport::Rpc if !connector.has_rpc() => bail!(
                         "{path} references connector {:?}, which has no configured RPC endpoint",
                         connector.name
@@ -1007,7 +1114,7 @@ impl Config {
                     ),
                     _ => {}
                 }
-                if let Some(required_compatibility) = requirement.solana_rpc_compatibility {
+                if let Some(required_compatibility) = requirement.solana_rpc_compatibility() {
                     let declared_compatibility =
                         connector.solana_rpc_compatibility.with_context(|| {
                             format!(
@@ -1025,7 +1132,7 @@ impl Config {
                         );
                     }
                 }
-                if let Some(feature) = requirement.feature {
+                if let Some(feature) = requirement.feature() {
                     if !connector.supports(feature) {
                         bail!(
                             "{path} references connector {:?}, but command {:?} requires provider feature {:?}",
@@ -1040,6 +1147,82 @@ impl Config {
 
         Ok(())
     }
+}
+
+fn command_route_path(command: CommandId) -> String {
+    format!(
+        "modes.{}.commands.{}",
+        command.mode().as_str(),
+        command.as_str().replace('-', "_")
+    )
+}
+
+fn compile_connector_backups(
+    connectors: &[ConnectorConfig],
+    modes: &mut ModesConfig,
+) -> Result<()> {
+    if connectors
+        .iter()
+        .all(|connector| connector.backups.is_empty())
+    {
+        return Ok(());
+    }
+
+    let connectors_by_name = connectors
+        .iter()
+        .map(|connector| (connector.name.as_str(), connector))
+        .collect::<HashMap<_, _>>();
+
+    for (index, connector) in connectors.iter().enumerate() {
+        for (requirement, backups) in &connector.backups {
+            for (backup_index, backup_name) in backups.iter().enumerate() {
+                let backup = connectors_by_name
+                    .get(backup_name.as_str())
+                    .with_context(|| {
+                        format!(
+                            "connectors[{index}].backups.{}[{backup_index}] references unknown connector {backup_name:?}",
+                            requirement.as_str()
+                        )
+                    })?;
+                if !backup.supports_requirement(*requirement) {
+                    bail!(
+                        "connectors[{index}].backups.{}[{backup_index}] references connector {:?}, which does not satisfy source requirement {:?}",
+                        requirement.as_str(),
+                        backup.name,
+                        requirement.as_str()
+                    );
+                }
+            }
+        }
+    }
+
+    for command in CommandId::ALL {
+        let requirement = command.source_requirement();
+        let route = modes.route_mut(command);
+        let backup_count = route
+            .iter()
+            .filter_map(|name| connectors_by_name.get(name.as_str()))
+            .filter_map(|connector| connector.backups.get(&requirement))
+            .map(Vec::len)
+            .sum::<usize>();
+        if backup_count == 0 {
+            continue;
+        }
+        let declared = std::mem::take(route);
+        let mut expanded = Vec::with_capacity(declared.len() + backup_count);
+
+        for connector_name in declared {
+            let backups = connectors_by_name
+                .get(connector_name.as_str())
+                .and_then(|connector| connector.backups.get(&requirement));
+            expanded.push(connector_name);
+            if let Some(backups) = backups {
+                expanded.extend(backups.iter().cloned());
+            }
+        }
+        *route = expanded;
+    }
+    Ok(())
 }
 
 fn validate_connectors(connectors: Vec<ConnectorConfig>) -> Result<Vec<ConnectorConfig>> {

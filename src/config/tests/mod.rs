@@ -3,9 +3,7 @@ use super::{
     EconomicsCommands, EconomicsModeConfig, HealthCommands, HealthModeConfig, LeadershipCommands,
     LeadershipModeConfig, ModesConfig, WatchedValidatorConfig, ECONOMICS_TARGET_LABEL,
 };
-use crate::mode::{
-    CommandId, ModeSourceRequirement, ProviderFeature, SolanaRpcCompatibility, Transport,
-};
+use crate::mode::{CommandId, ModeSourceRequirement, ProviderFeature, SolanaRpcCompatibility};
 use anyhow::{Context, Result};
 use std::{
     fs,

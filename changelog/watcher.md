@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added immediate source-requirement failover to deterministic command source chains: a failure on a connector that declares backups routes subsequent commands sharing that connector and exact requirement through those backups for a 60-second cooldown, only the causal command may probe recovery, successful failback restores primary-first routing, inserted backups remain ungated, and source-changing reloads replace the gates transactionally.
+- Compiled validated type-scoped connector backups into deterministic command source chains while preserving per-attempt errors, successful-source provenance, and one-based precedence in the resolved route.
 - Collected identity and vote-account balances for every watched validator in bounded `getMultipleAccounts` batches, reused rent-exemption reads by vote-account data size, preserved per-validator account absence, and kept the configured economics target and its target-only funding output fail-closed.
 - Added an optional routed Trillium provider-API command that fetches the latest completed validator-reward epoch with bounded bodies, conditional `Last-Modified` revalidation, short-lived absence caching, strict vote-account and numeric validation, basis-point commission conversion, successful-source provenance, and independent MEV, block-reward, priority-fee, transaction, compute, stake, and production values.
 - Added optional routed `getClusterNodes` collection that maps watched identities to explicit unavailable, missing, or present gossip observations with advertised validator version, feature set, shred version, and successful-source provenance.

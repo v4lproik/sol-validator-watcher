@@ -86,52 +86,74 @@ impl ProviderFeature {
     }
 }
 
-/// Complete connector requirement for one typed command.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ModeSourceRequirement {
-    /// Transport on which the command executes.
-    pub transport: Transport,
-    /// Minimum standard Solana RPC profile, if the command uses RPC.
-    pub solana_rpc_compatibility: Option<SolanaRpcCompatibility>,
-    /// Additional provider capability, if one is required.
-    pub feature: Option<ProviderFeature>,
+/// Exact transport and capability contract for one typed command.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModeSourceRequirement {
+    /// Standard Solana core JSON-RPC methods.
+    RpcCore,
+    /// Extended Solana JSON-RPC methods.
+    RpcExtended,
+    /// Extended RPC with retained historical data.
+    RpcHistoricalData,
+    /// Extended RPC with confirmed block-fee reward reads.
+    RpcBlockFeeRewards,
+    /// Solana WebSocket connectivity.
+    Websocket,
+    /// Jito validator rewards provider API.
+    JitoMevRewards,
+    /// Trillium completed-epoch MEV provider API.
+    TrilliumMevCapture,
 }
 
-const RPC_CORE_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::Rpc,
-    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-    feature: None,
-};
-const RPC_EXTENDED_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::Rpc,
-    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-    feature: None,
-};
-const RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::Rpc,
-    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-    feature: Some(ProviderFeature::HistoricalData),
-};
-const RPC_EXTENDED_BLOCK_FEE_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::Rpc,
-    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-    feature: Some(ProviderFeature::BlockFeeRewards),
-};
-const WEBSOCKET_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::Websocket,
-    solana_rpc_compatibility: None,
-    feature: None,
-};
-const PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::ProviderApi,
-    solana_rpc_compatibility: None,
-    feature: Some(ProviderFeature::JitoMevRewards),
-};
-const PROVIDER_API_TRILLIUM_MEV_SOURCE_REQUIREMENT: ModeSourceRequirement = ModeSourceRequirement {
-    transport: Transport::ProviderApi,
-    solana_rpc_compatibility: None,
-    feature: Some(ProviderFeature::TrilliumMevCapture),
-};
+impl ModeSourceRequirement {
+    /// Returns the stable configuration label.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RpcCore => "rpc-core",
+            Self::RpcExtended => "rpc-extended",
+            Self::RpcHistoricalData => "rpc-historical-data",
+            Self::RpcBlockFeeRewards => "rpc-block-fee-rewards",
+            Self::Websocket => "websocket",
+            Self::JitoMevRewards => "jito-mev-rewards",
+            Self::TrilliumMevCapture => "trillium-mev-capture",
+        }
+    }
+
+    /// Returns the transport required by this source type.
+    pub const fn transport(self) -> Transport {
+        match self {
+            Self::RpcCore
+            | Self::RpcExtended
+            | Self::RpcHistoricalData
+            | Self::RpcBlockFeeRewards => Transport::Rpc,
+            Self::Websocket => Transport::Websocket,
+            Self::JitoMevRewards | Self::TrilliumMevCapture => Transport::ProviderApi,
+        }
+    }
+
+    /// Returns the minimum Solana RPC profile required by this source type.
+    pub const fn solana_rpc_compatibility(self) -> Option<SolanaRpcCompatibility> {
+        match self {
+            Self::RpcCore => Some(SolanaRpcCompatibility::Core),
+            Self::RpcExtended | Self::RpcHistoricalData | Self::RpcBlockFeeRewards => {
+                Some(SolanaRpcCompatibility::Extended)
+            }
+            Self::Websocket | Self::JitoMevRewards | Self::TrilliumMevCapture => None,
+        }
+    }
+
+    /// Returns the provider feature required by this source type.
+    pub const fn feature(self) -> Option<ProviderFeature> {
+        match self {
+            Self::RpcHistoricalData => Some(ProviderFeature::HistoricalData),
+            Self::RpcBlockFeeRewards => Some(ProviderFeature::BlockFeeRewards),
+            Self::JitoMevRewards => Some(ProviderFeature::JitoMevRewards),
+            Self::TrilliumMevCapture => Some(ProviderFeature::TrilliumMevCapture),
+            Self::RpcCore | Self::RpcExtended | Self::Websocket => None,
+        }
+    }
+}
 
 /// Stable identifier for an independently reported watcher mode.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -277,17 +299,17 @@ impl CommandId {
             | Self::VoteAccounts
             | Self::ClusterNodes
             | Self::CurrentLeaderSchedule
-            | Self::NextLeaderSchedule => RPC_CORE_SOURCE_REQUIREMENT,
-            Self::WsHealth => WEBSOCKET_SOURCE_REQUIREMENT,
+            | Self::NextLeaderSchedule => ModeSourceRequirement::RpcCore,
+            Self::WsHealth => ModeSourceRequirement::Websocket,
             Self::RecentPerformanceSamples
             | Self::CurrentBlockProduction
-            | Self::AccountBalances => RPC_EXTENDED_SOURCE_REQUIREMENT,
+            | Self::AccountBalances => ModeSourceRequirement::RpcExtended,
             Self::InflationRewards | Self::RewardEpochBlockProduction => {
-                RPC_EXTENDED_HISTORICAL_SOURCE_REQUIREMENT
+                ModeSourceRequirement::RpcHistoricalData
             }
-            Self::JitoMevRewards => PROVIDER_API_JITO_REWARDS_SOURCE_REQUIREMENT,
-            Self::RecentBlockFeeRewards => RPC_EXTENDED_BLOCK_FEE_SOURCE_REQUIREMENT,
-            Self::TrilliumMevCapture => PROVIDER_API_TRILLIUM_MEV_SOURCE_REQUIREMENT,
+            Self::JitoMevRewards => ModeSourceRequirement::JitoMevRewards,
+            Self::RecentBlockFeeRewards => ModeSourceRequirement::RpcBlockFeeRewards,
+            Self::TrilliumMevCapture => ModeSourceRequirement::TrilliumMevCapture,
         }
     }
 
@@ -316,10 +338,7 @@ impl CommandId {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CommandId, ModeId, ModeSourceRequirement, ProviderFeature, SolanaRpcCompatibility,
-        Transport,
-    };
+    use super::{CommandId, ModeId, ModeSourceRequirement, SolanaRpcCompatibility, Transport};
 
     #[test]
     fn command_indices_modes_and_capabilities_match_all_order() {
@@ -335,20 +354,9 @@ mod tests {
         assert_eq!(CommandId::CurrentLeaderSchedule.mode(), ModeId::Leadership);
         assert_eq!(CommandId::AccountBalances.mode(), ModeId::Economics);
 
-        let core_rpc = ModeSourceRequirement {
-            transport: Transport::Rpc,
-            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Core),
-            feature: None,
-        };
-        let extended_rpc = ModeSourceRequirement {
-            transport: Transport::Rpc,
-            solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-            feature: None,
-        };
-        let historical_rpc = ModeSourceRequirement {
-            feature: Some(ProviderFeature::HistoricalData),
-            ..extended_rpc
-        };
+        let core_rpc = ModeSourceRequirement::RpcCore;
+        let extended_rpc = ModeSourceRequirement::RpcExtended;
+        let historical_rpc = ModeSourceRequirement::RpcHistoricalData;
 
         for command in [
             CommandId::RpcHealth,
@@ -376,27 +384,24 @@ mod tests {
         }
         assert_eq!(
             CommandId::RecentBlockFeeRewards.source_requirement(),
-            ModeSourceRequirement {
-                transport: Transport::Rpc,
-                solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                feature: Some(ProviderFeature::BlockFeeRewards),
-            }
+            ModeSourceRequirement::RpcBlockFeeRewards
         );
         assert_eq!(
             CommandId::JitoMevRewards.source_requirement(),
-            ModeSourceRequirement {
-                transport: Transport::ProviderApi,
-                solana_rpc_compatibility: None,
-                feature: Some(ProviderFeature::JitoMevRewards),
-            }
+            ModeSourceRequirement::JitoMevRewards
+        );
+        assert_eq!(
+            CommandId::TrilliumMevCapture.source_requirement(),
+            ModeSourceRequirement::TrilliumMevCapture
         );
         assert_eq!(
             CommandId::WsHealth.source_requirement(),
-            ModeSourceRequirement {
-                transport: Transport::Websocket,
-                solana_rpc_compatibility: None,
-                feature: None,
-            }
+            ModeSourceRequirement::Websocket
+        );
+        assert_eq!(core_rpc.transport(), Transport::Rpc);
+        assert_eq!(
+            historical_rpc.solana_rpc_compatibility(),
+            Some(SolanaRpcCompatibility::Extended)
         );
 
         assert!(SolanaRpcCompatibility::Extended.supports(SolanaRpcCompatibility::Core));
