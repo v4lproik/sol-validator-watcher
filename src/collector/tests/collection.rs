@@ -1,4 +1,6 @@
 use super::*;
+use crate::collector::Snapshot;
+
 #[tokio::test]
 async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
@@ -273,53 +275,189 @@ async fn missing_performance_samples_omit_time_estimates_without_failing_collect
 }
 
 #[tokio::test]
-async fn malformed_performance_sample_falls_back_to_the_next_connector() -> Result<()> {
-    let (primary_rpc_url, primary_server_task) =
-        start_mock_rpc_server_with_profile(MockRpcProfile::InvalidPerformanceTransactionSplit)
-            .await?;
-    let (fallback_rpc_url, fallback_server_task) = start_mock_rpc_server().await?;
-    let config = Config {
-        network: "devnet".to_string(),
-        connectors: vec![
-            ConnectorConfig {
-                name: "primary".to_string(),
-                provider: "primary-provider".to_string(),
-                features: Vec::new(),
-                rpc: Some(crate::config::RpcTransportConfig::new(primary_rpc_url)),
-                ..ConnectorConfig::default()
-            },
-            ConnectorConfig {
-                name: "fallback".to_string(),
-                provider: "fallback-provider".to_string(),
-                features: Vec::new(),
-                rpc: Some(crate::config::RpcTransportConfig::new(fallback_rpc_url)),
-                ..ConnectorConfig::default()
-            },
-        ],
-        modes: modes_for(&["primary", "fallback"], false),
-        ..Config::default()
-    };
+async fn extended_failure_activates_source_requirement_failover() -> Result<()> {
+    let (primary_rpc_url, primary_server_task, primary_methods) =
+        start_recording_mock_rpc_server(MockRpcProfile::InvalidPerformanceTransactionSplit).await?;
+    let (fallback_rpc_url, fallback_server_task, fallback_methods) =
+        start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let (config, test_dir) = load_extended_backup_config(&primary_rpc_url, &fallback_rpc_url)?;
     let sources =
         SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
-    let snapshot = collect_snapshot(&sources, &config).await?;
+
+    let first = collect_snapshot(&sources, &config).await?;
+    let second = collect_snapshot(&sources, &config).await?;
+
+    assert_eq!(
+        selected_connector(&first, CommandId::RecentPerformanceSamples),
+        Some("fallback")
+    );
+    assert_eq!(
+        selected_connector(&second, CommandId::RecentPerformanceSamples),
+        Some("fallback")
+    );
+    assert_eq!(
+        selected_connector(&first, CommandId::CurrentBlockProduction),
+        Some("fallback")
+    );
+    assert_eq!(
+        selected_connector(&second, CommandId::CurrentBlockProduction),
+        Some("fallback")
+    );
+    assert_eq!(
+        recorded_method_count(&primary_methods, "getRecentPerformanceSamples").await,
+        1
+    );
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getRecentPerformanceSamples").await,
+        2
+    );
+    assert_eq!(
+        recorded_method_count(&primary_methods, "getBlockProduction").await,
+        0
+    );
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getBlockProduction").await,
+        2
+    );
+    assert_eq!(
+        recorded_method_count(&primary_methods, "getEpochInfo").await,
+        2
+    );
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getEpochInfo").await,
+        0
+    );
+
     primary_server_task.abort();
     fallback_server_task.abort();
+    std::fs::remove_dir_all(&test_dir)?;
+    Ok(())
+}
 
-    let source = snapshot
+#[tokio::test]
+async fn failed_command_success_restores_primary_after_failover_cooldown() -> Result<()> {
+    let (primary_rpc_url, primary_server_task, primary_methods) =
+        start_recording_mock_rpc_server(MockRpcProfile::InvalidPerformanceTransactionSplitOnce)
+            .await?;
+    let (fallback_rpc_url, fallback_server_task, fallback_methods) =
+        start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let (config, test_dir) = load_extended_backup_config(&primary_rpc_url, &fallback_rpc_url)?;
+    let sources =
+        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
+            .with_failover_cooldown(std::time::Duration::ZERO);
+
+    let failed_command = sources
+        .optional(&crate::collector::command::GetRecentPerformanceSamples)
+        .await
+        .context("fallback performance command should succeed")?;
+    assert_eq!(failed_command.source.connector.as_ref(), "fallback");
+
+    let related_command = sources
+        .optional(&crate::collector::command::GetCurrentBlockProduction)
+        .await
+        .context("related command should use the backup during failover")?;
+    assert_eq!(related_command.source.connector.as_ref(), "fallback");
+
+    let recovery = sources
+        .optional(&crate::collector::command::GetRecentPerformanceSamples)
+        .await
+        .context("failed command should recover on the primary")?;
+    assert_eq!(recovery.source.connector.as_ref(), "primary");
+
+    let restored = sources
+        .optional(&crate::collector::command::GetCurrentBlockProduction)
+        .await
+        .context("related command should return to the recovered primary")?;
+    assert_eq!(restored.source.connector.as_ref(), "primary");
+
+    assert_eq!(
+        recorded_method_count(&primary_methods, "getRecentPerformanceSamples").await,
+        2
+    );
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getRecentPerformanceSamples").await,
+        1
+    );
+    assert_eq!(
+        recorded_method_count(&primary_methods, "getBlockProduction").await,
+        1
+    );
+    assert_eq!(
+        recorded_method_count(&fallback_methods, "getBlockProduction").await,
+        1
+    );
+
+    primary_server_task.abort();
+    fallback_server_task.abort();
+    std::fs::remove_dir_all(&test_dir)?;
+    Ok(())
+}
+
+fn load_extended_backup_config(
+    primary_rpc_url: &str,
+    fallback_rpc_url: &str,
+) -> Result<(Config, std::path::PathBuf)> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let test_dir =
+        std::env::temp_dir().join(format!("sol-validator-watcher-source-failover-{nonce}"));
+    std::fs::create_dir_all(&test_dir)?;
+    let config_path = test_dir.join("watcher.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            r#"
+network = "devnet"
+
+[[connectors]]
+name = "primary"
+provider = "primary-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc = {{ url = "{primary_rpc_url}" }}
+
+[connectors.backups]
+rpc-extended = ["fallback"]
+
+[[connectors]]
+name = "fallback"
+provider = "fallback-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc = {{ url = "{fallback_rpc_url}" }}
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+recent_performance_samples = ["primary"]
+
+[modes.leadership.commands]
+current_block_production = ["primary"]
+"#
+        ),
+    )?;
+    Ok((Config::load(&config_path)?, test_dir))
+}
+
+fn selected_connector(snapshot: &Snapshot, command: CommandId) -> Option<&str> {
+    snapshot
         .data_sources
         .iter()
-        .find(|source| source.command == CommandId::RecentPerformanceSamples)
-        .ok_or_else(|| anyhow!("missing recent-performance source"))?;
-    assert_eq!(source.connector.as_ref(), "fallback");
-    assert_eq!(source.provider.as_ref(), "fallback-provider");
-    assert_eq!(source.precedence, 2);
-    assert_eq!(
-        snapshot
-            .cluster_performance
-            .map(|performance| performance.transactions_per_second),
-        Some(25.0)
-    );
-    Ok(())
+        .find(|source| source.command == command)
+        .map(|source| source.connector.as_ref())
+}
+
+async fn recorded_method_count(methods: &Arc<Mutex<Vec<String>>>, method: &str) -> usize {
+    methods
+        .lock()
+        .await
+        .iter()
+        .filter(|recorded| recorded.as_str() == method)
+        .count()
 }
 
 #[tokio::test]

@@ -431,7 +431,10 @@ impl Metrics {
                     route.transport.as_str(),
                     solana_rpc_compatibility_label(route.solana_rpc_compatibility),
                     solana_rpc_compatibility_label(
-                        route.command.source_requirement().solana_rpc_compatibility,
+                        route
+                            .command
+                            .source_requirement()
+                            .solana_rpc_compatibility(),
                     ),
                     feature_label(route.feature),
                     precedence.as_str(),
@@ -520,7 +523,10 @@ impl Metrics {
                     source.transport.as_str(),
                     solana_rpc_compatibility_label(source.solana_rpc_compatibility),
                     solana_rpc_compatibility_label(
-                        source.command.source_requirement().solana_rpc_compatibility,
+                        source
+                            .command
+                            .source_requirement()
+                            .solana_rpc_compatibility(),
                     ),
                     feature_label(source.feature),
                     precedence.as_str(),

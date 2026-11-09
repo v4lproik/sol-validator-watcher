@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Documented exact source-type connector backup composition, validation, non-recursive expansion, immediate requirement-scoped failover, causal-command recovery probes, cooldown failback, and transactional source-chain replacement in repository routing and runtime-configuration guidance.
 - Documented bounded watched-validator account-balance batching, per-validator absence semantics, configured-target fail-closure, target-only economics alert inputs, and snapshot-owned watched-validator funding metric invariants in repository engineering guidance.
 - Documented the single-network Grafana selection and exact-matcher invariant in repository engineering guidance.
 - Documented bounded Trillium validator-reward collection, conditional revalidation, basis-point commission conversion, independent upstream values, snapshot-reset metrics, dashboard no-data semantics, and the Mainnet profile that publishes the Trillium data.

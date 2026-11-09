@@ -477,6 +477,200 @@ fn rejects_unknown_and_duplicate_command_route_connectors() -> Result<()> {
 }
 
 #[test]
+fn expands_backups_only_for_their_exact_source_requirement() -> Result<()> {
+    let mut primary = rpc_connector("primary");
+    primary.backups = std::collections::BTreeMap::from([
+        (
+            ModeSourceRequirement::RpcCore,
+            vec!["core-backup".to_string(), "final-core-backup".to_string()],
+        ),
+        (
+            ModeSourceRequirement::RpcExtended,
+            vec!["extended-backup".to_string()],
+        ),
+    ]);
+    let mut core_backup = rpc_connector("core-backup");
+    core_backup.features.clear();
+    core_backup.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+    let mut final_core_backup = rpc_connector("final-core-backup");
+    final_core_backup.features.clear();
+    final_core_backup.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+    let config = Config {
+        connectors: vec![
+            primary,
+            core_backup,
+            final_core_backup,
+            rpc_connector("extended-backup"),
+        ],
+        modes: modes_for("primary", None, false),
+        ..Config::default()
+    }
+    .into_validated()?;
+
+    assert_eq!(
+        config.modes.consensus.commands.epoch_info,
+        ["primary", "core-backup", "final-core-backup"]
+    );
+    assert_eq!(
+        config.modes.consensus.commands.recent_performance_samples,
+        ["primary", "extended-backup"]
+    );
+    assert_eq!(
+        config.modes.leadership.commands.current_block_production,
+        ["primary", "extended-backup"]
+    );
+    assert!(config.modes.health.commands.ws_health.is_empty());
+    Ok(())
+}
+
+#[test]
+fn rejects_empty_self_referential_and_duplicate_backup_lists() -> Result<()> {
+    let cases = [
+        (
+            Vec::new(),
+            "backups.rpc-core must contain at least one connector name",
+        ),
+        (
+            vec!["   ".to_string()],
+            "backups.rpc-core[0] must not be empty",
+        ),
+        (
+            vec!["primary".to_string()],
+            "backups.rpc-core must not reference connector \"primary\" itself",
+        ),
+        (
+            vec!["backup".to_string(), "backup".to_string()],
+            "backups.rpc-core contains duplicate connector name \"backup\"",
+        ),
+    ];
+
+    for (backups, expected) in cases {
+        let mut connector = rpc_connector("primary");
+        connector
+            .backups
+            .insert(ModeSourceRequirement::RpcCore, backups);
+        let Err(error) = connector.into_validated(0) else {
+            anyhow::bail!("invalid backup list should be rejected");
+        };
+        assert!(error.to_string().contains(expected), "{error:#}");
+    }
+    Ok(())
+}
+
+#[test]
+fn rejects_incompatible_toml_backup_before_runtime_construction() -> Result<()> {
+    let error = config_load_error(
+        "incompatible-typed-backup",
+        r#"
+network = "testnet"
+
+[[connectors]]
+name = "primary"
+provider = "solana-validator"
+features = []
+solana_rpc_compatibility = "extended"
+rpc = { url = "https://primary.example" }
+
+[connectors.backups]
+rpc-extended = ["core-backup"]
+
+[[connectors]]
+name = "core-backup"
+provider = "solana-validator"
+features = []
+solana_rpc_compatibility = "core"
+rpc = { url = "https://backup.example" }
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+"#,
+    )?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("connectors[0].backups.rpc-extended[0] references connector \"core-backup\", which does not satisfy source requirement \"rpc-extended\""),
+        "{error:#}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_unknown_incompatible_and_duplicate_expanded_backups() -> Result<()> {
+    let mut unknown = rpc_connector("primary");
+    unknown
+        .backups
+        .insert(ModeSourceRequirement::RpcCore, vec!["missing".to_string()]);
+    let Err(error) = Config {
+        connectors: vec![unknown],
+        modes: modes_for("primary", None, false),
+        ..Config::default()
+    }
+    .into_validated() else {
+        anyhow::bail!("unknown backup connector should be rejected");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("references unknown connector \"missing\""),
+        "{error:#}"
+    );
+
+    let mut incompatible = rpc_connector("primary");
+    incompatible.backups.insert(
+        ModeSourceRequirement::RpcExtended,
+        vec!["core-backup".to_string()],
+    );
+    let mut core_backup = rpc_connector("core-backup");
+    core_backup.features.clear();
+    core_backup.solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
+    let Err(error) = Config {
+        connectors: vec![incompatible, core_backup],
+        modes: modes_for("primary", None, false),
+        ..Config::default()
+    }
+    .into_validated() else {
+        anyhow::bail!("incompatible backup connector should be rejected");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("does not satisfy source requirement \"rpc-extended\""),
+        "{error:#}"
+    );
+
+    let mut duplicate = rpc_connector("primary");
+    duplicate
+        .backups
+        .insert(ModeSourceRequirement::RpcCore, vec!["backup".to_string()]);
+    let mut modes = modes_for("primary", None, false);
+    modes
+        .consensus
+        .commands
+        .epoch_info
+        .push("backup".to_string());
+    let Err(error) = Config {
+        connectors: vec![duplicate, rpc_connector("backup")],
+        modes,
+        ..Config::default()
+    }
+    .into_validated() else {
+        anyhow::bail!("expanded duplicate connector should be rejected");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("contains duplicate connector name \"backup\""),
+        "{error:#}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rejects_rpc_command_routed_to_websocket_only_connector() -> Result<()> {
     let mut config = Config {
         connectors: vec![

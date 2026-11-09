@@ -10,7 +10,7 @@ use std::{
     env,
     path::PathBuf,
     sync::{
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         Arc,
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -27,11 +27,13 @@ pub(super) type RecordedCapabilityProbeRequests = Arc<Mutex<Vec<(String, Option<
 struct CapabilityProbeState {
     missing_method: Option<&'static str>,
     health_state: Arc<AtomicU8>,
+    recent_performance_failure: Arc<AtomicBool>,
     recorded_requests: Option<RecordedCapabilityProbeRequests>,
 }
 
 pub(super) struct CapabilityProbeControl {
     health_state: Arc<AtomicU8>,
+    recent_performance_failure: Arc<AtomicBool>,
 }
 
 impl CapabilityProbeControl {
@@ -43,6 +45,11 @@ impl CapabilityProbeControl {
     pub(super) fn set_health_behind(&self, behind: bool) {
         self.health_state
             .store(if behind { BEHIND } else { HEALTHY }, Ordering::Relaxed);
+    }
+
+    pub(super) fn set_recent_performance_failure(&self, failed: bool) {
+        self.recent_performance_failure
+            .store(failed, Ordering::Relaxed);
     }
 }
 
@@ -82,9 +89,11 @@ async fn start_capability_probe_server_with_recording(
         .local_addr()
         .context("failed to read capability probe listener address")?;
     let health_state = Arc::new(AtomicU8::new(HEALTHY));
+    let recent_performance_failure = Arc::new(AtomicBool::new(false));
     let state = CapabilityProbeState {
         missing_method,
         health_state: Arc::clone(&health_state),
+        recent_performance_failure: Arc::clone(&recent_performance_failure),
         recorded_requests,
     };
     let app = Router::new()
@@ -93,7 +102,10 @@ async fn start_capability_probe_server_with_recording(
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });
-    let control = CapabilityProbeControl { health_state };
+    let control = CapabilityProbeControl {
+        health_state,
+        recent_performance_failure,
+    };
 
     Ok((format!("http://{address}"), control, task))
 }
@@ -160,6 +172,18 @@ async fn capability_probe_handler(
                 "id": 1
             }));
         }
+    }
+    if method == "getRecentPerformanceSamples"
+        && state.recent_performance_failure.load(Ordering::Relaxed)
+    {
+        return Json(json!({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32000,
+                "message": "temporary upstream failure"
+            },
+            "id": 1
+        }));
     }
     if state.missing_method == Some(method) {
         return Json(json!({

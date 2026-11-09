@@ -103,6 +103,71 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
 }
 
 #[test]
+fn loads_typed_connector_backups_and_expands_routes() -> Result<()> {
+    let test_dir = unique_test_dir("typed-connector-backups");
+    fs::create_dir_all(&test_dir)
+        .with_context(|| format!("failed to create {}", test_dir.display()))?;
+    let config_path = test_dir.join("watcher.toml");
+    fs::write(
+        &config_path,
+        r#"
+network = "testnet"
+
+[[connectors]]
+name = "primary"
+provider = "solana-validator"
+features = []
+solana_rpc_compatibility = "core"
+rpc = { url = "http://127.0.0.1:8899" }
+
+[connectors.backups]
+rpc-core = ["backup"]
+
+[[connectors]]
+name = "backup"
+provider = "solana-validator"
+features = []
+solana_rpc_compatibility = "core"
+rpc = { url = "https://api.testnet.solana.com" }
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+"#,
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+    let config = Config::load(&config_path)?;
+
+    assert_eq!(
+        config.connectors[0].backups,
+        std::collections::BTreeMap::from([(
+            ModeSourceRequirement::RpcCore,
+            vec!["backup".to_string()]
+        )])
+    );
+    assert_eq!(
+        config.modes.health.commands.rpc_health,
+        ["primary", "backup"]
+    );
+    assert_eq!(
+        config.modes.consensus.commands.epoch_info,
+        ["primary", "backup"]
+    );
+    assert_eq!(
+        config.modes.consensus.commands.vote_accounts,
+        ["primary", "backup"]
+    );
+
+    fs::remove_dir_all(&test_dir)
+        .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+    Ok(())
+}
+
+#[test]
 fn loads_every_committed_profile() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cases = [
@@ -249,11 +314,7 @@ fn loads_every_committed_profile() -> Result<()> {
             );
             assert_eq!(
                 CommandId::InflationRewards.source_requirement(),
-                ModeSourceRequirement {
-                    transport: Transport::Rpc,
-                    solana_rpc_compatibility: Some(SolanaRpcCompatibility::Extended),
-                    feature: Some(ProviderFeature::HistoricalData),
-                }
+                ModeSourceRequirement::RpcHistoricalData
             );
         }
         if relative_path == "config/remote/mainnet.toml" {
