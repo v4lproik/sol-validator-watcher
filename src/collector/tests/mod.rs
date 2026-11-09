@@ -52,6 +52,7 @@ enum MockRpcProfile {
     WrongBlockFeeRewardIdentity,
     NoPerformanceSamples,
     InvalidPerformanceTransactionSplit,
+    InvalidPerformanceTransactionSplitOnce,
     MissingPerformanceTransactionSplit,
     ZeroPerformanceSamplePeriod,
     NoSlotLeader,
@@ -258,7 +259,14 @@ async fn mock_rpc_handler(
         .get("method")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    state.methods.lock().await.push(method.to_string());
+    let method_call_count = {
+        let mut methods = state.methods.lock().await;
+        methods.push(method.to_string());
+        methods
+            .iter()
+            .filter(|recorded| recorded.as_str() == method)
+            .count()
+    };
     state.requests.lock().await.push(request.clone());
     state.authorization_headers.lock().await.push(authorization);
     if matches!(profile, MockRpcProfile::Delayed) {
@@ -398,7 +406,11 @@ async fn mock_rpc_handler(
                 sample["numNonVoteTransactions"] = json!(if matches!(
                     profile,
                     MockRpcProfile::InvalidPerformanceTransactionSplit
-                ) {
+                ) || (matches!(
+                    profile,
+                    MockRpcProfile::InvalidPerformanceTransactionSplitOnce
+                ) && method_call_count == 1)
+                {
                     1_001
                 } else {
                     100

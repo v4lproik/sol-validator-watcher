@@ -32,8 +32,8 @@ probes, and economics collection.
   source selection across RPC and provider-API clients.
 - `runtime/state.rs` owns transactional source-chain reload;
   `runtime/poller.rs` owns dependency guards and startup verification.
-- `config/mod.rs` owns connector transport, compatibility, and provider-feature
-  declarations plus exact per-command route validation.
+- `config/mod.rs` owns connector transport, compatibility, provider-feature,
+  and exact source-type backup declarations plus resolved command-route validation.
 - `websocket.rs` owns websocket reachability only. Do not infer RPC method
   support from websocket success.
 - `metrics/mod.rs` publishes configured routes and the connector that supplied
@@ -58,12 +58,22 @@ probes, and economics collection.
 
 ### Keep command routing deterministic
 
-- Each `modes.<mode>.commands.<command>` array is the complete precedence
-  contract for that command. The first connector that succeeds wins; a failure
-  advances only within that declared route.
+- Each validated command route is the complete precedence contract for that
+  command. Configuration validation appends a connector's matching
+  source-requirement backups immediately after that connector; the first
+  connector that succeeds wins, and a failure advances only within the
+  resolved route.
+- A failed route connector opens failover only when that connector declares
+  backups for the command's exact source requirement. Subsequent commands
+  sharing the connector and requirement skip it for 60 seconds. After the
+  cooldown, admit one actual attempt of the command that caused the failover;
+  its success restores the connector for the whole source requirement, and its
+  failure restarts the cooldown. Inserted backup entries and connectors without
+  a matching backup declaration remain ungated. Do not substitute a broad
+  capability probe, let another command close the gate, or retain sticky global
+  active-provider state.
 - Connector declaration order is inventory, not fallback policy. Do not add
-  numeric priorities, capability overrides, hidden sorting, or global
-  connector-order fallback.
+  numeric priorities, hidden sorting, or global connector-order fallback.
 - Command source requirements keep three independent axes: transport, standard
   Solana RPC compatibility, and provider feature. Never infer one from
   `provider`.

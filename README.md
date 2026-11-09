@@ -47,7 +47,9 @@ Each watcher process loads one self-contained TOML profile. Start from the commi
 - [`config/remote/devnet.toml`](config/remote/devnet.toml) — hosted Devnet endpoints
 - [`config/remote/mainnet.toml`](config/remote/mainnet.toml) — hosted Mainnet monitoring with Puffin economics and Trillium MEV capture enabled
 
-Keep credentials in the ignored root `.env`. Connector names are stable references used by ordered command routes; the first successful connector wins.
+Keep credentials in the ignored root `.env`. Command routes name their primary
+connectors; type-scoped connector backups extend those routes in deterministic
+order. The first successful connector wins.
 
 | Declaration | Purpose |
 | --- | --- |
@@ -57,6 +59,51 @@ Keep credentials in the ignored root `.env`. Connector names are stable referenc
 | `block-fee-rewards` | Confirmed validator block-fee reward reads |
 | `jito-mev-rewards` | Settled Jito validator rewards through its provider API |
 | `trillium-mev-capture` | Completed-epoch MEV, block rewards, priority and signature fees, transactions, compute use, stake, Jito tips, leader slots, and block production through the public Trillium API |
+
+A connector may declare ordered backups for only the source types they can
+replace:
+
+```toml
+[[connectors]]
+name = "helius-primary"
+provider = "helius"
+features = ["historical-data"]
+solana_rpc_compatibility = "extended"
+rpc = { url = "${SOL_MAINNET_RPC_URL}" }
+
+[connectors.backups]
+rpc-core = ["helius-backup"]
+rpc-extended = ["helius-backup"]
+rpc-historical-data = ["helius-backup"]
+
+[[connectors]]
+name = "helius-backup"
+provider = "helius"
+features = ["historical-data"]
+solana_rpc_compatibility = "extended"
+rpc = { url = "${SOL_MAINNET_BACKUP_RPC_URL}" }
+
+[modes.consensus.commands]
+epoch_info = ["helius-primary"]
+vote_accounts = ["helius-primary"]
+recent_performance_samples = ["helius-primary"]
+```
+
+Configuration loading expands the example routes to primary-then-backup order.
+Backup keys are exact: `rpc-core`, `rpc-extended`, `rpc-historical-data`,
+`rpc-block-fee-rewards`, `websocket`, `jito-mev-rewards`, and
+`trillium-mev-capture`. Lists are not recursively expanded. Every named backup
+must exist and satisfy the key's transport, RPC compatibility, and provider
+feature contract.
+
+At runtime, a failed command attempt immediately opens failover for that primary
+connector and exact backup key. Subsequent commands sharing that pair skip the
+primary for 60 seconds. After the cooldown, only the command that caused the
+failover may make one real primary attempt: success restores the primary for the
+whole key, while failure restarts the cooldown. Inserted backup entries remain
+ungated, and other source types remain independent. Reloading a changed source
+configuration installs a newly verified source chain with fresh failover state;
+a rejected reload preserves the active chain and its state.
 
 Run a profile directly with:
 

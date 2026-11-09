@@ -1,10 +1,10 @@
 use super::{config_mtime, RuntimeState};
 use crate::{
-    collector::command::GetHealth,
+    collector::command::{GetCurrentBlockProduction, GetHealth, GetRecentPerformanceSamples},
     mode::CommandId,
     runtime::test_support::{
-        start_capability_probe_server, start_header_recording_capability_probe_server,
-        unique_test_dir,
+        start_capability_probe_server, start_controlled_capability_probe_server,
+        start_header_recording_capability_probe_server, unique_test_dir,
     },
 };
 use anyhow::{Context, Result};
@@ -145,6 +145,118 @@ enabled = false
     fs::remove_dir_all(&test_dir)
         .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
     server_task.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn source_changing_reload_resets_failover_after_candidate_validation() -> Result<()> {
+    fn config_toml(
+        primary_url: &str,
+        backup_url: &str,
+        configured_backup: &str,
+        rpc_options: &str,
+    ) -> String {
+        format!(
+            r#"
+network = "mainnet-beta"
+
+[[connectors]]
+name = "primary"
+provider = "primary-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc = {{ url = "{primary_url}"{rpc_options} }}
+
+[connectors.backups]
+rpc-extended = ["{configured_backup}"]
+
+[[connectors]]
+name = "backup"
+provider = "backup-provider"
+features = []
+solana_rpc_compatibility = "extended"
+rpc = {{ url = "{backup_url}" }}
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+recent_performance_samples = ["primary"]
+
+[modes.leadership.commands]
+current_block_production = ["primary"]
+"#
+        )
+    }
+
+    let (primary_url, primary_control, primary_task) =
+        start_controlled_capability_probe_server(None).await?;
+    let (backup_url, backup_task) = start_capability_probe_server(None).await?;
+    let test_dir = unique_test_dir("reload-failover");
+    fs::create_dir_all(&test_dir)
+        .with_context(|| format!("failed to create {}", test_dir.display()))?;
+    let config_path = test_dir.join("watcher.toml");
+    fs::write(
+        &config_path,
+        config_toml(&primary_url, &backup_url, "backup", ""),
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+    let mut runtime = RuntimeState::load(
+        config_path.clone(),
+        crate::watcher_state::RpcTelemetry::unobserved(),
+    )?;
+
+    primary_control.set_recent_performance_failure(true);
+    let failed_command = runtime
+        .sources
+        .optional(&GetRecentPerformanceSamples)
+        .await
+        .context("backup should satisfy the failed command")?;
+    assert_eq!(failed_command.source.connector.as_ref(), "backup");
+    primary_control.set_recent_performance_failure(false);
+
+    fs::write(
+        &config_path,
+        config_toml(&primary_url, &backup_url, "missing", ""),
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+    runtime.config_modified = UNIX_EPOCH;
+    if runtime.reload_if_needed().await.is_ok() {
+        anyhow::bail!("invalid source-chain candidate should be rejected");
+    }
+
+    let preserved_failover = runtime
+        .sources
+        .optional(&GetCurrentBlockProduction)
+        .await
+        .context("active backup should remain available after rejected reload")?;
+    assert_eq!(preserved_failover.source.connector.as_ref(), "backup");
+
+    fs::write(
+        &config_path,
+        config_toml(
+            &primary_url,
+            &backup_url,
+            "backup",
+            ", request_timeout_sec = 31",
+        ),
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+    runtime.reload_if_needed().await?;
+
+    let reset_failover = runtime
+        .sources
+        .optional(&GetCurrentBlockProduction)
+        .await
+        .context("primary should be retried after accepted source-chain reload")?;
+    assert_eq!(reset_failover.source.connector.as_ref(), "primary");
+
+    fs::remove_dir_all(&test_dir)
+        .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+    primary_task.abort();
+    backup_task.abort();
     Ok(())
 }
 
