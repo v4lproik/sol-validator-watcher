@@ -105,6 +105,9 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     );
     let epoch_info = epoch_info?;
     let vote_accounts = vote_accounts?;
+    let cluster_nodes = cluster_nodes?;
+    let recent_performance = recent_performance?;
+    let node_status = node_status?;
     let mut data_sources = vec![
         epoch_info.source.clone().into(),
         vote_accounts.source.clone().into(),
@@ -194,11 +197,14 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
             Ok((
                 Some(inflation_rewards?),
                 Some(block_production?),
-                jito_mev_reward,
-                trillium_mev_capture,
+                jito_mev_reward?,
+                trillium_mev_capture?,
             ))
         },
     );
+    let current_block_production = current_block_production?;
+    let current_schedule = current_schedule?;
+    let next_schedule = next_schedule?;
 
     let (inflation_rewards, reward_epoch_block_production, jito_mev_reward, trillium_mev_capture) =
         economics_outputs?;
@@ -250,7 +256,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
                     slots: &slots,
                     identity: &target.identity,
                 };
-                match sources.optional(&command).await {
+                match sources.optional(&command).await? {
                     Some(resolved) => {
                         data_sources.push(resolved.source.into());
                         resolved.value

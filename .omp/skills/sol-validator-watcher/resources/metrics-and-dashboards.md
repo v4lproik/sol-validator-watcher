@@ -36,10 +36,16 @@ operator-facing semantics.
   command requirement as `required_solana_rpc_compatibility`, plus independent
   provider, transport, and optional required-feature labels. Do not infer
   successful execution from a configured route or connector.
-- Watcher readiness, completed rounds, the bounded clean-round streak, failed
-  RPC attempts, HTTP response classes, and exact 200/403/429/500 counts are
-  separate metrics. Readiness is zero until five failure-free completed rounds
-  and must not be inferred from process liveness or a configured route.
+- Watcher readiness, source degradation, completed rounds, the bounded
+  successful-round streak, failed RPC attempts, HTTP response classes, and exact
+  200/403/429/500 counts are separate metrics. Readiness is zero until five
+  complete rounds; a successful backup snapshot remains ready while
+  `sol_watcher_degraded` is one. Never infer either state from process liveness or
+  a configured route.
+- Export one bounded `sol_source_failover_status` series per configured circuit
+  and cumulative transitions by connector, exact source requirement, scope, and
+  optional command. Reset circuit gauges only when a source-changing reload
+  installs a new inventory; preserve them across config-only or rejected reloads.
 - Reset connector-attributed WebSocket probe failure counters when a new
   configuration is accepted, initialize configured connectors at zero, and
   increment every failed fallback attempt rather than only route exhaustion.

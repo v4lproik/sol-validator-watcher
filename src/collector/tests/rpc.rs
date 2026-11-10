@@ -15,7 +15,7 @@ fn rpc_client_constructor_rejects_bad_urls_without_exposing_queries() -> Result<
     ] {
         let Err(error) = RpcClient::try_new(
             &rpc_transport(&url, 1),
-            crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+            crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
         ) else {
             anyhow::bail!("invalid RPC URL should fail during client construction");
         };
@@ -34,7 +34,7 @@ async fn get_block_production_for_range_batches_large_requests() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let block_production = client.get_block_production_for_range(700, 10_799).await?;
@@ -51,7 +51,7 @@ async fn get_cluster_nodes_decodes_validator_protocol_metadata() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let nodes = client.get_cluster_nodes().await?;
@@ -75,7 +75,7 @@ async fn finalized_block_fee_rewards_cache_produced_blocks_and_retry_skipped_slo
     transport.commitment = "finalized".to_string();
     let client = RpcClient::try_new(
         &transport,
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("block-reward-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("block-reward-rpc"),
     )?;
 
     let rewards = client
@@ -148,7 +148,7 @@ async fn confirmed_block_fee_rewards_are_refetched() -> Result<()> {
         start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("block-reward-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("block-reward-rpc"),
     )?;
 
     for _ in 0..2 {
@@ -182,7 +182,7 @@ async fn missing_transaction_breakdown_preserves_total_performance_rates() -> Re
             .await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let performance = client
@@ -208,7 +208,7 @@ async fn malformed_performance_samples_fail_instead_of_exporting_rates() -> Resu
         let (rpc_url, server_task) = start_mock_rpc_server_with_profile(profile).await?;
         let client = RpcClient::try_new(
             &rpc_transport(&rpc_url, 5),
-            crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+            crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
         )?;
 
         assert!(client.get_cluster_performance_metrics().await.is_err());
@@ -221,9 +221,9 @@ async fn malformed_performance_samples_fail_instead_of_exporting_rates() -> Resu
 async fn call_optional_surfaces_json_rpc_errors_from_http_400() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let mailbox = WatcherStateMailbox::new();
-    let telemetry = mailbox.rpc_telemetry();
+    let telemetry = mailbox.runtime_telemetry();
     let metrics = Arc::new(Metrics::new()?);
-    let (state, actor) = mailbox.start("rpc-telemetry-test", Arc::clone(&metrics));
+    let (state, actor) = mailbox.start("rpc-telemetry-test", &[], Arc::clone(&metrics));
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
         telemetry.for_connector("mock-rpc"),
@@ -276,7 +276,7 @@ async fn get_inflation_rewards_batches_requests_at_rpc_limit() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
     let addresses = (0..205)
         .map(|index| format!("vote-{index}"))
@@ -311,7 +311,7 @@ async fn get_account_balances_batches_targets_and_preserves_absence() -> Result<
         start_recording_mock_rpc_server(MockRpcProfile::Default).await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
     let addresses = (0..51)
         .map(|index| {
@@ -364,7 +364,7 @@ async fn missing_vote_account_space_preserves_balances_and_omits_vat() -> Result
         start_mock_rpc_server_with_profile(MockRpcProfile::NoAccountSpace).await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let targets = [AccountBalanceTarget {
@@ -389,7 +389,7 @@ async fn node_health_preserves_structured_catchup_distance() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server_with_profile(MockRpcProfile::Behind).await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let health = client.node_health().await?;
@@ -408,7 +408,7 @@ async fn node_health_classifies_behind_error_before_http_status() -> Result<()> 
         start_mock_rpc_server_with_profile(MockRpcProfile::BehindHttp503).await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let health = client.node_health().await?;
@@ -428,7 +428,7 @@ async fn rpc_health_errors_do_not_expose_secret_query_parameters() -> Result<()>
     let secret = "do-not-expose-this-api-key";
     let client = RpcClient::try_new(
         &rpc_transport(&format!("{rpc_url}/?api-key={secret}"), 5),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("mock-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
     )?;
 
     let Err(error) = client.node_health().await else {
@@ -464,7 +464,7 @@ headers = {{ authorization = "Bearer {secret}" }}
     assert!(!debug.contains(&rpc_url));
     let client = RpcClient::try_new(
         &transport,
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("header-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("header-rpc"),
     )?;
 
     assert!(client.node_health().await?.is_healthy());
@@ -491,7 +491,7 @@ headers = {{ "X-API-Key" = "{secret}" }}
     ))?;
     let client = RpcClient::try_new(
         &transport,
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("redirect-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("redirect-rpc"),
     )?;
 
     let result = client.node_health().await;
@@ -514,7 +514,7 @@ async fn rpc_transport_sends_connector_commitment_on_wire() -> Result<()> {
     transport.commitment = "finalized".to_string();
     let client = RpcClient::try_new(
         &transport,
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("finalized-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("finalized-rpc"),
     )?;
 
     let epoch_info = client.get_epoch_info().await;
@@ -541,7 +541,7 @@ async fn rpc_transport_rejects_response_bodies_over_the_configured_limit() -> Re
     transport.response_size_limit_bytes = 8;
     let client = RpcClient::try_new(
         &transport,
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("bounded-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("bounded-rpc"),
     )?;
 
     let Err(error) = client.node_health().await else {
@@ -564,7 +564,7 @@ async fn rpc_transport_enforces_total_request_timeout() -> Result<()> {
         start_mock_rpc_server_with_profile(MockRpcProfile::Delayed).await?;
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 1),
-        crate::watcher_state::RpcTelemetry::unobserved().for_connector("delayed-rpc"),
+        crate::watcher_state::RuntimeTelemetry::unobserved().for_connector("delayed-rpc"),
     )?;
     let started = std::time::Instant::now();
 
@@ -598,8 +598,10 @@ async fn connector_capability_probe_rejects_extended_profile_without_exposing_en
         }],
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     let Err(error) = sources.verify_capabilities().await else {
         anyhow::bail!("extended compatibility without extended methods should fail");
     };
@@ -615,9 +617,12 @@ async fn connector_capability_probe_rejects_extended_profile_without_exposing_en
     assert!(!message.contains(secret), "{message}");
 
     config.connectors[0].solana_rpc_compatibility = Some(SolanaRpcCompatibility::Core);
-    SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-        .verify_capabilities()
-        .await?;
+    SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?
+    .verify_capabilities()
+    .await?;
     server_task.abort();
     Ok(())
 }
@@ -638,9 +643,12 @@ async fn connector_capability_probe_uses_only_declared_core_methods() -> Result<
         ..Config::default()
     };
 
-    SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-        .verify_capabilities()
-        .await?;
+    SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?
+    .verify_capabilities()
+    .await?;
     server_task.abort();
     Ok(())
 }
@@ -662,7 +670,7 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
     };
     SourceChain::from_config(
         &core_config,
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
     )?
     .verify_capabilities()
     .await?;
@@ -698,7 +706,7 @@ async fn connector_capability_probe_calls_exact_core_and_extended_method_sets() 
     };
     SourceChain::from_config(
         &extended_config,
-        crate::watcher_state::RpcTelemetry::unobserved(),
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
     )?
     .verify_capabilities()
     .await?;
@@ -746,9 +754,12 @@ async fn connector_capability_probe_validates_method_specific_payloads() -> Resu
         ..Config::default()
     };
 
-    SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-        .verify_capabilities()
-        .await?;
+    SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?
+    .verify_capabilities()
+    .await?;
     server_task.abort();
     Ok(())
 }
@@ -769,10 +780,12 @@ async fn connector_capability_probe_checks_declared_block_fee_rewards() -> Resul
         ..Config::default()
     };
 
-    let Err(error) =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-            .verify_capabilities()
-            .await
+    let Err(error) = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?
+    .verify_capabilities()
+    .await
     else {
         anyhow::bail!("missing getBlock support must fail the declared block-fee capability");
     };
@@ -806,10 +819,12 @@ async fn connector_capability_probe_checks_every_extended_rpc_method() -> Result
             ..Config::default()
         };
 
-        let Err(error) =
-            SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-                .verify_capabilities()
-                .await
+        let Err(error) = SourceChain::from_config(
+            &config,
+            crate::watcher_state::RuntimeTelemetry::unobserved(),
+        )?
+        .verify_capabilities()
+        .await
         else {
             anyhow::bail!(
                 "{expected_method} must be required by extended Solana RPC compatibility"
@@ -849,10 +864,12 @@ async fn connector_capability_probe_rejects_empty_required_results() -> Result<(
             ..Config::default()
         };
 
-        let Err(error) =
-            SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-                .verify_capabilities()
-                .await
+        let Err(error) = SourceChain::from_config(
+            &config,
+            crate::watcher_state::RuntimeTelemetry::unobserved(),
+        )?
+        .verify_capabilities()
+        .await
         else {
             anyhow::bail!("empty required RPC results must fail capability validation");
         };
@@ -879,10 +896,12 @@ async fn connector_capability_probe_reports_declared_historical_data_feature() -
         }],
         ..Config::default()
     };
-    let Err(error) =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?
-            .verify_capabilities()
-            .await
+    let Err(error) = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?
+    .verify_capabilities()
+    .await
     else {
         anyhow::bail!("missing historical-data RPC method should fail");
     };

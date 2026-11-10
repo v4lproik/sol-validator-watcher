@@ -96,14 +96,15 @@ Backup keys are exact: `rpc-core`, `rpc-extended`, `rpc-historical-data`,
 must exist and satisfy the key's transport, RPC compatibility, and provider
 feature contract.
 
-At runtime, a failed command attempt immediately opens failover for that primary
-connector and exact backup key. Subsequent commands sharing that pair skip the
-primary for 60 seconds. After the cooldown, only the command that caused the
-failover may make one real primary attempt: success restores the primary for the
-whole key, while failure restarts the cooldown. Inserted backup entries remain
-ungated, and other source types remain independent. Reloading a changed source
-configuration installs a newly verified source chain with fresh failover state;
-a rejected reload preserves the active chain and its state.
+At runtime, transport or connectivity failures open failover for the primary
+connector and exact backup key, so compatible commands share the outage.
+HTTP, protocol, decode, JSON-RPC, missing-result, and domain failures open only
+the causal command circuit. Each open circuit skips the primary for 60 seconds,
+then admits one real primary request; success recovers the circuits that request
+probed, while failure restarts the applicable cooldown. Inserted backup entries
+remain ungated. Reloading changed source configuration installs a newly verified
+chain with fresh circuit state; config-only and rejected reloads preserve active
+circuits.
 
 Run a profile directly with:
 
@@ -152,7 +153,7 @@ automatic rollback, backup/restore procedure, and release gate.
 | <http://127.0.0.1:9090> | Local Prometheus |
 | <http://127.0.0.1:3001> | Local Grafana dashboards |
 
-Readiness requires five consecutive clean polling rounds. Recoverable collection failures retain the last successful snapshot while marking affected modes and readiness down.
+Readiness requires five consecutive complete polling rounds. Successful fallback snapshots remain ready while `sol_watcher_degraded` reports reduced source redundancy; a failed whole poll retains the last successful snapshot and revokes readiness.
 
 Grafana includes overview, consensus, leadership, economics, and MEV Capture dashboards. The MEV dashboard compares Trillium's latest completed-epoch capture, allocations, block rewards, priority and signature fees, transactions, compute use, Jito tips, stake, leader slots, produced blocks, and efficiency while keeping independent published fields separate. The economics dashboard compares selected watched validators by inflation reward, reward-epoch blocks, reward per produced block, account balances, VAT reserve, and VAT runway, then visualizes network epoch progress, recent slot duration, time to epoch end, and each validator's next leader ETA. Missing provider or account samples render as no data instead of zero. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
 

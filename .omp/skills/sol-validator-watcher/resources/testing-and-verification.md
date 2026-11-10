@@ -65,11 +65,12 @@ then complete the repository's required local gates.
 
 A behavioral change is not complete until the changed surface runs:
 
-- CLI/runtime: start the watcher with representative config, observe five clean
-  polls, fetch `/healthz`, `/readyz`, and `/metrics`, force one post-startup
-  collection failure, prove that health remains up while readiness and snapshot
+- CLI/runtime: start the watcher with representative config, observe five
+  successful polls, fetch `/healthz`, `/readyz`, and `/metrics`, force one
+  primary failure with a successful backup and prove readiness stays up while
+  degradation becomes visible, then fail the whole poll, prove readiness and
   freshness become unhealthy, restore the source, observe readmission after five
-  new clean polls, trigger shutdown during a wait, and observe a clean exit.
+  successful polls, trigger shutdown during a wait, and observe a clean exit.
 - Credential-bearing provider URLs: inject complete URLs from the local
   environment, never command arguments or output; exercise each configured
   transport and assert returned errors do not expose secret query parameters.

@@ -6,7 +6,7 @@ use crate::{
     config::{Config, ConnectorConfig, EconomicsCommands, EconomicsModeConfig, ModesConfig},
     mode::{CommandId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
-    watcher_state::RpcTelemetry,
+    watcher_state::RuntimeTelemetry,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -203,7 +203,7 @@ async fn jito_reward_command_falls_back_to_the_next_connector() -> Result<()> {
         },
         ..Config::default()
     };
-    let sources = SourceChain::from_config(&config, RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(&config, RuntimeTelemetry::unobserved())?;
 
     let resolved = sources
         .required(&GetJitoMevReward {
@@ -257,7 +257,7 @@ async fn jito_transport_errors_do_not_expose_secret_query_parameters() -> Result
         },
         ..Config::default()
     };
-    let sources = SourceChain::from_config(&config, RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(&config, RuntimeTelemetry::unobserved())?;
 
     let error = match sources
         .required(&GetJitoMevReward {
@@ -285,7 +285,7 @@ async fn economics_snapshot_collects_jito_reward_only_when_mode_is_enabled() -> 
     )
     .await?;
     let config = snapshot_config(rpc_url, api_url, true);
-    let sources = SourceChain::from_config(&config, RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(&config, RuntimeTelemetry::unobserved())?;
     ensure_economics_supported(&sources, &config).await?;
 
     let snapshot = collect_snapshot(&sources, &config).await?;
@@ -314,7 +314,7 @@ async fn disabled_economics_mode_does_not_request_jito_rewards() -> Result<()> {
     let (rpc_url, rpc_server) = start_mock_rpc_server().await?;
     let (api_url, jito_server, requests) = start_mock_jito_server(StatusCode::OK, "[]").await?;
     let config = snapshot_config(rpc_url, api_url, false);
-    let sources = SourceChain::from_config(&config, RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(&config, RuntimeTelemetry::unobserved())?;
 
     let snapshot = collect_snapshot(&sources, &config).await?;
     assert_eq!(snapshot.economics, None);

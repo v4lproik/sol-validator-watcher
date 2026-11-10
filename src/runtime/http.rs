@@ -1,12 +1,12 @@
 //! HTTP surfaces for Prometheus metrics, process health, and traffic readiness.
 //!
-//! `/healthz` reports process liveness, while `/readyz` reflects the watcher-state
-//! actor's clean-poll admission contract.
+//! `/healthz` reports process liveness, while `/readyz` reflects successful-poll
+//! admission independently from source-redundancy degradation.
 
 use crate::{
     metrics::Metrics,
     tasks::{Shutdown, TaskExit},
-    watcher_state::{WatcherState, ADMISSION_CLEAN_POLL_ROUNDS},
+    watcher_state::{WatcherState, ADMISSION_SUCCESSFUL_POLL_ROUNDS},
 };
 use anyhow::{bail, Context, Result};
 use axum::{extract::State, http::StatusCode, routing::get, Router};
@@ -114,21 +114,22 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
-/// Returns `200` only after the watcher reaches its clean-poll admission threshold.
+/// Returns `200` after the watcher reaches its successful-poll admission threshold.
 pub(super) async fn readiness_handler(State(state): State<AppState>) -> (StatusCode, String) {
-    let (ready, clean_poll_rounds) = state.watcher_state.readiness();
+    let (ready, degraded, successful_poll_rounds) = state.watcher_state.readiness();
     if ready {
+        let qualifier = if degraded { " but degraded" } else { "" };
         (
             StatusCode::OK,
             format!(
-                "ready: {clean_poll_rounds}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+                "ready{qualifier}: {successful_poll_rounds}/{ADMISSION_SUCCESSFUL_POLL_ROUNDS} consecutive successful polling rounds"
             ),
         )
     } else {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             format!(
-                "warming up: {clean_poll_rounds}/{ADMISSION_CLEAN_POLL_ROUNDS} consecutive clean polling rounds"
+                "warming up: {successful_poll_rounds}/{ADMISSION_SUCCESSFUL_POLL_ROUNDS} consecutive successful polling rounds"
             ),
         )
     }

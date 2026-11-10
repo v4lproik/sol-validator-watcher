@@ -6,9 +6,10 @@
 use crate::{
     collector::{GossipObservation, Snapshot, WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS},
     config::{Config, ConnectorConfig},
+    failover::{FailoverKey, FailoverStatus, FailoverTransition},
     mode::{ModeId, ProviderFeature, SolanaRpcCompatibility},
     source::SourceChain,
-    watcher_state::RpcResponseCounts,
+    watcher_state::WatcherStateSnapshot,
 };
 use anyhow::{Context, Result};
 use prometheus::{
@@ -46,8 +47,11 @@ pub struct Metrics {
     sol_config_reload_total: IntCounterVec,
     sol_watcher_up: IntGaugeVec,
     sol_watcher_ready: IntGaugeVec,
+    sol_watcher_degraded: IntGaugeVec,
     sol_watcher_poll_round_count: IntGaugeVec,
-    sol_watcher_clean_poll_streak: IntGaugeVec,
+    sol_watcher_successful_poll_streak: IntGaugeVec,
+    sol_source_failover_status: IntGaugeVec,
+    sol_source_failover_transitions_total: IntCounterVec,
     sol_watcher_poll_interval_seconds: IntGaugeVec,
     sol_last_successful_snapshot_timestamp_seconds: GaugeVec,
     sol_snapshot_duration_seconds: HistogramVec,
@@ -260,33 +264,49 @@ impl Metrics {
 
     /// Publishes one coherent watcher-state snapshot.
     ///
-    /// Response counters are cumulative since process start; stale network series
-    /// are removed before the new values are written.
-    pub fn update_watcher_state(
+    /// Response counters are cumulative since process start; stale network and
+    /// failover-status series are removed before the new values are written.
+    pub(crate) fn update_watcher_state(
         &self,
-        network: &str,
-        ready: bool,
-        completed_poll_rounds: u64,
-        clean_poll_rounds: u8,
-        responses: RpcResponseCounts,
+        state: &WatcherStateSnapshot,
+        failovers: &std::collections::BTreeMap<FailoverKey, FailoverStatus>,
     ) {
         self.sol_watcher_ready.reset();
+        self.sol_watcher_degraded.reset();
         self.sol_watcher_poll_round_count.reset();
-        self.sol_watcher_clean_poll_streak.reset();
+        self.sol_watcher_successful_poll_streak.reset();
+        self.sol_source_failover_status.reset();
         self.sol_rpc_http_response_class_count.reset();
         self.sol_rpc_http_response_status_count.reset();
         self.sol_rpc_request_failure_count.reset();
 
         self.sol_watcher_ready
-            .with_label_values(&[network])
-            .set(i64::from(ready));
+            .with_label_values(&[state.network.as_ref()])
+            .set(i64::from(state.ready));
+        self.sol_watcher_degraded
+            .with_label_values(&[state.network.as_ref()])
+            .set(i64::from(state.degraded));
         self.sol_watcher_poll_round_count
-            .with_label_values(&[network])
-            .set(metric_count(completed_poll_rounds));
-        self.sol_watcher_clean_poll_streak
-            .with_label_values(&[network])
-            .set(i64::from(clean_poll_rounds));
+            .with_label_values(&[state.network.as_ref()])
+            .set(metric_count(state.completed_poll_rounds));
+        self.sol_watcher_successful_poll_streak
+            .with_label_values(&[state.network.as_ref()])
+            .set(i64::from(state.successful_poll_rounds));
 
+        for (key, status) in failovers {
+            self.sol_source_failover_status
+                .with_label_values(&[
+                    state.network.as_ref(),
+                    key.connector.as_ref(),
+                    key.provider.as_ref(),
+                    key.source_requirement.as_str(),
+                    key.scope.as_str(),
+                    key.command.map_or("", |command| command.as_str()),
+                ])
+                .set(status.metric_value());
+        }
+
+        let responses = state.rpc_responses;
         for (status_class, count) in [
             ("2xx", responses.successful_2xx),
             ("3xx", responses.redirection_3xx),
@@ -295,7 +315,7 @@ impl Metrics {
             ("other", responses.other),
         ] {
             self.sol_rpc_http_response_class_count
-                .with_label_values(&[network, status_class])
+                .with_label_values(&[state.network.as_ref(), status_class])
                 .set(metric_count(count));
         }
         for (status_code, count) in [
@@ -305,12 +325,29 @@ impl Metrics {
             ("500", responses.status_500),
         ] {
             self.sol_rpc_http_response_status_count
-                .with_label_values(&[network, status_code])
+                .with_label_values(&[state.network.as_ref(), status_code])
                 .set(metric_count(count));
         }
         self.sol_rpc_request_failure_count
-            .with_label_values(&[network])
+            .with_label_values(&[state.network.as_ref()])
             .set(metric_count(responses.failed_attempts));
+    }
+    /// Increments the durable counter for one committed failover transition.
+    pub fn record_failover_transition(&self, network: &str, transition: &FailoverTransition) {
+        self.sol_source_failover_transitions_total
+            .with_label_values(&[
+                network,
+                transition.key.connector.as_ref(),
+                transition.key.provider.as_ref(),
+                transition.key.source_requirement.as_str(),
+                transition.key.scope.as_str(),
+                transition
+                    .key
+                    .command
+                    .map_or("", |command| command.as_str()),
+                transition.kind.as_str(),
+            ])
+            .inc();
     }
 
     /// Replaces the latest HTTP RPC health series.

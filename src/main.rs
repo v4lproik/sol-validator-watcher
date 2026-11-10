@@ -13,6 +13,7 @@
 
 mod collector;
 mod config;
+mod failover;
 mod labels;
 mod metrics;
 mod mode;

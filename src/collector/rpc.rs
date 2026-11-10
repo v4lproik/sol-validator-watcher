@@ -9,6 +9,7 @@ use super::model::{
 };
 use crate::{
     config::{has_explicit_authority, RpcTransportConfig},
+    failover::tag_source_requirement_failure,
     mode::{ProviderFeature, SolanaRpcCompatibility},
     watcher_state::{ConnectorRpcTelemetry, RpcRequestOutcome},
 };
@@ -1012,6 +1013,7 @@ impl RpcClient {
             .send()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .with_context(|| format!("{method} request failed"))?;
         let (status, body) = self.read_response_body(response, method).await?;
         self.telemetry.record_response(status.as_u16())?;
@@ -1044,6 +1046,7 @@ impl RpcClient {
             .send()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .with_context(|| format!("{method} batch request failed"))?;
         let (status, body) = self
             .read_response_body(response, &format!("{method} batch"))
@@ -1086,6 +1089,7 @@ impl RpcClient {
             .chunk()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .with_context(|| format!("{operation} response body read failed"))?
         {
             if chunk.len() > self.response_size_limit_bytes.saturating_sub(body.len()) {

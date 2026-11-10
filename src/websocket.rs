@@ -5,6 +5,7 @@
 
 use crate::{
     config::{has_explicit_authority, WebsocketTransportConfig, WEBSOCKET_RESERVED_HEADERS},
+    failover::tag_source_requirement_failure,
     watcher_state::ConnectorWebsocketTelemetry,
 };
 use anyhow::{bail, Context, Result};
@@ -15,6 +16,7 @@ use tokio_tungstenite::{
     tungstenite::{
         client::IntoClientRequest,
         http::{HeaderMap, HeaderName, HeaderValue, Uri},
+        Error as WebsocketError,
     },
 };
 
@@ -106,7 +108,9 @@ impl WebsocketProbeClient {
         request.headers_mut().extend(self.headers.clone());
         let (stream, _) = timeout(self.timeout, connect_async(request))
             .await
+            .map_err(tag_source_requirement_failure)
             .context("websocket probe timed out")?
+            .map_err(classify_connect_error)
             .context("failed to connect websocket")?;
 
         drop(stream);
@@ -114,18 +118,35 @@ impl WebsocketProbeClient {
     }
 }
 
+fn classify_connect_error(error: WebsocketError) -> anyhow::Error {
+    if matches!(
+        error,
+        WebsocketError::ConnectionClosed | WebsocketError::Io(_) | WebsocketError::Tls(_)
+    ) {
+        tag_source_requirement_failure(error)
+    } else {
+        error.into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::WebsocketProbeClient;
-    use crate::watcher_state::{ConnectorWebsocketTelemetry, RpcTelemetry};
+    use super::{classify_connect_error, WebsocketError, WebsocketProbeClient};
+    use crate::{
+        failover::{classify_failure, FailoverScope},
+        watcher_state::{ConnectorWebsocketTelemetry, RuntimeTelemetry},
+    };
     use anyhow::Result;
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
+    use std::{
+        io,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
     };
 
     fn telemetry() -> ConnectorWebsocketTelemetry {
-        RpcTelemetry::unobserved().for_websocket_connector("websocket-test")
+        RuntimeTelemetry::unobserved().for_websocket_connector("websocket-test")
     }
 
     struct HeaderObserver {
@@ -151,6 +172,22 @@ mod tests {
             );
             Ok(response)
         }
+    }
+
+    #[test]
+    fn connect_errors_distinguish_transport_from_http_rejection() -> Result<()> {
+        let transport = classify_connect_error(WebsocketError::Io(io::Error::other("offline")));
+        assert_eq!(
+            classify_failure(&transport),
+            FailoverScope::SourceRequirement
+        );
+
+        let response = tokio_tungstenite::tungstenite::http::Response::builder()
+            .status(503)
+            .body(None)?;
+        let rejection = classify_connect_error(WebsocketError::Http(Box::new(response)));
+        assert_eq!(classify_failure(&rejection), FailoverScope::Command);
+        Ok(())
     }
 
     #[test]

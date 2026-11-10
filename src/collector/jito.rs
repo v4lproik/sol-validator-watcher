@@ -1,7 +1,10 @@
 //! Bounded Jito validator-reward API client and epoch-stable response cache.
 
 use super::JitoMevReward;
-use crate::config::{has_explicit_authority, HttpTransportConfig};
+use crate::{
+    config::{has_explicit_authority, HttpTransportConfig},
+    failover::tag_source_requirement_failure,
+};
 use anyhow::{bail, Context, Result};
 use reqwest::{Client, Url};
 use serde::{
@@ -111,6 +114,7 @@ impl JitoClient {
             .send()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .context("Jito validator rewards request failed")?;
         let status = response.status();
         if !status.is_success() {
@@ -132,6 +136,7 @@ impl JitoClient {
             .chunk()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .context("Jito validator rewards response body read failed")?
         {
             if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(body.len()) {

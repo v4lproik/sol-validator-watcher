@@ -121,7 +121,7 @@
             </div>
             <div>
               <dt>5</dt>
-              <dd>clean polls to ready</dd>
+              <dd>successful polls to ready</dd>
             </div>
             <div>
               <dt>Prometheus</dt>
@@ -359,7 +359,7 @@
               <h2 id="workflow-title">From public key to a clear answer.</h2>
             </div>
             <p>
-              Start with a configured validator key, compare its state with the network, then verify recovery through clean polling rounds.
+              Start with a configured validator key and snapshot availability, compare validator state and source degradation with the network, then verify recovery through successful polling rounds.
             </p>
           </div>
 
@@ -379,8 +379,8 @@
             <li>
               <span class="step-number step-verify">3</span>
               <p class="step-label">Verify</p>
-              <h3>Observe a clean recovery.</h3>
-              <p>Five consecutive clean polling rounds restore readiness while failed modes and stale snapshots stay explicit.</p>
+              <h3>Observe recovery.</h3>
+              <p>Five consecutive complete polling rounds restore readiness; active source failover, failed modes, and stale snapshots stay explicit.</p>
             </li>
           </ol>
 

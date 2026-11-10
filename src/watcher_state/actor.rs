@@ -5,19 +5,20 @@
 
 use super::{PollCompletion, RpcResponseCounts, WatcherStateSnapshot};
 use crate::{
+    failover::{FailoverKey, FailoverStatus, FailoverTransition},
     metrics::Metrics,
     tasks::{Shutdown, TaskExit},
 };
 use anyhow::{anyhow, Result};
-use std::{fmt, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt, sync::Arc, time::Duration};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     time::{interval, MissedTickBehavior},
 };
 use tracing::info;
 
-/// Consecutive clean polling rounds required before readiness admission.
-pub(crate) const ADMISSION_CLEAN_POLL_ROUNDS: u8 = 5;
+/// Consecutive successful polling rounds required before readiness admission.
+pub(crate) const ADMISSION_SUCCESSFUL_POLL_ROUNDS: u8 = 5;
 const WATCHER_STATE_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Builder that creates all handles before transferring the receiver to the actor.
@@ -26,9 +27,9 @@ pub(crate) struct WatcherStateMailbox {
     command_receiver: mpsc::UnboundedReceiver<WatcherStateCommand>,
 }
 
-/// Cloneable RPC event producer preserving actor command ordering.
+/// Cloneable runtime event producer shared by source routing and connector clients.
 #[derive(Clone)]
-pub(crate) struct RpcTelemetry {
+pub(crate) struct RuntimeTelemetry {
     commands: mpsc::UnboundedSender<WatcherStateCommand>,
     #[cfg(test)]
     _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
@@ -75,6 +76,7 @@ pub(crate) struct WatcherStateActor {
     snapshots: watch::Sender<WatcherStateSnapshot>,
     state: WatcherStateSnapshot,
     poll: PollState,
+    failovers: BTreeMap<FailoverKey, FailoverStatus>,
     previous_responses: RpcResponseCounts,
     metrics: Arc<Metrics>,
 }
@@ -102,8 +104,16 @@ enum WatcherStateCommand {
         misses: u64,
         methods_requested: u64,
     },
+    RecordFailoverTransition {
+        transition: FailoverTransition,
+    },
     ResetAdmission {
         network: Arc<str>,
+        reply: oneshot::Sender<()>,
+    },
+    ResetRuntime {
+        network: Arc<str>,
+        failovers: Vec<FailoverKey>,
         reply: oneshot::Sender<()>,
     },
     BeginPoll {
@@ -118,7 +128,7 @@ enum WatcherStateCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PollState {
     Idle,
-    Active { dirty: bool },
+    Active,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -191,9 +201,9 @@ impl WatcherStateMailbox {
         }
     }
 
-    /// Returns an RPC telemetry producer attached to this mailbox.
-    pub(crate) fn rpc_telemetry(&self) -> RpcTelemetry {
-        RpcTelemetry {
+    /// Returns source-routing and connector telemetry attached to this mailbox.
+    pub(crate) fn runtime_telemetry(&self) -> RuntimeTelemetry {
+        RuntimeTelemetry {
             commands: self.commands.clone(),
             #[cfg(test)]
             _receiver_guard: None,
@@ -204,23 +214,24 @@ impl WatcherStateMailbox {
     pub(crate) fn start(
         self,
         network: &str,
+        failover_inventory: &[FailoverKey],
         metrics: Arc<Metrics>,
     ) -> (WatcherState, WatcherStateActor) {
+        let failovers = failover_inventory
+            .iter()
+            .cloned()
+            .map(|key| (key, FailoverStatus::Primary))
+            .collect::<BTreeMap<_, _>>();
         let state = WatcherStateSnapshot::new(network);
         metrics.reset_runtime_observations(network);
-        metrics.update_watcher_state(
-            state.network.as_ref(),
-            state.ready,
-            state.completed_poll_rounds,
-            state.clean_poll_rounds,
-            state.rpc_responses,
-        );
+        metrics.update_watcher_state(&state, &failovers);
         let (snapshot_sender, snapshots) = watch::channel(state.clone());
         let actor = WatcherStateActor {
             commands: self.command_receiver,
             snapshots: snapshot_sender,
             state,
             poll: PollState::Idle,
+            failovers,
             previous_responses: RpcResponseCounts::default(),
             metrics,
         };
@@ -232,8 +243,8 @@ impl WatcherStateMailbox {
     }
 }
 
-impl RpcTelemetry {
-    /// Binds request observations from this handle to one configured connector.
+impl RuntimeTelemetry {
+    /// Binds RPC observations from this handle to one configured connector.
     pub(crate) fn for_connector(&self, connector: &str) -> ConnectorRpcTelemetry {
         ConnectorRpcTelemetry {
             commands: self.commands.clone(),
@@ -243,7 +254,7 @@ impl RpcTelemetry {
         }
     }
 
-    /// Binds WebSocket probe failures from this handle to one configured connector.
+    /// Binds WebSocket observations from this handle to one configured connector.
     pub(crate) fn for_websocket_connector(&self, connector: &str) -> ConnectorWebsocketTelemetry {
         ConnectorWebsocketTelemetry {
             commands: self.commands.clone(),
@@ -253,6 +264,14 @@ impl RpcTelemetry {
         }
     }
 
+    /// Queues one committed source failover transition.
+    pub(crate) fn record_failover_transition(&self, transition: FailoverTransition) -> Result<()> {
+        self.commands
+            .send(WatcherStateCommand::RecordFailoverTransition { transition })
+            .map_err(|_| {
+                anyhow!("watcher state actor stopped before recording a failover transition")
+            })
+    }
     #[cfg(test)]
     /// Queues one received HTTP response status for classification.
     pub(crate) fn record_response(&self, status: u16) -> Result<()> {
@@ -281,7 +300,7 @@ pub(crate) struct ConnectorRpcTelemetry {
 }
 
 impl ConnectorRpcTelemetry {
-    /// Queues one received HTTP response status for readiness classification.
+    /// Queues one received HTTP response status for bounded operator telemetry.
     pub(crate) fn record_response(&self, status: u16) -> Result<()> {
         self.commands
             .send(WatcherStateCommand::RecordRpcResponse { status })
@@ -349,7 +368,7 @@ impl ConnectorWebsocketTelemetry {
 }
 
 impl WatcherState {
-    /// Resets readiness admission and switches the active network atomically.
+    /// Resets readiness admission while preserving active source failover state.
     pub(crate) async fn reset_admission(
         &self,
         network: &str,
@@ -369,6 +388,27 @@ impl WatcherState {
             WatcherStateError::actor_stopped(
                 "watcher state actor stopped while resetting admission",
             )
+        })
+    }
+
+    /// Resets admission and installs a newly compiled source failover inventory.
+    pub(crate) async fn reset_runtime(
+        &self,
+        network: &str,
+        failovers: &[FailoverKey],
+    ) -> std::result::Result<(), WatcherStateError> {
+        let (reply, acknowledgment) = oneshot::channel();
+        self.commands
+            .send(WatcherStateCommand::ResetRuntime {
+                network: Arc::from(network),
+                failovers: failovers.to_vec(),
+                reply,
+            })
+            .map_err(|_| {
+                WatcherStateError::actor_stopped("watcher state actor stopped before runtime reset")
+            })?;
+        acknowledgment.await.map_err(|_| {
+            WatcherStateError::actor_stopped("watcher state actor stopped while resetting runtime")
         })
     }
 
@@ -392,10 +432,7 @@ impl WatcherState {
             .map_err(WatcherStateError::invalid_transition)
     }
 
-    /// Completes a successful active poll and returns the admission transition.
-    ///
-    /// Any failed RPC attempt or non-2xx response recorded between `begin_poll`
-    /// and this call resets the clean-round streak.
+    /// Completes a successful active poll and advances readiness admission.
     pub(crate) async fn complete_poll(
         &self,
     ) -> std::result::Result<PollCompletion, WatcherStateError> {
@@ -429,10 +466,14 @@ impl WatcherState {
             .map_err(WatcherStateError::invalid_transition)
     }
 
-    /// Returns the latest readiness flag and clean-round streak.
-    pub(crate) fn readiness(&self) -> (bool, u8) {
+    /// Returns the latest readiness, degradation, and successful-round state.
+    pub(crate) fn readiness(&self) -> (bool, bool, u8) {
         let snapshot = self.snapshots.borrow();
-        (snapshot.ready, snapshot.clean_poll_rounds)
+        (
+            snapshot.ready,
+            snapshot.degraded,
+            snapshot.successful_poll_rounds,
+        )
     }
 
     #[cfg(test)]
@@ -470,9 +511,6 @@ impl WatcherStateActor {
         match command {
             WatcherStateCommand::RecordRpcResponse { status } => {
                 self.state.rpc_responses.record_response(status);
-                if !(200..=299).contains(&status) {
-                    self.mark_poll_dirty();
-                }
             }
             WatcherStateCommand::RecordRpcRequest {
                 connector,
@@ -511,12 +549,64 @@ impl WatcherStateActor {
                     methods_requested,
                 );
             }
+            WatcherStateCommand::RecordFailoverTransition { transition } => {
+                info!(
+                    network = self.state.network.as_ref(),
+                    connector = transition.key.connector.as_ref(),
+                    provider = transition.key.provider.as_ref(),
+                    source_requirement = transition.key.source_requirement.as_str(),
+                    failover_scope = transition.key.scope.as_str(),
+                    command = transition
+                        .key
+                        .command
+                        .map_or("", crate::mode::CommandId::as_str),
+                    failover_state = transition.status.as_str(),
+                    failover_transition = transition.kind.as_str(),
+                    "source failover state changed"
+                );
+                self.metrics
+                    .record_failover_transition(self.state.network.as_ref(), &transition);
+                self.failovers.insert(transition.key, transition.status);
+                self.state.degraded = self
+                    .failovers
+                    .values()
+                    .copied()
+                    .any(FailoverStatus::is_degraded);
+                self.publish();
+            }
             WatcherStateCommand::ResetAdmission { network, reply } => {
                 self.state.network = network;
                 self.state.completed_poll_rounds = 0;
-                self.state.clean_poll_rounds = 0;
+                self.state.successful_poll_rounds = 0;
                 self.state.ready = false;
+                self.state.degraded = self
+                    .failovers
+                    .values()
+                    .copied()
+                    .any(FailoverStatus::is_degraded);
                 self.poll = PollState::Idle;
+                self.previous_responses = self.state.rpc_responses;
+                self.metrics
+                    .reset_runtime_observations(self.state.network.as_ref());
+                self.publish();
+                // The requester may be cancelled after the state transition commits.
+                let _ = reply.send(());
+            }
+            WatcherStateCommand::ResetRuntime {
+                network,
+                failovers,
+                reply,
+            } => {
+                self.state.network = network;
+                self.state.completed_poll_rounds = 0;
+                self.state.successful_poll_rounds = 0;
+                self.state.ready = false;
+                self.state.degraded = false;
+                self.poll = PollState::Idle;
+                self.failovers = failovers
+                    .into_iter()
+                    .map(|key| (key, FailoverStatus::Primary))
+                    .collect();
                 self.previous_responses = self.state.rpc_responses;
                 self.metrics
                     .reset_runtime_observations(self.state.network.as_ref());
@@ -527,10 +617,10 @@ impl WatcherStateActor {
             WatcherStateCommand::BeginPoll { reply } => {
                 let result = match self.poll {
                     PollState::Idle => {
-                        self.poll = PollState::Active { dirty: false };
+                        self.poll = PollState::Active;
                         Ok(())
                     }
-                    PollState::Active { .. } => Err(StateTransitionError::PollAlreadyActive),
+                    PollState::Active => Err(StateTransitionError::PollAlreadyActive),
                 };
                 // The requester may be cancelled after the state transition commits.
                 let _ = reply.send(result);
@@ -543,37 +633,30 @@ impl WatcherStateActor {
         }
     }
 
-    fn mark_poll_dirty(&mut self) {
-        if let PollState::Active { dirty } = &mut self.poll {
-            *dirty = true;
-        }
-    }
-
     fn record_rpc_failure(&mut self, connector: &str, method: &str) {
         self.state.rpc_responses.record_failure();
         self.metrics
             .record_rpc_request_failure(self.state.network.as_ref(), connector, method);
-        self.mark_poll_dirty();
     }
 
     fn complete_poll(
         &mut self,
         outcome: PollOutcome,
     ) -> Result<PollCompletion, StateTransitionError> {
-        let PollState::Active { dirty } = self.poll else {
+        let PollState::Active = self.poll else {
             return Err(StateTransitionError::PollNotActive);
         };
         self.poll = PollState::Idle;
         self.state.completed_poll_rounds = self.state.completed_poll_rounds.saturating_add(1);
-        self.state.clean_poll_rounds = if dirty || outcome == PollOutcome::Failed {
+        self.state.successful_poll_rounds = if outcome == PollOutcome::Failed {
             0
         } else {
             self.state
-                .clean_poll_rounds
+                .successful_poll_rounds
                 .saturating_add(1)
-                .min(ADMISSION_CLEAN_POLL_ROUNDS)
+                .min(ADMISSION_SUCCESSFUL_POLL_ROUNDS)
         };
-        let ready = self.state.clean_poll_rounds == ADMISSION_CLEAN_POLL_ROUNDS;
+        let ready = self.state.successful_poll_rounds == ADMISSION_SUCCESSFUL_POLL_ROUNDS;
         let admitted = ready && !self.state.ready;
         self.state.ready = ready;
         self.publish();
@@ -585,13 +668,8 @@ impl WatcherStateActor {
     }
 
     fn publish(&self) {
-        self.metrics.update_watcher_state(
-            self.state.network.as_ref(),
-            self.state.ready,
-            self.state.completed_poll_rounds,
-            self.state.clean_poll_rounds,
-            self.state.rpc_responses,
-        );
+        self.metrics
+            .update_watcher_state(&self.state, &self.failovers);
         self.snapshots.send_replace(self.state.clone());
     }
 
@@ -606,8 +684,9 @@ impl WatcherStateActor {
         info!(
             network = self.state.network.as_ref(),
             ready = self.state.ready,
+            degraded = self.state.degraded,
             completed_poll_rounds = self.state.completed_poll_rounds,
-            clean_poll_rounds = self.state.clean_poll_rounds,
+            successful_poll_rounds = self.state.successful_poll_rounds,
             rpc_responses_30s = responses.total,
             rpc_responses_2xx_30s = responses.successful_2xx,
             rpc_responses_3xx_30s = responses.redirection_3xx,

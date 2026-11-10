@@ -1,7 +1,10 @@
 //! Bounded Trillium validator-reward API client with conditional revalidation.
 
 use super::{TrilliumBlockRewards, TrilliumMevCapture, TrilliumTransactionMetrics};
-use crate::config::{has_explicit_authority, HttpTransportConfig};
+use crate::{
+    config::{has_explicit_authority, HttpTransportConfig},
+    failover::tag_source_requirement_failure,
+};
 use anyhow::{bail, Context, Result};
 use reqwest::{
     header::{HeaderValue, IF_MODIFIED_SINCE, LAST_MODIFIED},
@@ -153,6 +156,7 @@ impl TrilliumClient {
             .send()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .context("Trillium validator rewards request failed")?;
         let status = response.status();
         if status == StatusCode::NOT_MODIFIED {
@@ -183,6 +187,7 @@ impl TrilliumClient {
             .chunk()
             .await
             .map_err(reqwest::Error::without_url)
+            .map_err(tag_source_requirement_failure)
             .context("Trillium validator rewards response body read failed")?
         {
             if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(body.len()) {

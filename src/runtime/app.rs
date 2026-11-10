@@ -21,12 +21,15 @@ use tracing::info;
 /// Builds and supervises the watcher actor, poller, HTTP server, and signal task.
 pub(crate) async fn run(config_path: PathBuf) -> Result<()> {
     let watcher_state_mailbox = WatcherStateMailbox::new();
-    let runtime = RuntimeState::load(config_path, watcher_state_mailbox.rpc_telemetry())?;
+    let runtime = RuntimeState::load(config_path, watcher_state_mailbox.runtime_telemetry())?;
     let metrics = Arc::new(Metrics::new()?);
     metrics.set_watcher_up(&runtime.config.network, true);
     metrics.set_rpc_up(&runtime.config.network, false);
-    let (watcher_state, watcher_state_actor) =
-        watcher_state_mailbox.start(&runtime.config.network, Arc::clone(&metrics));
+    let (watcher_state, watcher_state_actor) = watcher_state_mailbox.start(
+        &runtime.config.network,
+        runtime.sources.failover_inventory(),
+        Arc::clone(&metrics),
+    );
     let server_state = AppState::new(Arc::clone(&metrics), watcher_state.clone());
     let server_listener = bind_http_listener(runtime.metrics_address).await?;
     let mut tasks = TaskManager::new();

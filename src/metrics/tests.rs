@@ -13,7 +13,7 @@ use crate::{
     },
     mode::{CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, Transport},
     source::SourceChain,
-    watcher_state::RpcResponseCounts,
+    watcher_state::{RpcResponseCounts, WatcherStateSnapshot},
 };
 use anyhow::Result;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -320,8 +320,10 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     config.modes.economics.commands.jito_mev_rewards = vec!["jito-api".to_string()];
     config.modes.economics.commands.trillium_mev_capture = vec!["trillium-api".to_string()];
     config.modes.economics.commands.recent_block_fee_rewards = vec!["helius-rpc".to_string()];
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     metrics.begin_poll(&config, &sources);
     metrics.update_snapshot(&snapshot);
     metrics.record_config_reload("mainnet-beta", "accepted");
@@ -628,8 +630,10 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
         modes: modes_for(&["primary"], Some("primary"), false),
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     metrics.begin_poll(&config, &sources);
     metrics.update_snapshot(&Snapshot {
         network: network.to_string(),
@@ -887,12 +891,14 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
 #[test]
 fn watcher_state_metrics_render_bounded_response_counts() -> Result<()> {
     let metrics = Metrics::new()?;
-    metrics.update_watcher_state(
-        "devnet",
-        true,
-        12,
-        5,
-        RpcResponseCounts {
+    let failovers = BTreeMap::new();
+    let mut state = WatcherStateSnapshot {
+        network: Arc::from("devnet"),
+        completed_poll_rounds: 12,
+        successful_poll_rounds: 5,
+        degraded: false,
+        ready: true,
+        rpc_responses: RpcResponseCounts {
             total: 18,
             successful_2xx: 12,
             redirection_3xx: 1,
@@ -905,13 +911,15 @@ fn watcher_state_metrics_render_bounded_response_counts() -> Result<()> {
             failed_attempts: 4,
             ..RpcResponseCounts::default()
         },
-    );
+    };
+    metrics.update_watcher_state(&state, &failovers);
 
     let rendered = metrics.render()?;
     for sample in [
         "sol_watcher_ready{network=\"devnet\"} 1",
+        "sol_watcher_degraded{network=\"devnet\"} 0",
         "sol_watcher_poll_round_count{network=\"devnet\"} 12",
-        "sol_watcher_clean_poll_streak{network=\"devnet\"} 5",
+        "sol_watcher_successful_poll_streak{network=\"devnet\"} 5",
         "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"2xx\"} 12",
         "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"3xx\"} 1",
         "sol_rpc_http_response_class_count{network=\"devnet\",status_class=\"4xx\"} 2",
@@ -926,7 +934,15 @@ fn watcher_state_metrics_render_bounded_response_counts() -> Result<()> {
         assert!(rendered.contains(sample), "missing metric sample: {sample}");
     }
 
-    metrics.update_watcher_state("mainnet-beta", false, 0, 0, RpcResponseCounts::default());
+    state = WatcherStateSnapshot {
+        network: Arc::from("mainnet-beta"),
+        completed_poll_rounds: 0,
+        successful_poll_rounds: 0,
+        degraded: false,
+        ready: false,
+        rpc_responses: RpcResponseCounts::default(),
+    };
+    metrics.update_watcher_state(&state, &failovers);
     let rendered = metrics.render()?;
     assert!(!rendered.contains("network=\"devnet\""));
     assert!(rendered.contains("sol_watcher_ready{network=\"mainnet-beta\"} 0"));
@@ -1009,8 +1025,10 @@ fn begin_poll_preserves_latest_mode_and_source_until_snapshot_replaces_source() 
         poll_interval_sec: 47,
         ..Config::default()
     };
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
     let source = |connector, provider, precedence| SnapshotDataSource {
         mode: ModeId::Consensus,
         command: CommandId::EpochInfo,

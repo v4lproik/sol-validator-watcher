@@ -124,7 +124,14 @@ impl Metrics {
         let sol_watcher_ready = IntGaugeVec::new(
             Opts::new(
                 "sol_watcher_ready",
-                "Whether five consecutive polling rounds completed without failed RPC attempts or non-2xx responses",
+                "Whether the watcher admitted five consecutive complete polling rounds",
+            ),
+            &["network"],
+        )?;
+        let sol_watcher_degraded = IntGaugeVec::new(
+            Opts::new(
+                "sol_watcher_degraded",
+                "Whether an active source failover circuit has reduced connector redundancy",
             ),
             &["network"],
         )?;
@@ -135,12 +142,41 @@ impl Metrics {
             ),
             &["network"],
         )?;
-        let sol_watcher_clean_poll_streak = IntGaugeVec::new(
+        let sol_watcher_successful_poll_streak = IntGaugeVec::new(
             Opts::new(
-                "sol_watcher_clean_poll_streak",
-                "Consecutive clean polling rounds toward watcher readiness",
+                "sol_watcher_successful_poll_streak",
+                "Consecutive complete polling rounds toward watcher readiness",
             ),
             &["network"],
+        )?;
+        let sol_source_failover_status = IntGaugeVec::new(
+            Opts::new(
+                "sol_source_failover_status",
+                "Source failover circuit state: 0 primary, 1 open, 2 recovery probe",
+            ),
+            &[
+                "network",
+                "connector",
+                "provider",
+                "source_requirement",
+                "scope",
+                "command",
+            ],
+        )?;
+        let sol_source_failover_transitions_total = IntCounterVec::new(
+            Opts::new(
+                "sol_source_failover_transitions_total",
+                "Committed source failover circuit transitions by reason",
+            ),
+            &[
+                "network",
+                "connector",
+                "provider",
+                "source_requirement",
+                "scope",
+                "command",
+                "transition",
+            ],
         )?;
         let sol_watcher_poll_interval_seconds = IntGaugeVec::new(
             Opts::new(
@@ -181,7 +217,7 @@ impl Metrics {
         let sol_rpc_http_response_status_count = IntGaugeVec::new(
             Opts::new(
                 "sol_rpc_http_response_status_count",
-                "Cumulative RPC HTTP responses for readiness-critical status codes since process start",
+                "Cumulative RPC HTTP responses for selected diagnostic status codes since process start",
             ),
             &["network", "status_code"],
         )?;
@@ -943,8 +979,11 @@ impl Metrics {
         register(&registry, &sol_connector_info)?;
         register(&registry, &sol_connector_feature_info)?;
         register(&registry, &sol_watcher_ready)?;
+        register(&registry, &sol_watcher_degraded)?;
         register(&registry, &sol_watcher_poll_round_count)?;
-        register(&registry, &sol_watcher_clean_poll_streak)?;
+        register(&registry, &sol_watcher_successful_poll_streak)?;
+        register(&registry, &sol_source_failover_status)?;
+        register(&registry, &sol_source_failover_transitions_total)?;
         register(&registry, &sol_watcher_poll_interval_seconds)?;
         register(&registry, &sol_last_successful_snapshot_timestamp_seconds)?;
         register(&registry, &sol_snapshot_duration_seconds)?;
@@ -1092,8 +1131,11 @@ impl Metrics {
             sol_mode_enabled,
             sol_mode_up,
             sol_watcher_ready,
+            sol_watcher_degraded,
             sol_watcher_poll_round_count,
-            sol_watcher_clean_poll_streak,
+            sol_watcher_successful_poll_streak,
+            sol_source_failover_status,
+            sol_source_failover_transitions_total,
             sol_watcher_poll_interval_seconds,
             sol_last_successful_snapshot_timestamp_seconds,
             sol_snapshot_duration_seconds,

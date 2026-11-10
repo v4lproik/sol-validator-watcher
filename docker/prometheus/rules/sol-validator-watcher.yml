@@ -17,7 +17,16 @@ groups:
           severity: warning
         annotations:
           summary: "Watcher is not ready for {{ $labels.network }}"
-          description: "The watcher is serving metrics but has not completed five consecutive clean polling rounds."
+          description: "The watcher is serving metrics but has not completed five consecutive successful polling rounds."
+
+      - alert: SolValidatorWatcherSourceFailoverActive
+        expr: sol_watcher_up == 1 and sol_watcher_degraded == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher source redundancy is degraded for {{ $labels.network }}"
+          description: "A configured source failover circuit is open or probing; snapshots may remain complete through a backup connector."
 
       - alert: SolValidatorWatcherSnapshotStale
         expr: |

@@ -1,155 +1,14 @@
-use super::{AttemptDecision, AttemptKind, FailoverController, SourceChain};
+use super::SourceChain;
 use crate::{
     config::{Config, ConnectorConfig, HealthCommands, HealthModeConfig, ModesConfig},
     metrics::Metrics,
-    mode::CommandId,
     tasks::{TaskExit, TaskManager},
     watcher_state::WatcherStateMailbox,
 };
 use anyhow::{Context, Result};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 use tokio::{net::TcpListener, task::JoinHandle};
 use tokio_tungstenite::accept_async;
-
-#[tokio::test]
-async fn failover_gate_recovers_only_after_the_failed_command_succeeds() {
-    let failovers = FailoverController::new(1, Duration::from_secs(60));
-    let failed_command = CommandId::EpochInfo;
-    let related_command = CommandId::VoteAccounts;
-    let started_at = Instant::now();
-    let retry_at = started_at + Duration::from_secs(60);
-
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, failed_command, started_at)
-            .await,
-        AttemptDecision::Attempt(AttemptKind::Normal(0))
-    );
-    assert_eq!(
-        failovers
-            .record_failure_at(0, failed_command, AttemptKind::Normal(0), started_at)
-            .await,
-        "activated"
-    );
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, failed_command, retry_at - Duration::from_millis(1))
-            .await,
-        AttemptDecision::Skip
-    );
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, related_command, retry_at)
-            .await,
-        AttemptDecision::Skip
-    );
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, failed_command, retry_at)
-            .await,
-        AttemptDecision::Attempt(AttemptKind::RecoveryProbe(0))
-    );
-    assert_eq!(
-        failovers
-            .record_failure_at(0, related_command, AttemptKind::Normal(0), retry_at)
-            .await,
-        "already-active"
-    );
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, failed_command, retry_at)
-            .await,
-        AttemptDecision::Skip
-    );
-    assert!(
-        failovers
-            .record_success(0, failed_command, AttemptKind::RecoveryProbe(0))
-            .await
-    );
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, related_command, retry_at)
-            .await,
-        AttemptDecision::Attempt(AttemptKind::Normal(1))
-    );
-}
-
-#[tokio::test]
-async fn failed_recovery_attempt_restarts_the_cooldown() {
-    let failovers = FailoverController::new(1, Duration::from_secs(60));
-    let command = CommandId::EpochInfo;
-    let started_at = Instant::now();
-    let first_retry = started_at + Duration::from_secs(60);
-    let second_retry = started_at + Duration::from_secs(120);
-
-    assert_eq!(
-        failovers
-            .record_failure_at(0, command, AttemptKind::Normal(0), started_at)
-            .await,
-        "activated"
-    );
-    assert_eq!(
-        failovers.begin_attempt_at(0, command, first_retry).await,
-        AttemptDecision::Attempt(AttemptKind::RecoveryProbe(0))
-    );
-    assert_eq!(
-        failovers
-            .record_failure_at(0, command, AttemptKind::RecoveryProbe(0), first_retry)
-            .await,
-        "recovery-probe-failed"
-    );
-    assert_eq!(
-        failovers
-            .begin_attempt_at(0, command, second_retry - Duration::from_millis(1),)
-            .await,
-        AttemptDecision::Skip
-    );
-    assert_eq!(
-        failovers.begin_attempt_at(0, command, second_retry).await,
-        AttemptDecision::Attempt(AttemptKind::RecoveryProbe(0))
-    );
-}
-
-#[tokio::test]
-async fn stale_failure_does_not_reopen_a_recovered_gate() {
-    let failovers = FailoverController::new(1, Duration::ZERO);
-    let command = CommandId::EpochInfo;
-    let now = Instant::now();
-    let stale_attempt = AttemptKind::Normal(0);
-    assert_eq!(
-        failovers.begin_attempt_at(0, command, now).await,
-        AttemptDecision::Attempt(stale_attempt)
-    );
-    assert_eq!(
-        failovers.begin_attempt_at(0, command, now).await,
-        AttemptDecision::Attempt(AttemptKind::Normal(0))
-    );
-    assert_eq!(
-        failovers
-            .record_failure_at(0, command, AttemptKind::Normal(0), now)
-            .await,
-        "activated"
-    );
-    let recovery_attempt = AttemptKind::RecoveryProbe(0);
-    assert_eq!(
-        failovers.begin_attempt_at(0, command, now).await,
-        AttemptDecision::Attempt(recovery_attempt)
-    );
-    assert!(failovers.record_success(0, command, recovery_attempt).await);
-    assert_eq!(
-        failovers
-            .record_failure_at(0, command, stale_attempt, now)
-            .await,
-        "stale-attempt"
-    );
-    assert_eq!(
-        failovers.begin_attempt_at(0, command, now).await,
-        AttemptDecision::Attempt(AttemptKind::Normal(1))
-    );
-}
 
 #[tokio::test]
 async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
@@ -174,9 +33,13 @@ async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
         &["rejected-ws", "accepted-ws"],
     );
     let mailbox = WatcherStateMailbox::new();
-    let sources = SourceChain::from_config(&config, mailbox.rpc_telemetry())?;
+    let sources = SourceChain::from_config(&config, mailbox.runtime_telemetry())?;
     let metrics = Arc::new(Metrics::new()?);
-    let (state, actor) = mailbox.start(&config.network, Arc::clone(&metrics));
+    let (state, actor) = mailbox.start(
+        &config.network,
+        sources.failover_inventory(),
+        Arc::clone(&metrics),
+    );
     metrics.begin_poll(&config, &sources);
     let mut tasks = TaskManager::new();
     tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
@@ -190,7 +53,7 @@ async fn websocket_fallback_counts_failed_connector_probe() -> Result<()> {
         assert_eq!(source.precedence, 2);
 
         let completion = state.complete_poll().await?;
-        assert_eq!(completion.state.clean_poll_rounds, 1);
+        assert_eq!(completion.state.successful_poll_rounds, 1);
 
         let rendered = metrics.render()?;
         assert!(rendered.contains(
@@ -235,8 +98,10 @@ async fn websocket_route_exhaustion_preserves_every_connector_failure() -> Resul
         ],
         &["first-ws", "second-ws"],
     );
-    let sources =
-        SourceChain::from_config(&config, crate::watcher_state::RpcTelemetry::unobserved())?;
+    let sources = SourceChain::from_config(
+        &config,
+        crate::watcher_state::RuntimeTelemetry::unobserved(),
+    )?;
 
     let error = match sources.websocket_healthy().await {
         Ok(_) => anyhow::bail!("all rejected websocket connectors must fail"),
