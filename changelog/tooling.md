@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Migrated every executable GitHub Actions job from GitHub-hosted Ubuntu runners to the Blacksmith Ubuntu 24.04 runner pool and registered the custom label for local workflow linting.
+- Repositioned the GitHub README around monitoring any Solana validator by identity or vote-account public key.
 - Documented exact source-type connector backup composition, validation, non-recursive expansion, immediate requirement-scoped failover, causal-command recovery probes, cooldown failback, and transactional source-chain replacement in repository routing and runtime-configuration guidance.
 - Documented bounded watched-validator account-balance batching, per-validator absence semantics, configured-target fail-closure, target-only economics alert inputs, and snapshot-owned watched-validator funding metric invariants in repository engineering guidance.
 - Documented the single-network Grafana selection and exact-matcher invariant in repository engineering guidance.
