@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reduced the root package to the binary composition layer over domain, configuration, source, and Prometheus libraries while preserving one transactional configuration reload, supervised polling and HTTP tasks, and the existing shutdown contract.
+- Applied every ordered source event through the watcher-state actor before committing its polling-round transition, preserving response counters, failover state, readiness, and metric publication order across the new crate boundary.
 - Derived dependency provenance and health-mode outcomes before snapshot publication, narrowing mutable runtime state without changing polling or readiness behavior.
 - Published the compiled build revision, SHA-256 fingerprint of the active expanded configuration, accepted/rejected reload outcomes, and per-command fallback state without exposing endpoint or credential values.
 - Bound the metrics listener before supervised tasks start and exercised the production health, readiness, metrics, and cooperative-shutdown boundaries.

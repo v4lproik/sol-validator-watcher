@@ -175,14 +175,18 @@ gh attestation verify \
 
 ## Modules
 
+The Cargo workspace isolates shared domain contracts, configuration loading,
+source collection, and Prometheus projection. The root package remains the only
+binary and composes those libraries with runtime supervision.
+
 | Module | Owns | Start here | Changelog |
 | --- | --- | --- | --- |
-| Watcher | Commands, collection, routing, provenance, and aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/) | [`changelog/watcher.md`](changelog/watcher.md) |
-| Runtime | Startup, polling, HTTP, reload, state, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/) | [`changelog/runtime.md`](changelog/runtime.md) |
-| Configuration | TOML loading, validation, and profiles | [`src/config/`](src/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
-| Observability | Metrics, Prometheus, Grafana, and Pages | [`src/metrics/`](src/metrics/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/) | [`changelog/observability.md`](changelog/observability.md) |
+| Watcher | Shared domain contracts plus commands, collection, routing, provenance, and aggregation | [`crates/domain/`](crates/domain/), [`crates/source/`](crates/source/) | [`changelog/watcher.md`](changelog/watcher.md) |
+| Runtime | Binary composition, startup, polling, HTTP, reload, state, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/), [`src/watcher_state/`](src/watcher_state/) | [`changelog/runtime.md`](changelog/runtime.md) |
+| Configuration | One TOML profile loader, validation, and committed profiles | [`crates/config/`](crates/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
+| Observability | Prometheus projection, metrics contract, Grafana, and Pages | [`crates/prometheus/`](crates/prometheus/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/) | [`changelog/observability.md`](changelog/observability.md) |
 | Operations | Containers, Compose, and local stacks | [`docker/`](docker/) | [`changelog/operations.md`](changelog/operations.md) |
-| Tooling | Just, CI, coverage, and publishing | [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
+| Tooling | Workspace-wide Just, CI, coverage, and publishing | [`Cargo.toml`](Cargo.toml), [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
 
 ## Development
 

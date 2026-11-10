@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Moved the single TOML and environment configuration owner into a dedicated workspace library without changing profile paths, schema, normalization, validation order, fingerprints, or reload semantics; its benchmark now compiles against the production library API.
 - Added connector-local backup lists keyed by exact typed source requirements; configuration validation rejects empty, self-referential, duplicate, unknown, or incompatible backups and expands valid lists immediately after each command-route connector.
 - Added the `trillium-mev-capture` provider feature, optional economics `trillium_mev_capture` command route, and public Trillium connector; the Mainnet profile enables complete economics collection for Puffin so Trillium metrics are published without making provider data required for a polling round, and connectors reject combined Jito and Trillium provider features because one `provider_api` transport owns one upstream endpoint.
 - Added the optional consensus `cluster_nodes` route to every committed profile and included `getClusterNodes` in validated core RPC compatibility probes.

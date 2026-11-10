@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Moved Prometheus registration, reset, rendering, and domain-state projection into a dedicated workspace library whose production dependencies contain no configuration loader, source client, or runtime process code.
 - Rebranded the README and Pages site with the Address Profile key-index mark, public-key-first messaging for monitoring any validator, favicon and social-preview assets, and precise product language throughout.
 - Expanded every MEV Capture panel's Grafana information tooltip with validator-focused definitions, optional-field and completed-epoch semantics, skip-aware per-slot guidance, non-additive reward caveats, and produced-block workload context; the two derived share panels now match labels correctly and render no data when their denominator is zero.
 - Separated snapshot availability from source redundancy with `sol_watcher_degraded`, bounded per-circuit status and transition metrics, a tested source-failover alert, successful-poll readiness terminology, and an Overview source-redundancy panel.

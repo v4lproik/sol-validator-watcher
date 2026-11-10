@@ -1,0 +1,18 @@
+[package]
+name = "sol-validator-watcher-prometheus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Prometheus projection for Solana validator watcher domain state"
+
+[dependencies]
+anyhow.workspace = true
+prometheus.workspace = true
+sol-validator-watcher-domain.workspace = true
+
+[dev-dependencies]
+sol-validator-watcher-config.workspace = true
+sol-validator-watcher-source.workspace = true
+
+[lints]
+workspace = true

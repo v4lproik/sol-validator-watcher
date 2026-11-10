@@ -89,6 +89,7 @@ async fn actor_orders_rpc_events_before_poll_completion_and_shuts_down_supervise
     let telemetry = mailbox.runtime_telemetry();
     let metrics = Arc::new(Metrics::new()?);
     let (state, actor) = mailbox.start("actor-test", &[], Arc::clone(&metrics));
+    let stopped_state = state.clone();
     let mut tasks = TaskManager::new();
     tasks.spawn("watcher-state-actor", actor.run(tasks.shutdown_handle()));
     tasks.spawn("watcher-state-scenario", async move {
@@ -139,25 +140,34 @@ async fn actor_orders_rpc_events_before_poll_completion_and_shuts_down_supervise
         let completion = state.complete_poll().await?;
         assert_eq!(completion.state.successful_poll_rounds, 2);
 
+        telemetry.record_response(403)?;
         state.reset_admission("reloaded-network").await?;
         let snapshot = state.snapshot();
         assert_eq!(snapshot.network.as_ref(), "reloaded-network");
         assert_eq!(snapshot.completed_poll_rounds, 0);
         assert_eq!(snapshot.successful_poll_rounds, 0);
         assert!(!snapshot.ready);
-        assert_eq!(snapshot.rpc_responses.total, 7);
+        assert_eq!(snapshot.rpc_responses.total, 8);
 
         let rendered = metrics.render()?;
         assert!(rendered.contains("sol_watcher_ready{network=\"reloaded-network\"} 0"));
         assert!(rendered.contains(
             "sol_rpc_http_response_status_count{network=\"reloaded-network\",status_code=\"429\"} 1"
         ));
+        assert!(rendered.contains(
+            "sol_rpc_http_response_status_count{network=\"reloaded-network\",status_code=\"403\"} 1"
+        ));
         assert!(rendered.contains("sol_rpc_request_failure_count{network=\"reloaded-network\"} 1"));
 
         Ok(TaskExit::ShutdownRequested)
     });
 
-    tasks.run().await
+    tasks.run().await?;
+    assert!(matches!(
+        stopped_state.complete_poll().await,
+        Err(error) if error.is_actor_stopped()
+    ));
+    Ok(())
 }
 
 #[tokio::test]

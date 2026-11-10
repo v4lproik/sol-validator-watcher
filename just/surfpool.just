@@ -12,4 +12,4 @@ doctor:
   surfpool --version
 
 test scope="smoke": _require-cli
-  scope={{quote(scope)}}; case "${scope}" in smoke) SURFPOOL_E2E=1 mise exec -- cargo test surfpool_smoke_test_collects_snapshot_and_renders_metrics -- --nocapture ;; all) SURFPOOL_E2E=1 mise exec -- cargo test ;; *) echo "Surfpool test scope must be smoke or all: ${scope}" >&2; exit 2 ;; esac
+  scope={{quote(scope)}}; case "${scope}" in smoke) SURFPOOL_E2E=1 mise exec -- cargo test -p sol-validator-watcher surfpool_smoke_test_collects_snapshot_and_renders_metrics -- --nocapture ;; all) SURFPOOL_E2E=1 mise exec -- cargo test --workspace ;; *) echo "Surfpool test scope must be smoke or all: ${scope}" >&2; exit 2 ;; esac

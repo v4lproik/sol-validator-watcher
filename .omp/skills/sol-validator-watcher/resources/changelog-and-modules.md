@@ -8,12 +8,12 @@ Read this resource for every repository change. It assigns durable ownership and
 
 | Module | Source entry points | Owns | Changelog |
 | --- | --- | --- | --- |
-| Watcher | `src/mode.rs`, `src/source.rs`, `src/collector/`, `src/labels.rs`, `src/websocket.rs` | Typed mode commands, RPC and WebSocket collection, command fallback, source provenance, labels, validator records, aggregation, and economics collection | `changelog/watcher.md` |
-| Runtime | `src/main.rs`, `src/runtime/`, `src/watcher_state/`, `src/tasks.rs` | CLI startup, polling, HTTP serving, transactional source-chain reload, watcher state, task supervision, liveness, signals, and shutdown | `changelog/runtime.md` |
-| Configuration | `src/config/`, `config/` | Config parsing, environment expansion, connector and command-route validation, and committed profiles | `changelog/configuration.md` |
-| Observability | `src/metrics/`, `docker/prometheus/`, `docker/grafana/`, `site/` | Prometheus metrics and scraping, mode-focused Grafana provisioning and dashboards, and the Pages surface | `changelog/observability.md` |
+| Watcher | `crates/domain/`, `crates/source/` | Shared typed contracts, RPC and WebSocket collection, command fallback, source provenance, labels, validator records, aggregation, and economics collection | `changelog/watcher.md` |
+| Runtime | `src/main.rs`, `src/runtime/`, `src/watcher_state/`, `src/tasks.rs` | Binary composition, CLI startup, polling, HTTP serving, transactional source-chain reload, ordered source-event projection, watcher state, task supervision, liveness, signals, and shutdown | `changelog/runtime.md` |
+| Configuration | `crates/config/`, `config/` | The single TOML loader, environment expansion, connector and command-route validation, and committed profiles | `changelog/configuration.md` |
+| Observability | `crates/prometheus/`, `docker/prometheus/`, `docker/grafana/`, `site/` | Domain-state projection into Prometheus metrics, scraping, mode-focused Grafana provisioning and dashboards, and the Pages surface | `changelog/observability.md` |
 | Operations | `docker/` | Docker image, Compose profiles, Surfpool, local services, and stack lifecycle | `changelog/operations.md` |
-| Tooling | `Justfile`, `just/`, `.github/workflows/`, `.omp/skills/` | Just recipes, tests and coverage workflows, CI, publishing, scripts, contributor docs, and repository guidance | `changelog/tooling.md` |
+| Tooling | `Cargo.toml`, `Justfile`, `just/`, `.github/workflows/`, `.omp/skills/` | Cargo workspace policy, Just recipes, tests and coverage workflows, CI, publishing, scripts, contributor docs, and repository guidance | `changelog/tooling.md` |
 
 ## Changelog Contract
 

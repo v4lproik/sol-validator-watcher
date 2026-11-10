@@ -3,6 +3,7 @@
 //! Reload candidates build and verify complete source chains before replacing the
 //! last-known-good runtime.
 
+use crate::mode::RuntimeInventory;
 use crate::{
     collector::ensure_economics_supported,
     config::Config,
@@ -26,6 +27,8 @@ pub(super) struct RuntimeState {
     pub(super) config: Config,
     /// Active connector clients and compiled command routes.
     pub(super) sources: SourceChain,
+    /// Bounded active runtime metadata consumed by the Prometheus exporter.
+    pub(super) inventory: RuntimeInventory,
     /// Connector and source-route telemetry shared with newly constructed clients.
     pub(super) runtime_telemetry: RuntimeTelemetry,
     /// Modification time of the active profile revision.
@@ -45,11 +48,13 @@ impl RuntimeState {
         let config_modified = config_mtime(&config_path)?;
         let metrics_address = SocketAddr::new(config.metrics_host, config.metrics_port);
         let sources = SourceChain::from_config(&config, runtime_telemetry.clone())?;
+        let inventory = sources.runtime_inventory(&config);
 
         Ok(Self {
             config_path,
             config,
             sources,
+            inventory,
             runtime_telemetry,
             config_modified,
             metrics_address,
@@ -101,6 +106,10 @@ impl RuntimeState {
         } else {
             None
         };
+        let next_inventory = next_sources
+            .as_ref()
+            .unwrap_or(&self.sources)
+            .runtime_inventory(&next);
         let next_economics_capabilities_verified = next.modes.economics.enabled;
 
         info!(
@@ -115,6 +124,7 @@ impl RuntimeState {
             self.connector_capabilities_verified = true;
         }
         self.config = next;
+        self.inventory = next_inventory;
         self.config_modified = modified;
         self.economics_capabilities_verified = next_economics_capabilities_verified;
         Ok(sources_changed)

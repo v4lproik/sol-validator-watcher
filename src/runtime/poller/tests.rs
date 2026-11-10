@@ -590,11 +590,13 @@ fn disabled_economics_runtime() -> Result<RuntimeState> {
     };
     let runtime_telemetry = crate::watcher_state::RuntimeTelemetry::unobserved();
     let sources = SourceChain::from_config(&config, runtime_telemetry.clone())?;
+    let inventory = sources.runtime_inventory(&config);
 
     Ok(RuntimeState {
         config_path: PathBuf::from("config.toml"),
         config,
         sources,
+        inventory,
         runtime_telemetry,
         config_modified: UNIX_EPOCH,
         metrics_address: SocketAddr::from(([127, 0, 0, 1], 8000)),
