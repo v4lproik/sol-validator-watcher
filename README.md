@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  Prometheus monitoring and Grafana dashboards for Solana validator operators.
+  Prometheus monitoring and Grafana dashboards for any Solana validator by identity or vote-account public key.
 </p>
 
-Solana Validator Watcher polls configured Solana RPC, WebSocket, and provider APIs for health, consensus, leadership, and validator economics. It exports Prometheus metrics and uses explicit per-command connector fallback routes.
+Configure validators you operate, delegate to, compare, or research. Solana Validator Watcher polls ordered RPC, WebSocket, and provider APIs for health, consensus, leadership, and validator economics, exports Prometheus metrics, and preserves explicit per-command source provenance.
 
 ## Quick start
 

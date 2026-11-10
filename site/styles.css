@@ -4,8 +4,8 @@
   --ink: #171918;
   --muted: #5f625f;
   --line: rgba(23, 25, 24, 0.16);
-  --surface-soft: rgba(255, 255, 255, 0.36);
-  --surface-strong: rgba(255, 255, 255, 0.42);
+  --panel-soft: rgba(255, 255, 255, 0.36);
+  --panel-strong: rgba(255, 255, 255, 0.42);
   --body-glow: rgba(117, 104, 255, 0.13);
   --topbar-bg: rgba(244, 241, 232, 0.9);
   --nav-text: #4f524f;
@@ -44,8 +44,8 @@
   --ink: #edf1f5;
   --muted: #a9b1ba;
   --line: rgba(237, 241, 245, 0.16);
-  --surface-soft: rgba(255, 255, 255, 0.055);
-  --surface-strong: rgba(255, 255, 255, 0.075);
+  --panel-soft: rgba(255, 255, 255, 0.055);
+  --panel-strong: rgba(255, 255, 255, 0.075);
   --body-glow: rgba(117, 104, 255, 0.2);
   --topbar-bg: rgba(13, 17, 23, 0.9);
   --nav-text: #c2c8d0;
@@ -231,7 +231,7 @@ pre {
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 50%;
-  background: var(--surface-soft);
+  background: var(--panel-soft);
   color: var(--ink);
   cursor: pointer;
   transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease;
@@ -240,7 +240,7 @@ pre {
 .theme-toggle:hover {
   transform: translateY(-2px);
   border-color: var(--outline-border);
-  background: var(--surface-strong);
+  background: var(--panel-strong);
 }
 
 .theme-icon {
@@ -882,7 +882,7 @@ h1 {
   padding: 38px;
   border: 1px solid var(--line);
   border-radius: var(--radius-medium);
-  background: var(--surface-soft);
+  background: var(--panel-soft);
 }
 
 .feature-grid article::before {
@@ -1118,7 +1118,7 @@ h1 {
   padding: 48px;
   border: 1px solid var(--line);
   border-radius: var(--radius-large);
-  background: var(--surface-strong);
+  background: var(--panel-strong);
   text-align: center;
 }
 

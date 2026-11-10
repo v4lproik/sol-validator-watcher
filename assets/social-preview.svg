@@ -1,0 +1,49 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Solana Validator Watcher</title>
+  <desc id="desc">Address Profile key-index mark beside the message Monitor any validator by public key.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#090E16"/>
+      <stop offset="1" stop-color="#111927"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(278 320) rotate(90) scale(260)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9945FF" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#9945FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="spectrum" x1="20" y1="0" x2="228" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9945FF"/>
+      <stop offset="0.3" stop-color="#8752F3"/>
+      <stop offset="0.5" stop-color="#5497D5"/>
+      <stop offset="0.6" stop-color="#43B4CA"/>
+      <stop offset="0.72" stop-color="#28E0B9"/>
+      <stop offset="1" stop-color="#14F195"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#F8FAFC" stroke-opacity="0.035"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#background)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <circle cx="278" cy="320" r="260" fill="url(#glow)"/>
+
+  <g transform="translate(92 138) scale(1.42)">
+    <g fill="url(#spectrum)">
+      <rect x="20" y="104" width="22" height="48"/>
+      <rect x="51" y="68" width="22" height="120"/>
+      <rect x="82" y="45" width="22" height="166"/>
+      <path d="M113 56H135V102H123V132H135V200H113Z"/>
+      <rect x="144" y="34" width="22" height="188"/>
+      <rect x="206" y="93" width="22" height="70"/>
+    </g>
+    <rect x="175" y="74" width="22" height="108" fill="#FF9B42"/>
+  </g>
+
+  <text x="470" y="160" fill="#FF9B42" font-family="Inter, Geist, system-ui, sans-serif" font-size="20" font-weight="700" letter-spacing="4">OPEN-SOURCE SOLANA OBSERVABILITY</text>
+  <text x="470" y="260" fill="#F8FAFC" font-family="Inter, Geist, system-ui, sans-serif" font-size="70" font-weight="750" letter-spacing="-3">Solana Validator</text>
+  <text x="470" y="340" fill="#F8FAFC" font-family="Inter, Geist, system-ui, sans-serif" font-size="70" font-weight="750" letter-spacing="-3">Watcher</text>
+  <text x="470" y="422" fill="#D8DEE8" font-family="Inter, Geist, system-ui, sans-serif" font-size="32" font-weight="500">Monitor any validator by public key.</text>
+  <text x="470" y="478" fill="#98A2B3" font-family="Inter, Geist, system-ui, sans-serif" font-size="22">Health · Consensus · Leadership · Funding · MEV</text>
+  <path d="M470 525H1128" stroke="#F8FAFC" stroke-opacity="0.12"/>
+  <text x="470" y="568" fill="#98A2B3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">v4lproik/sol-validator-watcher</text>
+</svg>
