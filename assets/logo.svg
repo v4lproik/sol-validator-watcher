@@ -1,51 +1,24 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">Solana Validator Watcher logo</title>
-  <desc id="desc">An angular telemetry panel mark with stacked validator metrics connected to a monitoring rail.</desc>
+  <desc id="desc">An asymmetric public-key fingerprint with a central key notch and an amber watched-source bar.</desc>
   <defs>
-    <linearGradient id="frame" x1="28" y1="20" x2="228" y2="236" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0A1420"/>
-      <stop offset="1" stop-color="#132438"/>
-    </linearGradient>
-    <linearGradient id="edge" x1="38" y1="28" x2="214" y2="212" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8B97FF" stop-opacity="0.8"/>
-      <stop offset="1" stop-color="#4FC3FF" stop-opacity="0.55"/>
-    </linearGradient>
-    <linearGradient id="barA" x1="56" y1="82" x2="162" y2="82" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F8FAFC"/>
-      <stop offset="1" stop-color="#9FB3FF"/>
-    </linearGradient>
-    <linearGradient id="barB" x1="56" y1="128" x2="188" y2="128" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#64D2FF"/>
-      <stop offset="1" stop-color="#7C89FF"/>
-    </linearGradient>
-    <linearGradient id="barC" x1="56" y1="174" x2="148" y2="174" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8BF3D6"/>
-      <stop offset="1" stop-color="#4FC3FF"/>
+    <linearGradient id="spectrum" x1="20" y1="0" x2="228" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9945FF"/>
+      <stop offset="0.3" stop-color="#8752F3"/>
+      <stop offset="0.5" stop-color="#5497D5"/>
+      <stop offset="0.6" stop-color="#43B4CA"/>
+      <stop offset="0.72" stop-color="#28E0B9"/>
+      <stop offset="1" stop-color="#14F195"/>
     </linearGradient>
   </defs>
 
-  <path d="M40 20H216L236 40V216L216 236H40L20 216V40L40 20Z" fill="url(#frame)"/>
-  <path d="M40.75 20.75H215.25L235.25 40.75V215.25L215.25 235.25H40.75L20.75 215.25V40.75L40.75 20.75Z" stroke="url(#edge)" stroke-width="1.5"/>
-  <path d="M54 46H202V202H54V46Z" fill="#0B1320" fill-opacity="0.55"/>
-
-  <path d="M58 64H194" stroke="#243447" stroke-width="2"/>
-  <path d="M58 192H194" stroke="#243447" stroke-width="2"/>
-  <path d="M194 58V198" stroke="#243447" stroke-width="2"/>
-
-  <path d="M56 74H146L158 86H56V74Z" fill="url(#barA)"/>
-  <path d="M56 120H172L188 136H56V120Z" fill="url(#barB)"/>
-  <path d="M56 166H132L148 182H56V166Z" fill="url(#barC)"/>
-
-  <rect x="194" y="70" width="12" height="12" fill="#F8FAFC"/>
-  <rect x="194" y="122" width="12" height="12" fill="#8B97FF"/>
-  <rect x="194" y="174" width="12" height="12" fill="#4FC3FF"/>
-
-  <path d="M178 60H206V196H178" stroke="#5A6D86" stroke-width="6"/>
-  <path d="M160 80H194" stroke="#F8FAFC" stroke-width="4"/>
-  <path d="M188 132H194" stroke="#8B97FF" stroke-width="4"/>
-  <path d="M148 178H194" stroke="#4FC3FF" stroke-width="4"/>
-
-  <path d="M66 102H118" stroke="#243447" stroke-width="2"/>
-  <path d="M66 148H144" stroke="#243447" stroke-width="2"/>
-  <path d="M66 194H106" stroke="#243447" stroke-width="2"/>
+  <g fill="url(#spectrum)">
+    <rect x="20" y="104" width="22" height="48"/>
+    <rect x="51" y="68" width="22" height="120"/>
+    <rect x="82" y="45" width="22" height="166"/>
+    <path d="M113 56H135V102H123V132H135V200H113Z"/>
+    <rect x="144" y="34" width="22" height="188"/>
+    <rect x="206" y="93" width="22" height="70"/>
+  </g>
+  <rect x="175" y="74" width="22" height="108" fill="#FF9B42"/>
 </svg>
