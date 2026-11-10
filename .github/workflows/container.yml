@@ -27,7 +27,7 @@ jobs:
     needs: verify
     permissions:
       contents: read
-    runs-on: ubuntu-24.04
+    runs-on: namespace-profile-general-4cpu-8gb
     timeout-minutes: 45
     steps:
       - name: Check out repository
@@ -72,7 +72,7 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    runs-on: ubuntu-24.04
+    runs-on: namespace-profile-general-4cpu-8gb
     timeout-minutes: 60
     outputs:
       image: ${{ steps.image.outputs.name }}
@@ -185,7 +185,7 @@ jobs:
       attestations: read
       contents: write
       packages: read
-    runs-on: ubuntu-24.04
+    runs-on: namespace-profile-general-4cpu-8gb
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
