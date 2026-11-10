@@ -1404,17 +1404,63 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "reqwest",
+ "serde_json",
+ "sol-validator-watcher-config",
+ "sol-validator-watcher-domain",
+ "sol-validator-watcher-prometheus",
+ "sol-validator-watcher-source",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sol-validator-watcher-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "criterion",
+ "reqwest",
+ "serde",
+ "sha2",
+ "sol-validator-watcher-domain",
+ "toml",
+]
+
+[[package]]
+name = "sol-validator-watcher-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "sol-validator-watcher-prometheus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "prometheus",
+ "sol-validator-watcher-config",
+ "sol-validator-watcher-domain",
+ "sol-validator-watcher-source",
+]
+
+[[package]]
+name = "sol-validator-watcher-source"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
  "reqwest",
  "serde",
  "serde_json",
- "sha2",
+ "sol-validator-watcher-config",
+ "sol-validator-watcher-domain",
  "tokio",
  "tokio-tungstenite",
  "toml",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

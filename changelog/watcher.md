@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Split shared watcher contracts and source collection into dedicated workspace libraries: the domain crate owns typed modes, snapshots, provenance, failover transitions, and watcher-state values, while the source crate owns transports, clients, routing, fallback, collection, and ordered source-event publication.
 - Classified sticky failover into hierarchical connector circuits: transport and connectivity failures open one exact source-requirement circuit shared by compatible commands, HTTP/protocol/JSON-RPC/domain failures open only the causal command circuit, generation-tagged single probes recover after a 60-second cooldown, complete backup snapshots remain readiness-eligible but degraded, reload-candidate probes cannot mutate active circuits, and accepted source-changing reloads install fresh circuit inventories transactionally.
 - Isolated concurrent source-failover test profiles by adding a monotonic suffix to their temporary configuration paths.
 - Compiled validated type-scoped connector backups into deterministic command source chains while preserving per-attempt errors, successful-source provenance, and one-based precedence in the resolved route.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Updated the container build context for the Cargo workspace so the same root binary is built from the extracted domain, configuration, source, and Prometheus libraries without changing the runtime image contract.
 - Added a supported semantically versioned and digest-pinned Mainnet production stack with secret-file injection, loopback-only ingress, resource/PID/file/log/retention limits, deterministic persistent volumes, health-ordered startup, and an operator runbook covering verification, alert response, backup, restore, and shutdown.
 - Added exact-image canary, guarded rollout, and rollback commands that require a semantic image version bound to an immutable digest, verify five-round readiness and immutable build identity before replacing production, and retain the previous image reference for recovery.
 - Updated the external-validator Compose environment contract for connector-local RPC request and connection deadlines, and removed dormant WebSocket inputs from its WebSocket-free default profile.

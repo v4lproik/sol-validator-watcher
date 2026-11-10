@@ -8,8 +8,7 @@
 use super::state::RuntimeState;
 use crate::{
     collector::{
-        collect_snapshot, command::GetHealth, ensure_economics_supported, ModeStatus, Snapshot,
-        SnapshotDataSource,
+        collect_snapshot, ensure_economics_supported, ModeStatus, Snapshot, SnapshotDataSource,
     },
     config::Config,
     metrics::Metrics,
@@ -113,7 +112,7 @@ async fn run_watcher_loop_with_retry_policy(
         ensure_connector_capabilities_ready(&mut runtime).await?;
         ensure_economics_capabilities_ready(&mut runtime).await?;
         metrics.set_watcher_up(&runtime.config.network, true);
-        metrics.begin_poll(&runtime.config, &runtime.sources);
+        metrics.begin_poll(&runtime.inventory);
         let Some(()) = state_transition_or_shutdown(watcher_state.begin_poll().await, &shutdown)
             .context("failed to begin polling round")?
         else {
@@ -281,7 +280,7 @@ async fn guard_dependencies_healthy(
     metrics.set_rpc_up(&runtime.config.network, false);
     metrics.set_ws_up(&runtime.config.network, false);
 
-    let rpc_health = match runtime.sources.required(&GetHealth).await {
+    let rpc_health = match runtime.sources.rpc_health().await {
         Ok(health) => health,
         Err(error) => {
             metrics.set_mode_up(&runtime.config.network, ModeId::Health, false);

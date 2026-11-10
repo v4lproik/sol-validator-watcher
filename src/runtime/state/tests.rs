@@ -1,6 +1,5 @@
 use super::{config_mtime, RuntimeState};
 use crate::{
-    collector::command::{GetHealth, GetRecentPerformanceSamples, GetVoteAccounts},
     mode::CommandId,
     runtime::test_support::{
         start_capability_probe_server, start_controlled_capability_probe_server,
@@ -211,7 +210,7 @@ current_block_production = ["primary"]
     primary_control.set_recent_performance_failure(true);
     let failed_command = runtime
         .sources
-        .optional(&GetRecentPerformanceSamples)
+        .recent_performance()
         .await?
         .context("backup should satisfy the failed command")?;
     assert_eq!(failed_command.source.connector.as_ref(), "backup");
@@ -229,7 +228,7 @@ current_block_production = ["primary"]
 
     let preserved_failover = runtime
         .sources
-        .optional(&GetRecentPerformanceSamples)
+        .recent_performance()
         .await?
         .context("active command fallback should survive a rejected reload")?;
     assert_eq!(preserved_failover.source.connector.as_ref(), "backup");
@@ -248,7 +247,7 @@ current_block_production = ["primary"]
 
     let reset_failover = runtime
         .sources
-        .optional(&GetRecentPerformanceSamples)
+        .recent_performance()
         .await?
         .context("primary should be retried after accepted source-chain reload")?;
     assert_eq!(reset_failover.source.connector.as_ref(), "primary");
@@ -335,13 +334,8 @@ reward_epoch_block_production = ["primary"]
     assert!(!runtime.reload_if_needed().await?);
 
     primary_control.set_vote_accounts_failure(false);
-    let vote_accounts = runtime
-        .sources
-        .required(&GetVoteAccounts {
-            delinquent_slot_distance: Some(128),
-        })
-        .await?;
-    assert_eq!(vote_accounts.source.connector.as_ref(), "primary");
+    let vote_accounts_source = runtime.sources.vote_accounts_source(Some(128)).await?;
+    assert_eq!(vote_accounts_source.connector.as_ref(), "primary");
 
     fs::remove_dir_all(&test_dir)
         .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
@@ -784,7 +778,7 @@ enabled = false
     }
 
     let request_count_before_routed_health_check = recorded_requests.lock().await.len();
-    let health = runtime.sources.required(&GetHealth).await?;
+    let health = runtime.sources.rpc_health().await?;
     assert!(health.value.is_healthy());
 
     let requests = recorded_requests.lock().await;

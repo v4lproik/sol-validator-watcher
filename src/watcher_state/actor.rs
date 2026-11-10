@@ -5,11 +5,15 @@
 
 use super::{PollCompletion, RpcResponseCounts, WatcherStateSnapshot};
 use crate::{
-    failover::{FailoverKey, FailoverStatus, FailoverTransition},
+    failover::{FailoverKey, FailoverStatus},
     metrics::Metrics,
     tasks::{Shutdown, TaskExit},
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
+use sol_validator_watcher_domain::{RpcRequestOutcome, SourceEvent};
+use sol_validator_watcher_source::{
+    source_telemetry_channel, RuntimeTelemetry, SourceTelemetryDelivery, SourceTelemetryReceiver,
+};
 use std::{collections::BTreeMap, fmt, sync::Arc, time::Duration};
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -25,30 +29,8 @@ const WATCHER_STATE_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 pub(crate) struct WatcherStateMailbox {
     commands: mpsc::UnboundedSender<WatcherStateCommand>,
     command_receiver: mpsc::UnboundedReceiver<WatcherStateCommand>,
-}
-
-/// Cloneable runtime event producer shared by source routing and connector clients.
-#[derive(Clone)]
-pub(crate) struct RuntimeTelemetry {
-    commands: mpsc::UnboundedSender<WatcherStateCommand>,
-    #[cfg(test)]
-    _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
-}
-
-/// Connector-bound WebSocket failure producer preserving actor command ordering.
-#[derive(Clone)]
-pub(crate) struct ConnectorWebsocketTelemetry {
-    commands: mpsc::UnboundedSender<WatcherStateCommand>,
-    connector: Arc<str>,
-    #[cfg(test)]
-    _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
-}
-
-/// Final protocol outcome for one timed JSON-RPC request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RpcRequestOutcome {
-    Succeeded,
-    Failed,
+    runtime_telemetry: RuntimeTelemetry,
+    source_events: SourceTelemetryReceiver,
 }
 
 /// Cloneable control and snapshot handle for watcher readiness.
@@ -56,6 +38,7 @@ pub(crate) enum RpcRequestOutcome {
 pub(crate) struct WatcherState {
     commands: mpsc::UnboundedSender<WatcherStateCommand>,
     snapshots: watch::Receiver<WatcherStateSnapshot>,
+    runtime_telemetry: RuntimeTelemetry,
 }
 
 /// Error returned while publishing a transition to the watcher-state actor.
@@ -73,6 +56,7 @@ enum WatcherStateErrorKind {
 /// Single owner of readiness transitions and transport counters.
 pub(crate) struct WatcherStateActor {
     commands: mpsc::UnboundedReceiver<WatcherStateCommand>,
+    source_events: SourceTelemetryReceiver,
     snapshots: watch::Sender<WatcherStateSnapshot>,
     state: WatcherStateSnapshot,
     poll: PollState,
@@ -82,31 +66,6 @@ pub(crate) struct WatcherStateActor {
 }
 
 enum WatcherStateCommand {
-    RecordRpcResponse {
-        status: u16,
-    },
-    RecordRpcRequest {
-        connector: Arc<str>,
-        method: &'static str,
-        duration: Duration,
-        outcome: RpcRequestOutcome,
-    },
-    RecordRpcFailure {
-        connector: Arc<str>,
-        method: &'static str,
-    },
-    RecordWebsocketProbeFailure {
-        connector: Arc<str>,
-    },
-    RecordBlockFeeCache {
-        connector: Arc<str>,
-        hits: u64,
-        misses: u64,
-        methods_requested: u64,
-    },
-    RecordFailoverTransition {
-        transition: FailoverTransition,
-    },
     ResetAdmission {
         network: Arc<str>,
         reply: oneshot::Sender<()>,
@@ -195,19 +154,18 @@ impl WatcherStateMailbox {
     /// Creates an unstarted mailbox.
     pub(crate) fn new() -> Self {
         let (commands, command_receiver) = mpsc::unbounded_channel();
+        let (runtime_telemetry, source_events) = source_telemetry_channel();
         Self {
             commands,
             command_receiver,
+            runtime_telemetry,
+            source_events,
         }
     }
 
     /// Returns source-routing and connector telemetry attached to this mailbox.
     pub(crate) fn runtime_telemetry(&self) -> RuntimeTelemetry {
-        RuntimeTelemetry {
-            commands: self.commands.clone(),
-            #[cfg(test)]
-            _receiver_guard: None,
-        }
+        self.runtime_telemetry.clone()
     }
 
     /// Initializes published state and consumes the mailbox into its actor and handle.
@@ -228,6 +186,7 @@ impl WatcherStateMailbox {
         let (snapshot_sender, snapshots) = watch::channel(state.clone());
         let actor = WatcherStateActor {
             commands: self.command_receiver,
+            source_events: self.source_events,
             snapshots: snapshot_sender,
             state,
             poll: PollState::Idle,
@@ -237,133 +196,10 @@ impl WatcherStateMailbox {
         };
         let handle = WatcherState {
             commands: self.commands,
+            runtime_telemetry: self.runtime_telemetry,
             snapshots,
         };
         (handle, actor)
-    }
-}
-
-impl RuntimeTelemetry {
-    /// Binds RPC observations from this handle to one configured connector.
-    pub(crate) fn for_connector(&self, connector: &str) -> ConnectorRpcTelemetry {
-        ConnectorRpcTelemetry {
-            commands: self.commands.clone(),
-            connector: Arc::from(connector),
-            #[cfg(test)]
-            _receiver_guard: self._receiver_guard.clone(),
-        }
-    }
-
-    /// Binds WebSocket observations from this handle to one configured connector.
-    pub(crate) fn for_websocket_connector(&self, connector: &str) -> ConnectorWebsocketTelemetry {
-        ConnectorWebsocketTelemetry {
-            commands: self.commands.clone(),
-            connector: Arc::from(connector),
-            #[cfg(test)]
-            _receiver_guard: self._receiver_guard.clone(),
-        }
-    }
-
-    /// Queues one committed source failover transition.
-    pub(crate) fn record_failover_transition(&self, transition: FailoverTransition) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordFailoverTransition { transition })
-            .map_err(|_| {
-                anyhow!("watcher state actor stopped before recording a failover transition")
-            })
-    }
-    #[cfg(test)]
-    /// Queues one received HTTP response status for classification.
-    pub(crate) fn record_response(&self, status: u16) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordRpcResponse { status })
-            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC response"))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn unobserved() -> Self {
-        let (commands, command_receiver) = mpsc::unbounded_channel();
-        Self {
-            commands,
-            _receiver_guard: Some(Arc::new(std::sync::Mutex::new(command_receiver))),
-        }
-    }
-}
-
-/// Connector-bound RPC event producer preserving actor command ordering.
-#[derive(Clone)]
-pub(crate) struct ConnectorRpcTelemetry {
-    commands: mpsc::UnboundedSender<WatcherStateCommand>,
-    connector: Arc<str>,
-    #[cfg(test)]
-    _receiver_guard: Option<Arc<std::sync::Mutex<mpsc::UnboundedReceiver<WatcherStateCommand>>>>,
-}
-
-impl ConnectorRpcTelemetry {
-    /// Queues one received HTTP response status for bounded operator telemetry.
-    pub(crate) fn record_response(&self, status: u16) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordRpcResponse { status })
-            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC response"))
-    }
-
-    /// Queues one timed request and its protocol outcome.
-    pub(crate) fn record_request(
-        &self,
-        method: &'static str,
-        duration: Duration,
-        outcome: RpcRequestOutcome,
-    ) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordRpcRequest {
-                connector: Arc::clone(&self.connector),
-                method,
-                duration,
-                outcome,
-            })
-            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC request"))
-    }
-
-    /// Queues one semantic failure discovered after a valid response was decoded.
-    pub(crate) fn record_failure(&self, method: &'static str) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordRpcFailure {
-                connector: Arc::clone(&self.connector),
-                method,
-            })
-            .map_err(|_| anyhow!("watcher state actor stopped before recording an RPC failure"))
-    }
-
-    /// Queues bounded finalized-block cache and JSON-RPC method counts.
-    pub(crate) fn record_block_fee_cache(
-        &self,
-        hits: u64,
-        misses: u64,
-        methods_requested: u64,
-    ) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordBlockFeeCache {
-                connector: Arc::clone(&self.connector),
-                hits,
-                misses,
-                methods_requested,
-            })
-            .map_err(|_| {
-                anyhow!("watcher state actor stopped before recording block-fee cache telemetry")
-            })
-    }
-}
-
-impl ConnectorWebsocketTelemetry {
-    /// Queues one failed WebSocket reachability probe.
-    pub(crate) fn record_failure(&self) -> Result<()> {
-        self.commands
-            .send(WatcherStateCommand::RecordWebsocketProbeFailure {
-                connector: Arc::clone(&self.connector),
-            })
-            .map_err(|_| {
-                anyhow!("watcher state actor stopped before recording a websocket probe failure")
-            })
     }
 }
 
@@ -373,6 +209,7 @@ impl WatcherState {
         &self,
         network: &str,
     ) -> std::result::Result<(), WatcherStateError> {
+        self.flush_source_events().await?;
         let (reply, acknowledgment) = oneshot::channel();
         self.commands
             .send(WatcherStateCommand::ResetAdmission {
@@ -397,6 +234,7 @@ impl WatcherState {
         network: &str,
         failovers: &[FailoverKey],
     ) -> std::result::Result<(), WatcherStateError> {
+        self.flush_source_events().await?;
         let (reply, acknowledgment) = oneshot::channel();
         self.commands
             .send(WatcherStateCommand::ResetRuntime {
@@ -444,10 +282,19 @@ impl WatcherState {
         self.finish_poll(PollOutcome::Failed).await
     }
 
+    async fn flush_source_events(&self) -> std::result::Result<(), WatcherStateError> {
+        self.runtime_telemetry.flush().await.map_err(|_| {
+            WatcherStateError::actor_stopped(
+                "watcher state actor stopped before applying pending source events",
+            )
+        })
+    }
+
     async fn finish_poll(
         &self,
         outcome: PollOutcome,
     ) -> std::result::Result<PollCompletion, WatcherStateError> {
+        self.flush_source_events().await?;
         let (reply, completion) = oneshot::channel();
         self.commands
             .send(WatcherStateCommand::CompletePoll { outcome, reply })
@@ -498,6 +345,13 @@ impl WatcherStateActor {
                     };
                     self.handle(command);
                 }
+                delivery = self.source_events.recv() => {
+                    let Some(delivery) = delivery else {
+                        info!("watcher source-event channel shutting down");
+                        return Ok(TaskExit::Finished);
+                    };
+                    self.handle_source_delivery(delivery);
+                }
                 _ = ticker.tick() => self.report(),
                 _ = shutdown.cancelled() => {
                     info!("watcher state actor shutting down");
@@ -507,12 +361,22 @@ impl WatcherStateActor {
         }
     }
 
-    fn handle(&mut self, command: WatcherStateCommand) {
-        match command {
-            WatcherStateCommand::RecordRpcResponse { status } => {
+    fn handle_source_delivery(&mut self, delivery: SourceTelemetryDelivery) {
+        match delivery {
+            SourceTelemetryDelivery::Event(event) => self.handle_source_event(event),
+            SourceTelemetryDelivery::Flush(acknowledgment) => {
+                // The requester may be cancelled after preceding events were applied.
+                let _ = acknowledgment.send(());
+            }
+        }
+    }
+
+    fn handle_source_event(&mut self, event: SourceEvent) {
+        match event {
+            SourceEvent::RpcResponse { status } => {
                 self.state.rpc_responses.record_response(status);
             }
-            WatcherStateCommand::RecordRpcRequest {
+            SourceEvent::RpcRequestCompleted {
                 connector,
                 method,
                 duration,
@@ -528,14 +392,14 @@ impl WatcherStateActor {
                     self.record_rpc_failure(connector.as_ref(), method);
                 }
             }
-            WatcherStateCommand::RecordRpcFailure { connector, method } => {
+            SourceEvent::RpcFailure { connector, method } => {
                 self.record_rpc_failure(connector.as_ref(), method);
             }
-            WatcherStateCommand::RecordWebsocketProbeFailure { connector } => {
+            SourceEvent::WebsocketProbeFailure { connector } => {
                 self.metrics
                     .record_ws_probe_failure(self.state.network.as_ref(), connector.as_ref());
             }
-            WatcherStateCommand::RecordBlockFeeCache {
+            SourceEvent::BlockFeeCacheObserved {
                 connector,
                 hits,
                 misses,
@@ -549,7 +413,7 @@ impl WatcherStateActor {
                     methods_requested,
                 );
             }
-            WatcherStateCommand::RecordFailoverTransition { transition } => {
+            SourceEvent::FailoverTransition(transition) => {
                 info!(
                     network = self.state.network.as_ref(),
                     connector = transition.key.connector.as_ref(),
@@ -574,6 +438,11 @@ impl WatcherStateActor {
                     .any(FailoverStatus::is_degraded);
                 self.publish();
             }
+        }
+    }
+
+    fn handle(&mut self, command: WatcherStateCommand) {
+        match command {
             WatcherStateCommand::ResetAdmission { network, reply } => {
                 self.state.network = network;
                 self.state.completed_poll_rounds = 0;

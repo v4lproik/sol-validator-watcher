@@ -67,7 +67,7 @@ fn surfpool_smoke_test_collects_snapshot_and_renders_metrics() -> Result<()> {
     metrics.set_watcher_up(&config.network, true);
     metrics.set_rpc_up(&config.network, true);
     metrics.set_ws_up(&config.network, true);
-    metrics.begin_poll(&config, &sources);
+    metrics.begin_poll(&sources.runtime_inventory(&config));
     metrics.update_snapshot(&snapshot);
     let rendered = metrics.render()?;
 
