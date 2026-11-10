@@ -29,6 +29,9 @@ checks.
   `just rust doc`, the coverage gate, LCOV/HTML generation, artifact uploads,
   and optional Codecov upload. Local verification must exercise every changed
   step that can run locally.
+- Every executable GitHub Actions job uses the Blacksmith Ubuntu 24.04 runner
+  label `blacksmith-2vcpu-ubuntu-2404`; `.github/actionlint.yaml` registers the
+  custom label, while reusable jobs inherit the called workflow's runner.
 - Prometheus configuration or rule changes run `just stack check` locally and
   in the required CI job.
 - Keep the required verification job name stable unless repository protection
