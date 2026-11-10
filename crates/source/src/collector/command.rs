@@ -10,6 +10,7 @@ use super::{
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
+use sol_validator_watcher_domain::ReserveWalletMetrics;
 use std::collections::HashMap;
 
 /// Typed command clients constructed once for one configured connector.
@@ -270,6 +271,36 @@ impl SourceCommand for GetAccountBalances<'_> {
             .get_account_balances(self.targets)
             .await
             .context("account balance collection failed")
+    }
+}
+
+/// Required configured reserve-wallet balances command.
+pub(crate) struct GetReserveWalletBalances<'a> {
+    /// Reserve-wallet account addresses in stable output order.
+    pub addresses: &'a [String],
+}
+
+impl SourceCommand for GetReserveWalletBalances<'_> {
+    const ID: CommandId = CommandId::ReserveWalletBalances;
+    type Transport = RpcCommandTransport;
+    type Output = Vec<ReserveWalletMetrics>;
+
+    async fn execute(&self, client: &RpcClient) -> Result<Self::Output> {
+        let balances = client
+            .get_wallet_balances(self.addresses)
+            .await
+            .context("reserve wallet getMultipleAccounts failed")?;
+        Ok(self
+            .addresses
+            .iter()
+            .zip(balances)
+            .filter_map(|(address, balance_lamports)| {
+                balance_lamports.map(|balance_lamports| ReserveWalletMetrics {
+                    address: address.clone(),
+                    balance_lamports,
+                })
+            })
+            .collect())
     }
 }
 

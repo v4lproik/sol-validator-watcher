@@ -277,6 +277,14 @@ pub struct AccountBalances {
     /// Current rent-exempt minimum for the vote account, when its data size is known.
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
 }
+/// Configured reserve wallet and its current balance.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReserveWalletMetrics {
+    /// Reserve-wallet account address.
+    pub address: String,
+    /// Current reserve-wallet balance in lamports.
+    pub balance_lamports: u64,
+}
 
 /// Current balances and derived vote-account funding runway for one watched validator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -314,6 +322,8 @@ pub struct EconomicsMetrics {
     pub vat_epochs_available: Option<u64>,
     /// Whether the reserve covers the next 0.8 SOL VAT charge.
     pub vat_next_epoch_funded: Option<bool>,
+    /// Configured reserve wallets that exist on the selected source and their current balances.
+    pub reserve_wallets: Vec<ReserveWalletMetrics>,
     /// Settled Jito MEV reward, when a configured Jito route has published the epoch.
     pub jito_mev_reward: Option<JitoMevReward>,
     /// Completed-epoch MEV capture when a configured Trillium route has data.

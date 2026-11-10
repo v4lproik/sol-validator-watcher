@@ -58,6 +58,11 @@ liveness files, signals, and shutdown.
   require `historical-data`. Recent block-fee rewards require an extended RPC
   connector with the `block-fee-rewards` feature and `confirmed` or `finalized`
   commitment. Jito rewards and Trillium capture use provider APIs independently.
+- `modes.economics.reserve_wallets` is optional and valid only when economics is
+  enabled. When non-empty, `commands.reserve_wallet_balances` is required and
+  must resolve to an `extended` RPC connector. Reject duplicate wallets and
+  reject a reserve-wallet route when the list is empty instead of retaining
+  unused configuration.
 - Each `modes.<mode>.commands.<command>` array declares connector entries in
   priority order. During validation, append each entry's backup list for that
   command's exact source requirement immediately after the entry. The resulting

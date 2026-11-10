@@ -77,8 +77,10 @@ fn modes_for(rpc: &str, ws: Option<&str>, economics_enabled: bool) -> ModesConfi
         economics: EconomicsModeConfig {
             enabled: economics_enabled,
             validator: None,
+            reserve_wallets: vec![],
             commands: EconomicsCommands {
                 account_balances: economics_enabled.then(rpc_route).unwrap_or_default(),
+                reserve_wallet_balances: vec![],
                 inflation_rewards: economics_enabled.then(rpc_route).unwrap_or_default(),
                 reward_epoch_block_production: economics_enabled
                     .then(rpc_route)

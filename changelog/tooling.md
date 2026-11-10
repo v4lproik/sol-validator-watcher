@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Documented plural reserve-wallet configuration, required shared source routing, bounded `getMultipleAccounts` chunking, per-wallet missing and zero-balance semantics, successful provenance, and snapshot-reset metrics in public and repository engineering guidance.
 - Converted the Rust package into a five-member Cargo workspace with centralized package metadata, exact dependency versions, and lint policy; workspace-wide Just recipes now check, document, lint, build, test, and benchmark every member.
 - Migrated every executable GitHub Actions job from GitHub-hosted Ubuntu runners to the Namespace `namespace-profile-general-4cpu-8gb` profile and registered the custom label for local workflow linting.
 - Repositioned the GitHub README around monitoring any Solana validator by identity or vote-account public key.

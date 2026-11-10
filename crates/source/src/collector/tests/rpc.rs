@@ -535,6 +535,86 @@ async fn rpc_transport_sends_connector_commitment_on_wire() -> Result<()> {
 }
 
 #[tokio::test]
+async fn get_wallet_balances_preserves_missing_and_zero_accounts_and_sends_commitment() -> Result<()>
+{
+    let (rpc_url, server_task, requests) =
+        start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let mut transport = rpc_transport(&rpc_url, 5);
+    transport.commitment = "finalized".to_string();
+    let client = RpcClient::try_new(
+        &transport,
+        crate::RuntimeTelemetry::unobserved().for_connector("reserve-wallet-rpc"),
+    )?;
+    let addresses = vec![
+        "reserve-1".to_string(),
+        "missing-reserve".to_string(),
+        "zero-reserve".to_string(),
+        "reserve-2".to_string(),
+    ];
+
+    let balances = client.get_wallet_balances(&addresses).await;
+    server_task.abort();
+    assert_eq!(
+        balances?,
+        [Some(3_000_000_000), None, Some(0), Some(4_000_000_000)]
+    );
+    assert_eq!(
+        requests.lock().await.as_slice(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getMultipleAccounts",
+            "params": [
+                ["reserve-1", "missing-reserve", "zero-reserve", "reserve-2"],
+                {
+                    "commitment": "finalized",
+                    "dataSlice": { "offset": 0, "length": 0 },
+                    "encoding": "base64"
+                }
+            ]
+        })]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn get_wallet_balances_chunks_requests_at_the_endpoint_limit() -> Result<()> {
+    let (rpc_url, server_task, requests) =
+        start_request_recording_mock_rpc_server(MockRpcProfile::Default).await?;
+    let client = RpcClient::try_new(
+        &rpc_transport(&rpc_url, 5),
+        crate::RuntimeTelemetry::unobserved().for_connector("reserve-wallet-rpc"),
+    )?;
+    let addresses = (0..101)
+        .map(|index| format!("wallet-{index}"))
+        .collect::<Vec<_>>();
+
+    let balances = client.get_wallet_balances(&addresses).await?;
+    server_task.abort();
+
+    assert_eq!(balances, vec![Some(3_000_000_000); 101]);
+    let requests = requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    let first_addresses = requests[0]
+        .get("params")
+        .and_then(Value::as_array)
+        .and_then(|params| params.first())
+        .and_then(Value::as_array)
+        .context("first getMultipleAccounts request omitted its addresses")?;
+    let second_addresses = requests[1]
+        .get("params")
+        .and_then(Value::as_array)
+        .and_then(|params| params.first())
+        .and_then(Value::as_array)
+        .context("second getMultipleAccounts request omitted its addresses")?;
+    assert_eq!(first_addresses.len(), 100);
+    assert_eq!(first_addresses.first(), Some(&json!("wallet-0")));
+    assert_eq!(first_addresses.last(), Some(&json!("wallet-99")));
+    assert_eq!(second_addresses, &[json!("wallet-100")]);
+    Ok(())
+}
+
+#[tokio::test]
 async fn rpc_transport_rejects_response_bodies_over_the_configured_limit() -> Result<()> {
     let (rpc_url, server_task) = start_mock_rpc_server().await?;
     let mut transport = rpc_transport(&rpc_url, 5);

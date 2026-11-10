@@ -56,6 +56,13 @@ pub async fn ensure_economics_supported(sources: &SourceChain, config: &Config) 
     if economics_target_funding(&target, &account_targets, &balances.value).is_none() {
         bail!("configured economics target account was not found");
     }
+    if !config.modes.economics.reserve_wallets.is_empty() {
+        sources
+            .required(&command::GetReserveWalletBalances {
+                addresses: &config.modes.economics.reserve_wallets,
+            })
+            .await?;
+    }
 
     let Some(reward_epoch) = epoch_info.value.epoch.checked_sub(1) else {
         return Ok(());
@@ -163,7 +170,13 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         slot: next_epoch_start_slot,
     };
 
-    let (current_block_production, current_schedule, next_schedule, economics_outputs) = tokio::join!(
+    let (
+        current_block_production,
+        current_schedule,
+        next_schedule,
+        economics_outputs,
+        reserve_wallets,
+    ) = tokio::join!(
         sources.optional(&command::GetCurrentBlockProduction),
         sources.optional(&current_schedule_command),
         sources.optional(&next_schedule_command),
@@ -201,10 +214,22 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
                 trillium_mev_capture?,
             ))
         },
+        async {
+            if config.modes.economics.reserve_wallets.is_empty() {
+                return Ok::<_, anyhow::Error>(None);
+            }
+            sources
+                .required(&command::GetReserveWalletBalances {
+                    addresses: &config.modes.economics.reserve_wallets,
+                })
+                .await
+                .map(Some)
+        },
     );
     let current_block_production = current_block_production?;
     let current_schedule = current_schedule?;
     let next_schedule = next_schedule?;
+    let reserve_wallets = reserve_wallets?;
 
     let (inflation_rewards, reward_epoch_block_production, jito_mev_reward, trillium_mev_capture) =
         economics_outputs?;
@@ -231,6 +256,10 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         resolved.value
     });
     let trillium_mev_capture = trillium_mev_capture.and_then(|resolved| {
+        data_sources.push(resolved.source.into());
+        resolved.value
+    });
+    let reserve_wallets = reserve_wallets.map_or_else(Vec::new, |resolved| {
         data_sources.push(resolved.source.into());
         resolved.value
     });
@@ -371,6 +400,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         economics = Some(build_economics_metrics(
             target,
             target_balances,
+            reserve_wallets,
             jito_mev_reward,
             trillium_mev_capture,
             recent_block_fee_rewards,
