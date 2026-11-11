@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 17;
+pub const COMMAND_COUNT: usize = 18;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -72,6 +72,8 @@ pub enum ProviderFeature {
     JitoMevRewards,
     /// Completed-epoch validator MEV analytics served by the Trillium API.
     TrilliumMevCapture,
+    /// Per-epoch operating-cost budgets served by an operator API.
+    OperatingCosts,
 }
 
 impl ProviderFeature {
@@ -82,6 +84,7 @@ impl ProviderFeature {
             Self::BlockFeeRewards => "block-fee-rewards",
             Self::JitoMevRewards => "jito-mev-rewards",
             Self::TrilliumMevCapture => "trillium-mev-capture",
+            Self::OperatingCosts => "operating-costs",
         }
     }
 }
@@ -104,6 +107,8 @@ pub enum ModeSourceRequirement {
     JitoMevRewards,
     /// Trillium completed-epoch MEV provider API.
     TrilliumMevCapture,
+    /// Per-epoch operating-cost provider API.
+    OperatingCosts,
 }
 
 impl ModeSourceRequirement {
@@ -117,6 +122,7 @@ impl ModeSourceRequirement {
             Self::Websocket => "websocket",
             Self::JitoMevRewards => "jito-mev-rewards",
             Self::TrilliumMevCapture => "trillium-mev-capture",
+            Self::OperatingCosts => "operating-costs",
         }
     }
 
@@ -128,7 +134,9 @@ impl ModeSourceRequirement {
             | Self::RpcHistoricalData
             | Self::RpcBlockFeeRewards => Transport::Rpc,
             Self::Websocket => Transport::Websocket,
-            Self::JitoMevRewards | Self::TrilliumMevCapture => Transport::ProviderApi,
+            Self::JitoMevRewards | Self::TrilliumMevCapture | Self::OperatingCosts => {
+                Transport::ProviderApi
+            }
         }
     }
 
@@ -139,7 +147,10 @@ impl ModeSourceRequirement {
             Self::RpcExtended | Self::RpcHistoricalData | Self::RpcBlockFeeRewards => {
                 Some(SolanaRpcCompatibility::Extended)
             }
-            Self::Websocket | Self::JitoMevRewards | Self::TrilliumMevCapture => None,
+            Self::Websocket
+            | Self::JitoMevRewards
+            | Self::TrilliumMevCapture
+            | Self::OperatingCosts => None,
         }
     }
 
@@ -150,6 +161,7 @@ impl ModeSourceRequirement {
             Self::RpcBlockFeeRewards => Some(ProviderFeature::BlockFeeRewards),
             Self::JitoMevRewards => Some(ProviderFeature::JitoMevRewards),
             Self::TrilliumMevCapture => Some(ProviderFeature::TrilliumMevCapture),
+            Self::OperatingCosts => Some(ProviderFeature::OperatingCosts),
             Self::RpcCore | Self::RpcExtended | Self::Websocket => None,
         }
     }
@@ -227,6 +239,8 @@ pub enum CommandId {
     RecentBlockFeeRewards,
     /// Latest completed-epoch Trillium MEV capture for the economics validator.
     TrilliumMevCapture,
+    /// Operating-cost budgets for one completed epoch.
+    OperatingCosts,
 }
 
 impl CommandId {
@@ -249,6 +263,7 @@ impl CommandId {
         Self::JitoMevRewards,
         Self::RecentBlockFeeRewards,
         Self::TrilliumMevCapture,
+        Self::OperatingCosts,
     ];
 
     /// Returns the stable metric and configuration label.
@@ -271,6 +286,7 @@ impl CommandId {
             Self::JitoMevRewards => "jito-mev-rewards",
             Self::RecentBlockFeeRewards => "recent-block-fee-rewards",
             Self::TrilliumMevCapture => "trillium-mev-capture",
+            Self::OperatingCosts => "operating-costs",
         }
     }
 
@@ -291,7 +307,8 @@ impl CommandId {
             | Self::RewardEpochBlockProduction
             | Self::JitoMevRewards
             | Self::RecentBlockFeeRewards
-            | Self::TrilliumMevCapture => ModeId::Economics,
+            | Self::TrilliumMevCapture
+            | Self::OperatingCosts => ModeId::Economics,
         }
     }
 
@@ -316,6 +333,7 @@ impl CommandId {
             Self::JitoMevRewards => ModeSourceRequirement::JitoMevRewards,
             Self::RecentBlockFeeRewards => ModeSourceRequirement::RpcBlockFeeRewards,
             Self::TrilliumMevCapture => ModeSourceRequirement::TrilliumMevCapture,
+            Self::OperatingCosts => ModeSourceRequirement::OperatingCosts,
         }
     }
 
@@ -339,6 +357,7 @@ impl CommandId {
             Self::JitoMevRewards => 14,
             Self::RecentBlockFeeRewards => 15,
             Self::TrilliumMevCapture => 16,
+            Self::OperatingCosts => 17,
         }
     }
 }
@@ -401,6 +420,10 @@ mod tests {
         assert_eq!(
             CommandId::TrilliumMevCapture.source_requirement(),
             ModeSourceRequirement::TrilliumMevCapture
+        );
+        assert_eq!(
+            CommandId::OperatingCosts.source_requirement(),
+            ModeSourceRequirement::OperatingCosts
         );
         assert_eq!(
             CommandId::WsHealth.source_requirement(),

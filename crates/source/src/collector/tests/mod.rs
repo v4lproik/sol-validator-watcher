@@ -73,6 +73,7 @@ struct MockRpcState {
 mod aggregate;
 mod collection;
 mod jito;
+mod operating_costs;
 mod rpc;
 mod trillium;
 
@@ -724,6 +725,7 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
                 recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
                 trillium_mev_capture: vec![],
+                operating_costs: vec![],
             },
         },
     }

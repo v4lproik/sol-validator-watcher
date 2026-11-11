@@ -78,6 +78,8 @@ pub struct EconomicsCommands {
     pub jito_mev_rewards: Vec<String>,
     /// Connector names used for completed-epoch Trillium MEV capture.
     pub trillium_mev_capture: Vec<String>,
+    /// Connector names used for per-epoch operating costs.
+    pub operating_costs: Vec<String>,
 }
 
 /// Health-mode command routes.
@@ -168,6 +170,7 @@ impl ModesConfig {
             CommandId::JitoMevRewards => &self.economics.commands.jito_mev_rewards,
             CommandId::RecentBlockFeeRewards => &self.economics.commands.recent_block_fee_rewards,
             CommandId::TrilliumMevCapture => &self.economics.commands.trillium_mev_capture,
+            CommandId::OperatingCosts => &self.economics.commands.operating_costs,
         }
     }
 
@@ -202,6 +205,7 @@ impl ModesConfig {
                 &mut self.economics.commands.recent_block_fee_rewards
             }
             CommandId::TrilliumMevCapture => &mut self.economics.commands.trillium_mev_capture,
+            CommandId::OperatingCosts => &mut self.economics.commands.operating_costs,
         }
     }
 
@@ -749,26 +753,30 @@ impl ConnectorConfig {
                 ProviderFeature::BlockFeeRewards.as_str()
             );
         }
-        if self.supports(ProviderFeature::JitoMevRewards)
-            && self.supports(ProviderFeature::TrilliumMevCapture)
-        {
+        let provider_api_feature_count = [
+            ProviderFeature::JitoMevRewards,
+            ProviderFeature::TrilliumMevCapture,
+            ProviderFeature::OperatingCosts,
+        ]
+        .into_iter()
+        .filter(|feature| self.supports(*feature))
+        .count();
+        if provider_api_feature_count > 1 {
             bail!(
-                "connectors[{index}].features cannot combine {:?} and {:?}: provider_api configures one provider endpoint",
-                ProviderFeature::JitoMevRewards.as_str(),
-                ProviderFeature::TrilliumMevCapture.as_str()
+                "connectors[{index}].features cannot contain multiple provider API features: provider_api configures one provider endpoint"
             );
         }
-        if self.supports(ProviderFeature::JitoMevRewards) && !self.has_provider_api() {
-            bail!(
-                "connectors[{index}].features entry {:?} requires provider_api",
-                ProviderFeature::JitoMevRewards.as_str()
-            );
-        }
-        if self.supports(ProviderFeature::TrilliumMevCapture) && !self.has_provider_api() {
-            bail!(
-                "connectors[{index}].features entry {:?} requires provider_api",
-                ProviderFeature::TrilliumMevCapture.as_str()
-            );
+        for feature in [
+            ProviderFeature::JitoMevRewards,
+            ProviderFeature::TrilliumMevCapture,
+            ProviderFeature::OperatingCosts,
+        ] {
+            if self.supports(feature) && !self.has_provider_api() {
+                bail!(
+                    "connectors[{index}].features entry {:?} requires provider_api",
+                    feature.as_str()
+                );
+            }
         }
         if self.rpc.is_none() && self.websocket.is_none() && self.provider_api.is_none() {
             bail!("connectors[{index}] must define rpc, websocket, and/or provider_api");
@@ -1032,7 +1040,8 @@ impl Config {
                 | CommandId::NextLeaderSchedule
                 | CommandId::JitoMevRewards
                 | CommandId::RecentBlockFeeRewards
-                | CommandId::TrilliumMevCapture => false,
+                | CommandId::TrilliumMevCapture
+                | CommandId::OperatingCosts => false,
                 CommandId::AccountBalances
                 | CommandId::InflationRewards
                 | CommandId::RewardEpochBlockProduction => self.modes.economics.enabled,
@@ -1219,6 +1228,7 @@ fn validate_economics(
         if !modes.economics.reserve_wallets.is_empty() {
             bail!("modes.economics.reserve_wallets requires modes.economics.enabled = true");
         }
+
         return Ok((modes, watched_validators));
     }
     let ModesConfig {

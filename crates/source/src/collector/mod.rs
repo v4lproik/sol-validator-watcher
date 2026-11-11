@@ -9,6 +9,7 @@ mod jito;
 mod model {
     pub use sol_validator_watcher_domain::*;
 }
+mod operating_costs;
 mod rpc;
 mod snapshot;
 mod trillium;
@@ -24,13 +25,14 @@ use aggregate::reward_epoch_block_range;
 pub(crate) use jito::JitoClient;
 pub use model::MAX_UPCOMING_LEADER_SLOTS;
 pub(crate) use model::{
-    AccountBalanceTarget, AccountBalances, JitoMevReward, NodeRpcStatus, RewardSample,
-    TrilliumBlockRewards, TrilliumMevCapture, TrilliumTransactionMetrics,
+    AccountBalanceTarget, AccountBalances, JitoMevReward, NodeRpcStatus, OperatingCost,
+    RewardSample, TrilliumBlockRewards, TrilliumMevCapture, TrilliumTransactionMetrics,
 };
 pub use model::{
     EconomicsMetrics, EpochCreditsSample, NodeMetrics, NodeVotingStatus, ScopeMetrics,
     ValidatorFundingMetrics, ValidatorRecord, ValidatorStatus,
 };
+pub(crate) use operating_costs::OperatingCostsClient;
 pub(crate) use rpc::{BlockProduction, ClusterNode, EpochInfo, VoteAccounts};
 pub(crate) use trillium::TrilliumClient;
 

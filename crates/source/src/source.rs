@@ -10,7 +10,8 @@ use crate::{
             CommandClients, CommandTransport, GetHealth, GetRecentPerformanceSamples,
             GetVoteAccounts, SourceCommand,
         },
-        ClusterPerformanceMetrics, JitoClient, NodeHealth, RpcClient, TrilliumClient,
+        ClusterPerformanceMetrics, JitoClient, NodeHealth, OperatingCostsClient, RpcClient,
+        TrilliumClient,
     },
     config::{Config, ConnectorConfig},
     failover::{
@@ -190,6 +191,18 @@ impl Connector {
                     config.name
                 )
             })?;
+        let operating_costs_client = config
+            .provider_api
+            .as_ref()
+            .filter(|_| config.supports(ProviderFeature::OperatingCosts))
+            .map(OperatingCostsClient::try_new)
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "failed to build operating-cost API client for connector {:?}",
+                    config.name
+                )
+            })?;
         let ws_client = config
             .websocket
             .as_ref()
@@ -212,7 +225,12 @@ impl Connector {
             provider: Arc::from(config.provider.as_str()),
             solana_rpc_compatibility: config.solana_rpc_compatibility,
             features: config.features.clone(),
-            command_clients: CommandClients::new(rpc_client, jito_client, trillium_client),
+            command_clients: CommandClients::new(
+                rpc_client,
+                jito_client,
+                trillium_client,
+                operating_costs_client,
+            ),
             ws_client,
         })
     }
@@ -240,6 +258,9 @@ impl Connector {
                 Some(ProviderFeature::JitoMevRewards) => self.command_clients.jito_api().is_some(),
                 Some(ProviderFeature::TrilliumMevCapture) => {
                     self.command_clients.trillium_api().is_some()
+                }
+                Some(ProviderFeature::OperatingCosts) => {
+                    self.command_clients.operating_costs_api().is_some()
                 }
                 _ => false,
             },

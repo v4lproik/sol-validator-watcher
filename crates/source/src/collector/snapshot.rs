@@ -182,12 +182,12 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         sources.optional(&next_schedule_command),
         async {
             let Some(target) = economics_target.as_ref() else {
-                return Ok::<_, anyhow::Error>((None, None, None, None));
+                return Ok::<_, anyhow::Error>((None, None, None, None, None));
             };
 
             let (Some(epoch), Some(addresses)) = (reward_epoch, reward_vote_accounts.as_deref())
             else {
-                return Ok((None, None, None, None));
+                return Ok((None, None, None, None, None));
             };
             let inflation_rewards_command = command::GetInflationRewards { addresses, epoch };
             let block_production_command = command::GetRewardEpochBlockProduction {
@@ -201,17 +201,32 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
             let trillium_mev_capture_command = command::GetTrilliumMevCapture {
                 vote_account: &target.vote_account,
             };
-            let (inflation_rewards, block_production, jito_mev_reward, trillium_mev_capture) = tokio::join!(
+            let operating_costs_command = command::GetOperatingCosts { epoch };
+            let (
+                inflation_rewards,
+                block_production,
+                jito_mev_reward,
+                trillium_mev_capture,
+                operating_costs,
+            ) = tokio::join!(
                 sources.required(&inflation_rewards_command),
                 sources.required(&block_production_command),
                 sources.optional(&jito_mev_reward_command),
                 sources.optional(&trillium_mev_capture_command),
+                async {
+                    if config.modes.route(CommandId::OperatingCosts).is_empty() {
+                        Ok(None)
+                    } else {
+                        sources.required(&operating_costs_command).await.map(Some)
+                    }
+                },
             );
             Ok((
                 Some(inflation_rewards?),
                 Some(block_production?),
                 jito_mev_reward?,
                 trillium_mev_capture?,
+                operating_costs?,
             ))
         },
         async {
@@ -231,8 +246,13 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
     let next_schedule = next_schedule?;
     let reserve_wallets = reserve_wallets?;
 
-    let (inflation_rewards, reward_epoch_block_production, jito_mev_reward, trillium_mev_capture) =
-        economics_outputs?;
+    let (
+        inflation_rewards,
+        reward_epoch_block_production,
+        jito_mev_reward,
+        trillium_mev_capture,
+        operating_costs,
+    ) = economics_outputs?;
     let leadership_up =
         current_block_production.is_some() && current_schedule.is_some() && next_schedule.is_some();
 
@@ -256,6 +276,10 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
         resolved.value
     });
     let trillium_mev_capture = trillium_mev_capture.and_then(|resolved| {
+        data_sources.push(resolved.source.into());
+        resolved.value
+    });
+    let operating_costs = operating_costs.map_or_else(Vec::new, |resolved| {
         data_sources.push(resolved.source.into());
         resolved.value
     });
@@ -401,6 +425,7 @@ pub async fn collect_snapshot(sources: &SourceChain, config: &Config) -> Result<
             target,
             target_balances,
             reserve_wallets,
+            operating_costs,
             jito_mev_reward,
             trillium_mev_capture,
             recent_block_fee_rewards,

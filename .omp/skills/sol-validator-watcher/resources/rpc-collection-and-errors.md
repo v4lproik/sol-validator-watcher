@@ -113,6 +113,14 @@ probes, and economics collection.
   provider-API endpoint and is consumed only by the optional economics command.
   A configured route is checked against the resolved target during startup and
   reload; polling exhaustion omits only the Jito reward series.
+- `operating-costs` is independent of Solana RPC compatibility and uses its own
+  provider API endpoint. For the completed reward epoch, send `GET` with one
+  request-owned `epoch` query parameter and require the response epoch to match.
+  Bound the body to 1 MiB and the cost list to 64 entries; normalize names,
+  reject empty or duplicate names, control characters, names above 128 bytes,
+  empty lists, unknown fields, and aggregate lamport overflow. A configured
+  route is required: preserve successful-source provenance and fail the
+  economics poll when all candidates fail.
 - Validate every configured route against its declared transport, Solana RPC
   compatibility, and feature before client construction. Then verify each RPC
   connector's declaration with bounded valid method requests before the first

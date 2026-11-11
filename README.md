@@ -59,11 +59,18 @@ order. The first successful connector wins.
 | `block-fee-rewards` | Confirmed validator block-fee reward reads |
 | `jito-mev-rewards` | Settled Jito validator rewards through its provider API |
 | `trillium-mev-capture` | Completed-epoch MEV, block rewards, priority and signature fees, transactions, compute use, stake, Jito tips, leader slots, and block production through the public Trillium API |
+| `operating-costs` | Completed-epoch operating-cost budgets through an operator API |
 
-An enabled economics mode may also declare reserve wallets and their explicit
-extended-RPC source chain:
+An enabled economics mode may also declare reserve wallets, their explicit
+extended-RPC source chain, and an optional operating-cost provider route:
 
 ```toml
+[[connectors]]
+name = "cost-api"
+provider = "operator-cost-service"
+features = ["operating-costs"]
+provider_api = { url = "${OPERATING_COST_API_URL}", headers = { Authorization = "Bearer ${OPERATING_COST_API_TOKEN}" } }
+
 [modes.economics]
 enabled = true
 reserve_wallets = [
@@ -73,14 +80,41 @@ reserve_wallets = [
 
 [modes.economics.commands]
 reserve_wallet_balances = ["helius-primary"]
+operating_costs = ["cost-api"]
 ```
 
-The route is required when `reserve_wallets` is non-empty. One successful
-routed `getMultipleAccounts` collection publishes each existing wallet with the
-selected connector's source provenance. Missing accounts remain absent,
-existing zero-lamport accounts publish zero, and route exhaustion fails the
-economics snapshot instead of publishing stale balances.
+The reserve-wallet route is required when `reserve_wallets` is non-empty. One
+successful routed `getMultipleAccounts` collection publishes each existing
+wallet with the selected connector's source provenance. Missing accounts remain
+absent, existing zero-lamport accounts publish zero, and route exhaustion fails
+the economics snapshot instead of publishing stale balances.
 
+For each completed reward epoch, the watcher sends `GET` to the configured
+operating-cost endpoint with an `epoch=<u64>` query parameter. The endpoint must
+return:
+
+```json
+{
+  "epoch": 812,
+  "costs": [
+    { "name": "validator-hosting", "lamports_per_epoch": 5000000000 },
+    { "name": "rpc-provider", "lamports_per_epoch": 1000000000 }
+  ]
+}
+```
+
+The returned epoch must match the request. The complete response is limited to
+1 MiB and 64 costs. Names are trimmed, non-empty, unique, control-character
+free, and limited to 128 bytes; explicit zero costs are valid and the aggregate
+must fit in `u64`. A configured route is required at collection time: connector
+fallback applies normally, but route exhaustion, malformed data, an empty cost
+list, or an epoch mismatch fails the economics poll. A successful poll publishes
+the itemized values, total, and selected-source provenance. With no route, the
+watcher publishes no operating-cost series. The standalone Operating Costs
+dashboard shows collection state, snapshot freshness, configured fallback,
+successful-source provenance, current budgets, and history. It deliberately
+keeps operator-supplied budgets separate from protocol rewards and does not
+calculate profitability.
 
 A connector may declare ordered backups for only the source types they can
 replace:
@@ -177,7 +211,21 @@ automatic rollback, backup/restore procedure, and release gate.
 
 Readiness requires five consecutive complete polling rounds. Successful fallback snapshots remain ready while `sol_watcher_degraded` reports reduced source redundancy; a failed whole poll retains the last successful snapshot and revokes readiness.
 
-Grafana includes overview, consensus, leadership, economics, and MEV Capture dashboards. The MEV dashboard compares Trillium's latest completed-epoch capture, allocations, block rewards, priority and signature fees, transactions, compute use, Jito tips, stake, leader slots, produced blocks, and efficiency while keeping independent published fields separate. The economics dashboard compares selected watched validators by inflation reward, reward-epoch blocks, reward per produced block, account balances, VAT reserve, and VAT runway, then visualizes network epoch progress, recent slot duration, time to epoch end, and each validator's next leader ETA. Missing provider or account samples render as no data instead of zero. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
+Grafana includes overview, consensus, leadership, economics, MEV Capture, and
+Operating Costs dashboards. The MEV dashboard compares Trillium's latest
+completed-epoch capture, allocations, block rewards, priority and signature
+fees, transactions, compute use, Jito tips, stake, leader slots, produced
+blocks, and efficiency while keeping independent published fields separate.
+The economics dashboard compares selected watched validators by inflation
+reward, reward-epoch blocks, reward per produced block, account balances, VAT
+reserve, and VAT runway, then visualizes network epoch progress, recent slot
+duration, time to epoch end, and each validator's next leader ETA. The
+Operating Costs dashboard isolates operator-supplied budgets, route and source
+provenance, collection state, snapshot freshness, and budget history without
+combining them with protocol rewards. Missing provider or account samples
+render as no data instead of zero. Prometheus and Grafana are published on
+loopback by default. The watcher container runs unprivileged with a read-only
+root filesystem and dropped Linux capabilities.
 
 ## Published images
 

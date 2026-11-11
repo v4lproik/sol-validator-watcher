@@ -7,6 +7,7 @@ use crate::{
     CommandId, ModeId, ProviderFeature, SolanaRpcCompatibility, SourceSelection, Transport,
     LABEL_SCOPE_WATCHED,
 };
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// Maximum upcoming assignments exported per watched validator.
@@ -277,6 +278,16 @@ pub struct AccountBalances {
     /// Current rent-exempt minimum for the vote account, when its data size is known.
     pub vote_account_rent_exempt_minimum_lamports: Option<u64>,
 }
+/// One provider-reported operating-cost budget for a completed epoch.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperatingCost {
+    /// Provider-defined bounded cost name.
+    pub name: String,
+    /// Cost for the requested epoch, in lamports.
+    pub lamports_per_epoch: u64,
+}
+
 /// Configured reserve wallet and its current balance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReserveWalletMetrics {
@@ -324,6 +335,8 @@ pub struct EconomicsMetrics {
     pub vat_next_epoch_funded: Option<bool>,
     /// Configured reserve wallets that exist on the selected source and their current balances.
     pub reserve_wallets: Vec<ReserveWalletMetrics>,
+    /// Provider-reported operating costs for the completed reward epoch.
+    pub operating_costs: Vec<OperatingCost>,
     /// Settled Jito MEV reward, when a configured Jito route has published the epoch.
     pub jito_mev_reward: Option<JitoMevReward>,
     /// Completed-epoch MEV capture when a configured Trillium route has data.

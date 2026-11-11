@@ -5,7 +5,7 @@
 
 use super::{
     model::{
-        AccountBalances, EconomicsMetrics, EpochCreditsSample, GossipObservation,
+        AccountBalances, EconomicsMetrics, EpochCreditsSample, GossipObservation, OperatingCost,
         ReserveWalletMetrics, RewardSample, ScopeMetrics, Snapshot, ValidatorFundingMetrics,
         ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS,
     },
@@ -519,6 +519,7 @@ pub(super) fn build_economics_metrics(
     target: &EconomicsTarget,
     balances: AccountBalances,
     reserve_wallets: Vec<ReserveWalletMetrics>,
+    operating_costs: Vec<OperatingCost>,
     jito_mev_reward: Option<super::JitoMevReward>,
     trillium_mev_capture: Option<super::TrilliumMevCapture>,
     recent_block_fee_rewards: Option<super::RecentBlockFeeRewards>,
@@ -535,6 +536,7 @@ pub(super) fn build_economics_metrics(
         vat_epochs_available: funding.vat_epochs_available,
         vat_next_epoch_funded: funding.vat_next_epoch_funded,
         reserve_wallets,
+        operating_costs,
         jito_mev_reward,
         trillium_mev_capture,
         recent_block_fee_rewards,

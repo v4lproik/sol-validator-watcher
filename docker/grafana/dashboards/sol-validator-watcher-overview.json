@@ -54,6 +54,15 @@
       "title": "MEV Capture",
       "type": "link",
       "url": "/d/sol-validator-watcher-mev-capture"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Operating Costs",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-operating-costs"
     }
   ],
   "liveNow": true,
@@ -2797,6 +2806,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 8,
+  "version": 9,
   "weekStart": ""
 }
