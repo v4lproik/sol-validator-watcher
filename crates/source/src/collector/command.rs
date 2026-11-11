@@ -5,8 +5,9 @@
 
 use super::{
     AccountBalanceTarget, AccountBalances, BlockProduction, ClusterNode, ClusterPerformanceMetrics,
-    EpochInfo, JitoClient, JitoMevReward, NodeHealth, NodeRpcStatus, RecentBlockFeeRewards,
-    RewardSample, RpcClient, TrilliumClient, TrilliumMevCapture, VoteAccounts,
+    EpochInfo, JitoClient, JitoMevReward, NodeHealth, NodeRpcStatus, OperatingCost,
+    OperatingCostsClient, RecentBlockFeeRewards, RewardSample, RpcClient, TrilliumClient,
+    TrilliumMevCapture, VoteAccounts,
 };
 use crate::mode::CommandId;
 use anyhow::{Context, Result};
@@ -18,6 +19,7 @@ pub(crate) struct CommandClients {
     rpc: Option<RpcClient>,
     jito_api: Option<JitoClient>,
     trillium_api: Option<TrilliumClient>,
+    operating_costs_api: Option<OperatingCostsClient>,
 }
 
 impl CommandClients {
@@ -26,11 +28,13 @@ impl CommandClients {
         rpc: Option<RpcClient>,
         jito_api: Option<JitoClient>,
         trillium_api: Option<TrilliumClient>,
+        operating_costs_api: Option<OperatingCostsClient>,
     ) -> Self {
         Self {
             rpc,
             jito_api,
             trillium_api,
+            operating_costs_api,
         }
     }
 
@@ -47,6 +51,11 @@ impl CommandClients {
     /// Returns the connector's Trillium validator-analytics client.
     pub(crate) fn trillium_api(&self) -> Option<&TrilliumClient> {
         self.trillium_api.as_ref()
+    }
+
+    /// Returns the connector's operating-cost API client.
+    pub(crate) fn operating_costs_api(&self) -> Option<&OperatingCostsClient> {
+        self.operating_costs_api.as_ref()
     }
 }
 
@@ -89,6 +98,17 @@ impl CommandTransport for TrilliumApiCommandTransport {
 
     fn client(clients: &CommandClients) -> Option<&Self::Client> {
         clients.trillium_api.as_ref()
+    }
+}
+
+/// Operator-owned per-epoch operating-cost HTTP API transport.
+pub(crate) enum OperatingCostsApiCommandTransport {}
+
+impl CommandTransport for OperatingCostsApiCommandTransport {
+    type Client = OperatingCostsClient;
+
+    fn client(clients: &CommandClients) -> Option<&Self::Client> {
+        clients.operating_costs_api.as_ref()
     }
 }
 
@@ -394,6 +414,25 @@ impl SourceCommand for GetTrilliumMevCapture<'_> {
             .get_latest_mev_capture(self.vote_account)
             .await
             .context("Trillium MEV capture collection failed")
+    }
+}
+
+/// Required operating-cost budget command for one completed epoch.
+pub(crate) struct GetOperatingCosts {
+    /// Completed epoch whose operating costs are requested.
+    pub epoch: u64,
+}
+
+impl SourceCommand for GetOperatingCosts {
+    const ID: CommandId = CommandId::OperatingCosts;
+    type Transport = OperatingCostsApiCommandTransport;
+    type Output = Vec<OperatingCost>;
+
+    async fn execute(&self, client: &OperatingCostsClient) -> Result<Self::Output> {
+        client
+            .get_operating_costs(self.epoch)
+            .await
+            .context("operating-cost collection failed")
     }
 }
 

@@ -76,6 +76,16 @@ operator-facing semantics.
   `reserve_wallet` label is bounded by configuration. Reset removed or missing
   wallets on the next snapshot; never substitute the economics identity balance
   or retain a stale reserve balance.
+- `sol_economics_operating_cost_sol` and
+  `sol_economics_operating_cost_total_sol` are snapshot-owned, provider-reported
+  budgets for the completed reward epoch, not observed expenses or accruals.
+  Bound dynamic labels at the provider boundary: at most 64 unique, non-empty,
+  trimmed cost names of at most 128 bytes. Publish neither family when no route
+  is configured, publish explicit zero budgets as zero, and reset removed costs
+  with the next snapshot. Show them only in the dedicated Operating Costs
+  dashboard with collection state, snapshot freshness, fallback, and
+  successful-source provenance. Do not subtract them from protocol rewards or
+  present calculated profitability in repository dashboards.
 - Jito MEV reward, commission, and reward-epoch series are snapshot-owned and
   exist only when economics mode, a valid provider-API route, and a settled
   target reward all exist. Missing settlement or route failure remains no data,
@@ -120,10 +130,11 @@ operator-facing semantics.
   receiver injection, resolved notifications, grouping, and critical-over-
   warning inhibition. Escalation ownership and receiver availability remain
   external operator responsibilities.
-- Keep overview, consensus, leadership, economics, and MEV Capture dashboards
-  separate. Mode dashboards consume only their mode's command health, routes,
-  sources, and domain metrics; the MEV dashboard remains an economics-mode
-  provider drill-down.
+- Keep overview, consensus, leadership, economics, MEV Capture, and Operating
+  Costs dashboards separate. Mode dashboards consume only their mode's command
+  health, routes, sources, and domain metrics; MEV Capture and Operating Costs
+  remain economics-mode provider drill-downs whose independently sourced values
+  are not combined with protocol rewards.
 - Keep generated/public Pages output out of source edits; the site build owns it.
 
 ## Review Gates

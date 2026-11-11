@@ -102,7 +102,7 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
     Ok(())
 }
 #[test]
-fn loads_reserve_wallets_and_their_command_route() -> Result<()> {
+fn loads_economics_reserve_wallets_and_operating_cost_route() -> Result<()> {
     let test_dir = unique_test_dir("reserve-wallet");
     fs::create_dir_all(&test_dir)
         .with_context(|| format!("failed to create {}", test_dir.display()))?;
@@ -119,6 +119,12 @@ features = ["historical-data"]
 solana_rpc_compatibility = "extended"
 rpc = { url = "https://api.mainnet-beta.solana.com" }
 
+[[connectors]]
+name = "cost-api"
+provider = "operator-cost-service"
+features = ["operating-costs"]
+provider_api = { url = "https://costs.example/v1/epoch" }
+
 [modes.health.commands]
 rpc_health = ["primary"]
 
@@ -130,6 +136,8 @@ vote_accounts = ["primary"]
 enabled = true
 reserve_wallets = ["reserve-1", "reserve-2"]
 
+
+
 [modes.economics.validator]
 vote_account = "vote-1"
 
@@ -138,6 +146,7 @@ account_balances = ["primary"]
 reserve_wallet_balances = ["primary"]
 inflation_rewards = ["primary"]
 reward_epoch_block_production = ["primary"]
+operating_costs = ["cost-api"]
 "#,
     )
     .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -148,6 +157,7 @@ reward_epoch_block_production = ["primary"]
         config.modes.economics.reserve_wallets,
         ["reserve-1", "reserve-2"]
     );
+    assert_eq!(config.modes.route(CommandId::OperatingCosts), ["cost-api"]);
     assert_eq!(
         config.modes.route(CommandId::ReserveWalletBalances),
         ["primary"]

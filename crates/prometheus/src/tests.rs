@@ -2,9 +2,9 @@ use super::{bool_label, Metrics, BUILD_REVISION};
 use crate::{
     collector::{
         ClusterPerformanceMetrics, EconomicsMetrics, GossipObservation, JitoMevReward, ModeStatus,
-        NodeHealth, NodeMetrics, NodeVotingStatus, RecentBlockFeeRewards, ReserveWalletMetrics,
-        ScopeMetrics, Snapshot, SnapshotDataSource, TrilliumBlockRewards, TrilliumMevCapture,
-        TrilliumTransactionMetrics, ValidatorFundingMetrics, ValidatorStatus,
+        NodeHealth, NodeMetrics, NodeVotingStatus, OperatingCost, RecentBlockFeeRewards,
+        ReserveWalletMetrics, ScopeMetrics, Snapshot, SnapshotDataSource, TrilliumBlockRewards,
+        TrilliumMevCapture, TrilliumTransactionMetrics, ValidatorFundingMetrics, ValidatorStatus,
         WatchedValidatorMetrics,
     },
     config::{
@@ -160,6 +160,16 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 feature: Some(ProviderFeature::TrilliumMevCapture),
                 precedence: 1,
             },
+            SnapshotDataSource {
+                mode: ModeId::Economics,
+                command: CommandId::OperatingCosts,
+                connector: Arc::from("cost-api"),
+                provider: Arc::from("operator-cost-service"),
+                transport: Transport::ProviderApi,
+                solana_rpc_compatibility: None,
+                feature: Some(ProviderFeature::OperatingCosts),
+                precedence: 1,
+            },
         ],
         mode_statuses: vec![
             ModeStatus {
@@ -200,6 +210,20 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 ReserveWalletMetrics {
                     address: "reserve-2".to_string(),
                     balance_lamports: 2_000_000_000,
+                },
+            ],
+            operating_costs: vec![
+                OperatingCost {
+                    name: "validator-hosting".to_string(),
+                    lamports_per_epoch: 2_000_000_000,
+                },
+                OperatingCost {
+                    name: "rpc-provider".to_string(),
+                    lamports_per_epoch: 1_500_000_000,
+                },
+                OperatingCost {
+                    name: "free-tier".to_string(),
+                    lamports_per_epoch: 0,
                 },
             ],
             jito_mev_reward: Some(JitoMevReward {
@@ -327,6 +351,15 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
                 )),
                 ..ConnectorConfig::default()
             },
+            ConnectorConfig {
+                name: "cost-api".to_string(),
+                provider: "operator-cost-service".to_string(),
+                features: vec![ProviderFeature::OperatingCosts],
+                provider_api: Some(crate::config::HttpTransportConfig::new(
+                    "https://costs.example/v1/epoch".to_string(),
+                )),
+                ..ConnectorConfig::default()
+            },
         ],
         modes: modes_for(
             &["local-validator", "helius-rpc", "extended-rpc"],
@@ -339,6 +372,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
         vec!["local-validator".to_string(), "helius-ws".to_string()];
     config.modes.economics.commands.jito_mev_rewards = vec!["jito-api".to_string()];
     config.modes.economics.commands.trillium_mev_capture = vec!["trillium-api".to_string()];
+    config.modes.economics.commands.operating_costs = vec!["cost-api".to_string()];
     config.modes.economics.commands.recent_block_fee_rewards = vec!["helius-rpc".to_string()];
     config.modes.economics.reserve_wallets = vec!["reserve-1".to_string(), "reserve-2".to_string()];
     config.modes.economics.commands.reserve_wallet_balances = vec!["helius-rpc".to_string()];
@@ -371,6 +405,9 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_connector_info{connector=\"trillium-api\",declaration_order=\"6\",has_provider_api=\"true\",has_rpc=\"false\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"trillium\",solana_rpc_compatibility=\"\"} 1"));
     assert!(rendered.contains("sol_connector_feature_info{connector=\"trillium-api\",feature=\"trillium-mev-capture\",network=\"mainnet-beta\",provider=\"trillium\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"trillium-mev-capture\",connector=\"trillium-api\",feature=\"trillium-mev-capture\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"trillium\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
+    assert!(rendered.contains("sol_connector_info{connector=\"cost-api\",declaration_order=\"7\",has_provider_api=\"true\",has_rpc=\"false\",has_ws=\"false\",network=\"mainnet-beta\",provider=\"operator-cost-service\",solana_rpc_compatibility=\"\"} 1"));
+    assert!(rendered.contains("sol_connector_feature_info{connector=\"cost-api\",feature=\"operating-costs\",network=\"mainnet-beta\",provider=\"operator-cost-service\"} 1"));
+    assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"operating-costs\",connector=\"cost-api\",feature=\"operating-costs\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"operator-cost-service\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_connector_feature_info{connector=\"helius-rpc\",feature=\"block-fee-rewards\",network=\"mainnet-beta\",provider=\"helius\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"recent-block-fee-rewards\",connector=\"helius-rpc\",feature=\"block-fee-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_route_info{available=\"true\",command=\"reserve-wallet-balances\",connector=\"helius-rpc\",feature=\"\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
@@ -381,6 +418,7 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_mode_command_source_info{command=\"inflation-rewards\",connector=\"helius-rpc\",feature=\"historical-data\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"2\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"jito-mev-rewards\",connector=\"jito-api\",feature=\"jito-mev-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"jito\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"trillium-mev-capture\",connector=\"trillium-api\",feature=\"trillium-mev-capture\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"trillium\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
+    assert!(rendered.contains("sol_mode_command_source_info{command=\"operating-costs\",connector=\"cost-api\",feature=\"operating-costs\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"operator-cost-service\",required_solana_rpc_compatibility=\"\",solana_rpc_compatibility=\"\",transport=\"provider-api\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"recent-block-fee-rewards\",connector=\"helius-rpc\",feature=\"block-fee-rewards\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_command_source_info{command=\"reserve-wallet-balances\",connector=\"helius-rpc\",feature=\"\",mode=\"economics\",network=\"mainnet-beta\",precedence=\"1\",provider=\"helius\",required_solana_rpc_compatibility=\"extended\",solana_rpc_compatibility=\"extended\",transport=\"rpc\"} 1"));
     assert!(rendered.contains("sol_mode_enabled{mode=\"economics\",network=\"mainnet-beta\"} 1"));
@@ -404,6 +442,10 @@ fn renders_scoped_and_watched_validator_metrics() -> Result<()> {
     assert!(rendered.contains("sol_economics_vote_account_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2.5"));
     assert!(rendered.contains("sol_economics_reserve_wallet_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",reserve_wallet=\"reserve-1\",vote_account=\"vote-1\"} 4.5"));
     assert!(rendered.contains("sol_economics_reserve_wallet_balance_sol{identity=\"id-1\",network=\"mainnet-beta\",reserve_wallet=\"reserve-2\",vote_account=\"vote-1\"} 2"));
+    assert!(rendered.contains("sol_economics_operating_cost_sol{cost=\"validator-hosting\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2"));
+    assert!(rendered.contains("sol_economics_operating_cost_sol{cost=\"rpc-provider\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.5"));
+    assert!(rendered.contains("sol_economics_operating_cost_sol{cost=\"free-tier\",identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0"));
+    assert!(rendered.contains("sol_economics_operating_cost_total_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 3.5"));
     assert!(rendered.contains("sol_economics_vote_account_rent_exempt_minimum_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 0.9"));
     assert!(rendered.contains("sol_economics_vat_reserve_sol{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 1.6"));
     assert!(rendered.contains("sol_economics_vat_epochs_available{identity=\"id-1\",network=\"mainnet-beta\",vote_account=\"vote-1\"} 2"));
@@ -747,6 +789,10 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
                 address: "old-reserve".to_string(),
                 balance_lamports: 1,
             }],
+            operating_costs: vec![OperatingCost {
+                name: "old-cost".to_string(),
+                lamports_per_epoch: 1,
+            }],
             jito_mev_reward: Some(JitoMevReward {
                 epoch: 0,
                 reward_lamports: 1,
@@ -795,6 +841,7 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
             vat_epochs_available: None,
             vat_next_epoch_funded: None,
             reserve_wallets: vec![],
+            operating_costs: vec![],
             jito_mev_reward: None,
             trillium_mev_capture: Some(TrilliumMevCapture {
                 epoch: 1,
@@ -906,6 +953,8 @@ fn reset_removes_stale_watched_validator_metrics() -> Result<()> {
     assert!(!rendered.contains("sol_economics_vat_reserve_sol{"));
     assert!(!rendered.contains("sol_watched_validator_vat_reserve_sol{"));
     assert!(!rendered.contains("sol_economics_reserve_wallet_balance_sol{"));
+    assert!(!rendered.contains("sol_economics_operating_cost_sol{"));
+    assert!(!rendered.contains("sol_economics_operating_cost_total_sol{"));
     assert!(!rendered.contains("sol_economics_block_fee_reward_sol{"));
     assert!(!rendered.contains("sol_economics_block_fee_reward_slot{"));
     assert!(!rendered.contains("sol_economics_recent_block_fee_reward_average_sol{"));
@@ -1150,6 +1199,7 @@ fn modes_for(
                 recent_block_fee_rewards: vec![],
                 jito_mev_rewards: vec![],
                 trillium_mev_capture: vec![],
+                operating_costs: vec![],
             },
         },
     }

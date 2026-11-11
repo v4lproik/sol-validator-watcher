@@ -54,6 +54,15 @@
       "title": "MEV Capture",
       "type": "link",
       "url": "/d/sol-validator-watcher-mev-capture"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Operating Costs",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-operating-costs"
     }
   ],
   "liveNow": true,
@@ -222,7 +231,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sol_mode_command_route_info{network=\"$network\",mode=\"economics\"} == 1",
+          "expr": "sol_mode_command_route_info{network=\"$network\",mode=\"economics\",command!=\"operating-costs\"} == 1",
           "format": "table",
           "instant": true,
           "legendFormat": "{{mode}} / {{command}} / {{connector}}",
@@ -329,7 +338,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sol_mode_command_source_info{network=\"$network\",mode=\"economics\"} == 1",
+          "expr": "sol_mode_command_source_info{network=\"$network\",mode=\"economics\",command!=\"operating-costs\"} == 1",
           "format": "table",
           "instant": true,
           "legendFormat": "{{mode}} / {{command}} / {{connector}}",
@@ -2465,6 +2474,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 12,
+  "version": 16,
   "weekStart": ""
 }

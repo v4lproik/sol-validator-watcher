@@ -163,6 +163,7 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
             },
         ]
     );
+    assert!(economics.operating_costs.is_empty());
     assert_eq!(
         economics.recent_block_fee_rewards,
         Some(RecentBlockFeeRewards {

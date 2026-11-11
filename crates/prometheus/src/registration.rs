@@ -536,6 +536,20 @@ impl Metrics {
             ),
             &["network", "identity", "vote_account", "reserve_wallet"],
         )?;
+        let sol_economics_operating_cost_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_operating_cost_sol",
+                "Provider-reported operating cost in SOL for the completed reward epoch",
+            ),
+            &["network", "identity", "vote_account", "cost"],
+        )?;
+        let sol_economics_operating_cost_total_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_operating_cost_total_sol",
+                "Total provider-reported operating costs in SOL for the completed reward epoch",
+            ),
+            economics_labels,
+        )?;
         let sol_economics_vote_account_rent_exempt_minimum_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_vote_account_rent_exempt_minimum_sol",
@@ -1031,6 +1045,8 @@ impl Metrics {
         register(&registry, &sol_economics_identity_balance_sol)?;
         register(&registry, &sol_economics_vote_account_balance_sol)?;
         register(&registry, &sol_economics_reserve_wallet_balance_sol)?;
+        register(&registry, &sol_economics_operating_cost_sol)?;
+        register(&registry, &sol_economics_operating_cost_total_sol)?;
         register(
             &registry,
             &sol_economics_vote_account_rent_exempt_minimum_sol,
@@ -1182,6 +1198,8 @@ impl Metrics {
             sol_economics_identity_balance_sol,
             sol_economics_vote_account_balance_sol,
             sol_economics_reserve_wallet_balance_sol,
+            sol_economics_operating_cost_sol,
+            sol_economics_operating_cost_total_sol,
             sol_economics_vote_account_rent_exempt_minimum_sol,
             sol_economics_vat_reserve_sol,
             sol_economics_vat_epochs_available,

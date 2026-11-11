@@ -49,30 +49,37 @@ liveness files, signals, and shutdown.
   capability, endpoint, and verification when the watcher starts consuming
   them.
 - Provider features are `historical-data`, `block-fee-rewards`,
-  `jito-mev-rewards`, and `trillium-mev-capture`; `rpc`, `websocket`, and
-  `provider-api` are transports, not features.
+  `jito-mev-rewards`, `trillium-mev-capture`, and `operating-costs`; `rpc`,
+  `websocket`, and `provider-api` are transports, not features.
 - Core commands are RPC health, node-local status, epoch info, vote accounts,
   and current/next leader schedules. Recent performance samples, current block
   production, account balances, and rent exemption require extended
   compatibility. Prior-epoch inflation rewards and block production additionally
   require `historical-data`. Recent block-fee rewards require an extended RPC
   connector with the `block-fee-rewards` feature and `confirmed` or `finalized`
-  commitment. Jito rewards and Trillium capture use provider APIs independently.
+  commitment. Jito rewards, Trillium capture, and operating costs use distinct
+  provider APIs independently.
 - `modes.economics.reserve_wallets` is optional and valid only when economics is
   enabled. When non-empty, `commands.reserve_wallet_balances` is required and
   must resolve to an `extended` RPC connector. Reject duplicate wallets and
   reject a reserve-wallet route when the list is empty instead of retaining
   unused configuration.
+- `modes.economics.commands.operating_costs` is optional and valid only when
+  economics is enabled. Every connector on the route must declare the
+  `operating-costs` feature and a provider API transport. A configured route is
+  a required poll input for every completed reward epoch; route exhaustion,
+  malformed data, an empty budget, or an epoch mismatch fails that poll.
 - Each `modes.<mode>.commands.<command>` array declares connector entries in
   priority order. During validation, append each entry's backup list for that
   command's exact source requirement immediately after the entry. The resulting
   route is the complete fallback order; connector declaration order is not
   execution policy. Optional extended routes may be empty in a core-only profile.
 - Backup keys are `rpc-core`, `rpc-extended`, `rpc-historical-data`,
-  `rpc-block-fee-rewards`, `websocket`, `jito-mev-rewards`, and
-  `trillium-mev-capture`. Do not recursively expand a backup connector's own
-  lists. Both the declaring connector and every named backup must satisfy the
-  exact key's transport, compatibility, and feature contract.
+  `rpc-block-fee-rewards`, `websocket`, `jito-mev-rewards`,
+  `trillium-mev-capture`, and `operating-costs`. Do not recursively expand a
+  backup connector's own lists. Both the declaring connector and every named
+  backup must satisfy the exact key's transport, compatibility, and feature
+  contract.
 - Failover state belongs to the compiled source chain. A reload that changes
   connectors or command routes must build and verify the candidate chain before
   replacing the active chain and resetting its failover gates. A rejected

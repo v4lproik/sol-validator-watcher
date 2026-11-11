@@ -878,6 +878,7 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
                     recent_block_fee_rewards: vec![],
                     jito_mev_rewards: vec![],
                     trillium_mev_capture: vec![],
+                    operating_costs: vec![],
                 },
             },
             ..modes_for("primary", None, false)
@@ -980,6 +981,88 @@ fn validates_reserve_wallets_and_their_required_command_route() -> Result<()> {
         valid.modes.route(CommandId::ReserveWalletBalances),
         ["primary"]
     );
+    Ok(())
+}
+
+#[test]
+fn validates_operating_cost_provider_feature_and_route() -> Result<()> {
+    let missing_endpoint = ConnectorConfig {
+        name: "cost-api".to_string(),
+        provider: "operator-cost-service".to_string(),
+        features: vec![ProviderFeature::OperatingCosts],
+        websocket: Some(crate::WebsocketTransportConfig::new(
+            "wss://example.invalid".to_string(),
+        )),
+        ..ConnectorConfig::default()
+    };
+    let Err(error) = missing_endpoint.into_validated(0) else {
+        anyhow::bail!("operating-cost feature without provider API endpoint should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("features entry \"operating-costs\" requires provider_api"));
+
+    let mixed_provider_api = ConnectorConfig {
+        name: "mixed-provider-api".to_string(),
+        provider: "mixed".to_string(),
+        features: vec![
+            ProviderFeature::JitoMevRewards,
+            ProviderFeature::OperatingCosts,
+        ],
+        provider_api: Some(crate::HttpTransportConfig::new(
+            "https://costs.example/v1/epoch".to_string(),
+        )),
+        ..ConnectorConfig::default()
+    };
+    let Err(error) = mixed_provider_api.into_validated(1) else {
+        anyhow::bail!("multiple provider API features should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("cannot contain multiple provider API features"));
+
+    let cost_api = ConnectorConfig {
+        name: "cost-api".to_string(),
+        provider: "operator-cost-service".to_string(),
+        features: vec![ProviderFeature::OperatingCosts],
+        provider_api: Some(crate::HttpTransportConfig::new(
+            "https://costs.example/v1/epoch".to_string(),
+        )),
+        ..ConnectorConfig::default()
+    };
+    let mut disabled = Config {
+        connectors: vec![rpc_connector("primary"), cost_api.clone()],
+        modes: modes_for("primary", None, false),
+        ..Config::default()
+    };
+    disabled.modes.economics.commands.operating_costs = vec!["cost-api".to_string()];
+    let Err(error) = disabled.into_validated() else {
+        anyhow::bail!("operating-cost route should require economics mode");
+    };
+    assert!(error.to_string().contains(
+        "modes.economics.commands.operating_costs requires modes.economics.enabled = true"
+    ));
+
+    let mut config = Config {
+        connectors: vec![rpc_connector("primary"), cost_api],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    config.modes.economics.validator = Some(WatchedValidatorConfig {
+        identity: Some("id-1".to_string()),
+        vote_account: Some("vote-1".to_string()),
+        labels: vec![],
+    });
+    config.modes.economics.commands.operating_costs = vec!["cost-api".to_string()];
+    let mut config = config.into_validated()?;
+
+    config.connectors[1].features.clear();
+    let Err(error) = config.into_validated() else {
+        anyhow::bail!("operating-cost route without declared feature should fail");
+    };
+    assert!(error
+        .to_string()
+        .contains("requires provider feature \"operating-costs\""));
     Ok(())
 }
 

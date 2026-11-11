@@ -2,13 +2,14 @@
 
 ## Unreleased
 
+- Published itemized and total completed-epoch operating-cost gauges from validated provider responses with bounded dynamic labels and snapshot reset semantics; a dedicated Operating Costs dashboard isolates collection state, freshness, route and source provenance, current budgets, and history from protocol rewards and profitability calculations.
 - Published each configured economics reserve-wallet balance as an optional SOL gauge with bounded wallet labels, full snapshot-reset coverage, stable shared source-route metadata, and a no-data-preserving multi-wallet Economics dashboard panel.
 - Moved Prometheus registration, reset, rendering, and domain-state projection into a dedicated workspace library whose production dependencies contain no configuration loader, source client, or runtime process code.
 - Rebranded the README and Pages site with the Address Profile key-index mark, public-key-first messaging for monitoring any validator, favicon and social-preview assets, and precise product language throughout.
 - Expanded every MEV Capture panel's Grafana information tooltip with validator-focused definitions, optional-field and completed-epoch semantics, skip-aware per-slot guidance, non-additive reward caveats, and produced-block workload context; the two derived share panels now match labels correctly and render no data when their denominator is zero.
 - Separated snapshot availability from source redundancy with `sol_watcher_degraded`, bounded per-circuit status and transition metrics, a tested source-failover alert, successful-poll readiness terminology, and an Overview source-redundancy panel.
 - Replaced the combined Economics timing summary with a bounded epoch-progress gauge, recent-slot and time-to-epoch-end sparklines, and per-validator next-leader bars so network timing and validator opportunity remain visually distinct.
-- Refreshed the Pages product story and live Grafana captures around all five provisioned dashboards, including watched-validator gossip, per-validator account runway, and completed-epoch MEV capture, with an accessible four-view gallery and revised responsive content hierarchy.
+- Refreshed the Pages product story with five live Grafana captures, including watched-validator gossip, per-validator account runway, and completed-epoch MEV capture, plus an accessible four-view gallery and revised responsive content hierarchy.
 - Moved watched-validator gossip and version posture directly below Operator State in the Overview dashboard and removed the node-local health section.
 - Published distinct snapshot-reset `sol_watched_validator_*` balance, rent-exemption, VAT reserve, VAT runway, and next-charge funding series for every watched validator while preserving target-only `sol_economics_*` alert inputs; replaced the single-target funding display with a filterable per-validator table plus per-validator next-leader timing.
 - Moved MEV Capture availability and source directly below the completed-epoch summary, widened dense reward and transaction comparisons, removed redundant selected-network and target prefixes from their legends, and rendered SOL units consistently.

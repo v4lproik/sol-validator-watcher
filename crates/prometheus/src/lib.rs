@@ -108,6 +108,8 @@ pub struct Metrics {
     sol_economics_identity_balance_sol: GaugeVec,
     sol_economics_vote_account_balance_sol: GaugeVec,
     sol_economics_reserve_wallet_balance_sol: GaugeVec,
+    sol_economics_operating_cost_sol: GaugeVec,
+    sol_economics_operating_cost_total_sol: GaugeVec,
     sol_economics_vote_account_rent_exempt_minimum_sol: GaugeVec,
     sol_economics_vat_reserve_sol: GaugeVec,
     sol_economics_vat_epochs_available: IntGaugeVec,
@@ -641,6 +643,24 @@ impl Metrics {
                     ])
                     .set(lamports_to_sol(reserve_wallet.balance_lamports));
             }
+            if !economics.operating_costs.is_empty() {
+                let mut total_sol = 0.0;
+                for cost in &economics.operating_costs {
+                    let cost_sol = lamports_to_sol(cost.lamports_per_epoch);
+                    self.sol_economics_operating_cost_sol
+                        .with_label_values(&[
+                            snapshot.network.as_str(),
+                            economics.identity.as_str(),
+                            economics.vote_account.as_str(),
+                            cost.name.as_str(),
+                        ])
+                        .set(cost_sol);
+                    total_sol += cost_sol;
+                }
+                self.sol_economics_operating_cost_total_sol
+                    .with_label_values(&labels)
+                    .set(total_sol);
+            }
             if let Some(rent_exempt_minimum_lamports) =
                 economics.vote_account_rent_exempt_minimum_lamports
             {
@@ -1025,6 +1045,8 @@ impl Metrics {
         self.sol_economics_identity_balance_sol.reset();
         self.sol_economics_vote_account_balance_sol.reset();
         self.sol_economics_reserve_wallet_balance_sol.reset();
+        self.sol_economics_operating_cost_sol.reset();
+        self.sol_economics_operating_cost_total_sol.reset();
         self.sol_economics_vote_account_rent_exempt_minimum_sol
             .reset();
         self.sol_economics_vat_reserve_sol.reset();
