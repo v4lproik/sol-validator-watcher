@@ -30,6 +30,12 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
         labels: vec!["focus:economics".to_string()],
     });
     config.modes.economics.commands.recent_block_fee_rewards = vec!["primary".to_string()];
+    config.modes.economics.reserve_wallets = vec![
+        "reserve-1".to_string(),
+        "missing-reserve".to_string(),
+        "reserve-2".to_string(),
+    ];
+    config.modes.economics.commands.reserve_wallet_balances = vec!["primary".to_string()];
     let client = RpcClient::try_new(
         &rpc_transport(&rpc_url, 5),
         crate::RuntimeTelemetry::unobserved().for_connector("mock-rpc"),
@@ -145,6 +151,19 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     assert_eq!(economics.vat_epochs_available, Some(2));
     assert_eq!(economics.vat_next_epoch_funded, Some(true));
     assert_eq!(
+        economics.reserve_wallets,
+        [
+            ReserveWalletMetrics {
+                address: "reserve-1".to_string(),
+                balance_lamports: 3_000_000_000,
+            },
+            ReserveWalletMetrics {
+                address: "reserve-2".to_string(),
+                balance_lamports: 4_000_000_000,
+            },
+        ]
+    );
+    assert_eq!(
         economics.recent_block_fee_rewards,
         Some(RecentBlockFeeRewards {
             latest_slot: 805,
@@ -155,6 +174,11 @@ async fn rpc_client_collect_snapshot_and_validate_economics_against_mock_rpc() -
     );
     assert!(snapshot.data_sources.iter().any(|source| {
         source.command == CommandId::RecentBlockFeeRewards && source.connector.as_ref() == "primary"
+    }));
+    assert!(snapshot.data_sources.iter().any(|source| {
+        source.command == CommandId::ReserveWalletBalances
+            && source.connector.as_ref() == "primary"
+            && source.precedence == 1
     }));
     Ok(())
 }
@@ -837,6 +861,68 @@ async fn block_fee_reward_identity_mismatch_falls_back_to_the_next_connector() -
     assert!(snapshot.data_sources.iter().any(|source| {
         source.command == CommandId::RecentBlockFeeRewards
             && source.connector.as_ref() == "fallback-reward"
+    }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn reserve_wallet_balances_fall_back_and_record_the_successful_source() -> Result<()> {
+    let (primary_url, primary_task) =
+        start_mock_rpc_server_with_profile(MockRpcProfile::NoReserveWalletBalances).await?;
+    let (fallback_url, fallback_task) = start_mock_rpc_server().await?;
+    let mut config = Config {
+        network: "devnet".to_string(),
+        connectors: vec![
+            ConnectorConfig {
+                name: "primary".to_string(),
+                provider: "mock-primary".to_string(),
+                features: vec![ProviderFeature::HistoricalData],
+                rpc: Some(crate::config::RpcTransportConfig::new(primary_url)),
+                ..ConnectorConfig::default()
+            },
+            ConnectorConfig {
+                name: "fallback".to_string(),
+                provider: "mock-fallback".to_string(),
+                features: vec![ProviderFeature::HistoricalData],
+                rpc: Some(crate::config::RpcTransportConfig::new(fallback_url)),
+                ..ConnectorConfig::default()
+            },
+        ],
+        modes: modes_for(&["primary", "fallback"], true),
+        ..Config::default()
+    };
+    config.modes.economics.reserve_wallets = vec!["reserve-1".to_string(), "reserve-2".to_string()];
+    config.modes.economics.commands.reserve_wallet_balances =
+        vec!["primary".to_string(), "fallback".to_string()];
+    let sources = SourceChain::from_config(&config, crate::RuntimeTelemetry::unobserved())?;
+
+    let snapshot = collect_snapshot(&sources, &config).await?;
+    primary_task.abort();
+    fallback_task.abort();
+
+    let reserve_wallets = snapshot
+        .economics
+        .as_ref()
+        .context("missing economics metrics")?
+        .reserve_wallets
+        .as_slice();
+    assert_eq!(
+        reserve_wallets,
+        [
+            ReserveWalletMetrics {
+                address: "reserve-1".to_string(),
+                balance_lamports: 3_000_000_000,
+            },
+            ReserveWalletMetrics {
+                address: "reserve-2".to_string(),
+                balance_lamports: 4_000_000_000,
+            },
+        ]
+    );
+    assert!(snapshot.data_sources.iter().any(|source| {
+        source.command == CommandId::ReserveWalletBalances
+            && source.connector.as_ref() == "fallback"
+            && source.precedence == 2
     }));
     Ok(())
 }

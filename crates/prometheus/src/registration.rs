@@ -529,6 +529,13 @@ impl Metrics {
             ),
             economics_labels,
         )?;
+        let sol_economics_reserve_wallet_balance_sol = GaugeVec::new(
+            Opts::new(
+                "sol_economics_reserve_wallet_balance_sol",
+                "Current balance in SOL for each configured economics reserve wallet",
+            ),
+            &["network", "identity", "vote_account", "reserve_wallet"],
+        )?;
         let sol_economics_vote_account_rent_exempt_minimum_sol = GaugeVec::new(
             Opts::new(
                 "sol_economics_vote_account_rent_exempt_minimum_sol",
@@ -1023,6 +1030,7 @@ impl Metrics {
         register(&registry, &sol_future_leader_slots)?;
         register(&registry, &sol_economics_identity_balance_sol)?;
         register(&registry, &sol_economics_vote_account_balance_sol)?;
+        register(&registry, &sol_economics_reserve_wallet_balance_sol)?;
         register(
             &registry,
             &sol_economics_vote_account_rent_exempt_minimum_sol,
@@ -1173,6 +1181,7 @@ impl Metrics {
             sol_future_leader_slots,
             sol_economics_identity_balance_sol,
             sol_economics_vote_account_balance_sol,
+            sol_economics_reserve_wallet_balance_sol,
             sol_economics_vote_account_rent_exempt_minimum_sol,
             sol_economics_vat_reserve_sol,
             sol_economics_vat_epochs_available,

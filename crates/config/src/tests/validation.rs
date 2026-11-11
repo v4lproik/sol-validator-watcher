@@ -869,8 +869,10 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
             economics: EconomicsModeConfig {
                 enabled: true,
                 validator: None,
+                reserve_wallets: vec![],
                 commands: EconomicsCommands {
                     account_balances: vec!["primary".to_string()],
+                    reserve_wallet_balances: vec![],
                     inflation_rewards: vec!["primary".to_string()],
                     reward_epoch_block_production: vec!["primary".to_string()],
                     recent_block_fee_rewards: vec![],
@@ -889,6 +891,95 @@ fn rejects_missing_economics_validator_in_single_validator_mode() -> Result<()> 
             .to_string()
             .contains("modes.economics.enabled requires modes.economics.validator")),
     }
+    Ok(())
+}
+#[test]
+fn validates_reserve_wallets_and_their_required_command_route() -> Result<()> {
+    let target = || WatchedValidatorConfig {
+        identity: Some("id-1".to_string()),
+        vote_account: Some("vote-1".to_string()),
+        labels: vec![],
+    };
+
+    let mut disabled = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", None, false),
+        ..Config::default()
+    };
+    disabled.modes.economics.reserve_wallets = vec!["reserve-1".to_string()];
+    let Err(error) = disabled.into_validated() else {
+        anyhow::bail!("reserve wallets should require economics mode");
+    };
+    assert!(error
+        .to_string()
+        .contains("modes.economics.reserve_wallets requires modes.economics.enabled = true"));
+
+    let mut missing_route = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    missing_route.modes.economics.validator = Some(target());
+    missing_route.modes.economics.reserve_wallets = vec![" reserve-1 ".to_string()];
+    let Err(error) = missing_route.into_validated() else {
+        anyhow::bail!("configured reserve wallets should require a command route");
+    };
+    assert!(error.to_string().contains(
+        "modes.economics.commands.reserve_wallet_balances must contain at least one connector name"
+    ));
+
+    let mut route_without_wallet = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    route_without_wallet.modes.economics.validator = Some(target());
+    route_without_wallet
+        .modes
+        .economics
+        .commands
+        .reserve_wallet_balances = vec!["primary".to_string()];
+    let Err(error) = route_without_wallet.into_validated() else {
+        anyhow::bail!("reserve-wallet command route should require wallets");
+    };
+    assert!(error.to_string().contains(
+        "modes.economics.commands.reserve_wallet_balances requires modes.economics.reserve_wallets"
+    ));
+
+    let mut duplicates = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    duplicates.modes.economics.validator = Some(target());
+    duplicates.modes.economics.reserve_wallets =
+        vec![" reserve-1 ".to_string(), "reserve-1".to_string()];
+    duplicates.modes.economics.commands.reserve_wallet_balances = vec!["primary".to_string()];
+    let Err(error) = duplicates.into_validated() else {
+        anyhow::bail!("duplicate reserve wallets should be rejected");
+    };
+    assert!(error
+        .to_string()
+        .contains("modes.economics.reserve_wallets contains duplicate wallet \"reserve-1\""));
+
+    let mut valid = Config {
+        connectors: vec![rpc_connector("primary")],
+        modes: modes_for("primary", None, true),
+        ..Config::default()
+    };
+    valid.modes.economics.validator = Some(target());
+    valid.modes.economics.reserve_wallets =
+        vec![" reserve-1 ".to_string(), "reserve-2".to_string()];
+    valid.modes.economics.commands.reserve_wallet_balances = vec!["primary".to_string()];
+    let valid = valid.into_validated()?;
+    assert_eq!(
+        valid.modes.economics.reserve_wallets,
+        ["reserve-1", "reserve-2"]
+    );
+    assert_eq!(
+        valid.modes.route(CommandId::ReserveWalletBalances),
+        ["primary"]
+    );
     Ok(())
 }
 

@@ -60,6 +60,28 @@ order. The first successful connector wins.
 | `jito-mev-rewards` | Settled Jito validator rewards through its provider API |
 | `trillium-mev-capture` | Completed-epoch MEV, block rewards, priority and signature fees, transactions, compute use, stake, Jito tips, leader slots, and block production through the public Trillium API |
 
+An enabled economics mode may also declare reserve wallets and their explicit
+extended-RPC source chain:
+
+```toml
+[modes.economics]
+enabled = true
+reserve_wallets = [
+  "PRIMARY_RESERVE_WALLET_PUBLIC_KEY",
+  "SECONDARY_RESERVE_WALLET_PUBLIC_KEY",
+]
+
+[modes.economics.commands]
+reserve_wallet_balances = ["helius-primary"]
+```
+
+The route is required when `reserve_wallets` is non-empty. One successful
+routed `getMultipleAccounts` collection publishes each existing wallet with the
+selected connector's source provenance. Missing accounts remain absent,
+existing zero-lamport accounts publish zero, and route exhaustion fails the
+economics snapshot instead of publishing stale balances.
+
+
 A connector may declare ordered backups for only the source types they can
 replace:
 

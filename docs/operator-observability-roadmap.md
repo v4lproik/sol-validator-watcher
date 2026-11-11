@@ -86,6 +86,7 @@ The exporter and mode dashboards now publish:
 - watched-validator `sol_watched_validator_identity_balance_sol`,
   `sol_watched_validator_vote_account_balance_sol`, rent exemption, VAT reserve,
   complete funded VAT epochs, and next-epoch VAT funding status
+- configured reserve-wallet `sol_economics_reserve_wallet_balance_sol` series
 - economics-target `sol_economics_jito_mev_reward_sol`,
   `sol_economics_jito_mev_commission_pct`, and
   `sol_economics_jito_mev_reward_epoch`
@@ -110,6 +111,13 @@ configured economics target because the production VAT alert consumes them.
 Configured Jito reward routes use the economics target's vote account. Missing
 settlement data or an exhausted optional route omits the Jito series instead of
 publishing zero; required economics RPC failures remain fail-closed.
+
+When `modes.economics.reserve_wallets` is non-empty, one required routed
+`getMultipleAccounts` command publishes a current balance series for each
+existing reserve wallet with successful source provenance. A null account omits
+only that wallet, a real zero-lamport account publishes zero, and route
+exhaustion fails the economics snapshot.
+
 
 Public watched-validator gossip posture is exposed through
 `sol_watched_validator_gossip_visible` and
@@ -183,7 +191,6 @@ These are the operator signals that would most improve the dashboards.
 
 ### Remaining rewards and balances
 
-- reserve wallet balance
 - cumulative rewards
 
 ### Validator economics and revenue

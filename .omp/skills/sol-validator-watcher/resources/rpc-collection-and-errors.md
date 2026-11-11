@@ -84,6 +84,11 @@ probes, and economics collection.
   leader schedules. `extended` also supplies recent performance samples,
   current block production, account reads, rent exemption, inflation rewards,
   and minimum ledger slot. `extended` satisfies a `core` requirement.
+- Configured economics reserve wallets use one required, independently routed
+  `getMultipleAccounts` command on `extended` RPC. Chunk requests at the endpoint
+  bound, preserve input order and successful-source provenance, omit a wallet
+  when its account result is null, preserve a real zero-lamport balance, and fail
+  the economics snapshot only when the command route is exhausted.
 - These are watcher-defined standard Solana JSON-RPC compatibility profiles,
   not provider product tiers. Agave `--full-rpc-api` maps to `extended`; hosted
   providers may expose the same methods alongside independent proprietary APIs.
@@ -116,6 +121,9 @@ probes, and economics collection.
 - Required and optional execution are separate policies. Required commands
   exhaust their route and return the last causal error. Optional commands may
   exhaust their route and return absence, but every failed attempt is logged.
+- Required reserve-wallet balance collection is conditional on non-empty
+  `modes.economics.reserve_wallets`. Do not reuse the configured target's
+  identity balance or publish stale/default values when its route fails.
 - The optional consensus `cluster_nodes` command treats route exhaustion as
   unavailable. Only a successful `getClusterNodes` response may classify a
   watched identity as visible or missing, and only successful results record

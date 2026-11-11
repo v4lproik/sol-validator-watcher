@@ -1664,7 +1664,7 @@
       "panels": [],
       "title": "Watched Validators — Funding and Timing",
       "type": "row",
-      "description": "Funding rows follow the selected watched validators. Separate timing panels show network-wide epoch progress, recent slot duration, time to epoch end, and each selected validator's next leader ETA."
+      "description": "Funding rows follow the selected watched validators, and the reserve-wallet panel shows the configured economics reserve when its target is selected. Separate timing panels show network-wide epoch progress, recent slot duration, time to epoch end, and each selected validator's next leader ETA."
     },
     {
       "datasource": {
@@ -2089,6 +2089,67 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Current SOL balance of each configured economics reserve wallet returned by the selected source. A missing account omits only that wallet; an existing empty wallet publishes zero. No data means no configured wallet exists on the source, the economics target is not selected, or no complete snapshot has supplied balances. Use watcher readiness and snapshot freshness to detect failed current polls.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "suffix: SOL"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 0,
+        "y": 83
+      },
+      "id": 37,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sol_economics_reserve_wallet_balance_sol{network=\"$network\",identity=~\"$validator\"} and on(network) (max by (network) (sol_mode_enabled{network=\"$network\",mode=\"economics\"}) == 1)",
+          "instant": true,
+          "legendFormat": "{{reserve_wallet}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Reserve Balances",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "description": "Completed percentage of the current epoch for the selected network.",
       "fieldConfig": {
         "defaults": {
@@ -2114,8 +2175,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 5,
-        "x": 0,
+        "w": 4,
+        "x": 5,
         "y": 83
       },
       "id": 11,
@@ -2175,8 +2236,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 5,
-        "x": 5,
+        "w": 4,
+        "x": 9,
         "y": 83
       },
       "id": 34,
@@ -2235,8 +2296,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 10,
+        "w": 5,
+        "x": 13,
         "y": 83
       },
       "id": 35,
@@ -2297,8 +2358,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 18,
         "y": 83
       },
       "id": 36,
@@ -2404,6 +2465,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Economics",
   "uid": "sol-validator-watcher-economics",
-  "version": 11,
+  "version": 12,
   "weekStart": ""
 }

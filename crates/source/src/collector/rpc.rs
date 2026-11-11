@@ -29,7 +29,9 @@ use tracing::warn;
 /// Largest inclusive slot range sent in one `getBlockProduction` request.
 pub(super) const MAX_BLOCK_PRODUCTION_RANGE_SLOTS: u64 = 5_000;
 const MAX_INFLATION_REWARD_ADDRESSES_PER_REQUEST: usize = 100;
-const MAX_ACCOUNT_BALANCE_TARGETS_PER_REQUEST: usize = 50;
+const MAX_MULTIPLE_ACCOUNT_ADDRESSES_PER_REQUEST: usize = 100;
+const MAX_ACCOUNT_BALANCE_TARGETS_PER_REQUEST: usize =
+    MAX_MULTIPLE_ACCOUNT_ADDRESSES_PER_REQUEST / 2;
 /// Maximum number of recent assigned slots requested in one `getBlock` batch.
 pub(super) const MAX_RECENT_BLOCK_FEE_REWARD_SLOTS: usize = 32;
 const MAX_CACHED_BLOCK_FEE_RESPONSES: usize = MAX_RECENT_BLOCK_FEE_REWARD_SLOTS * 2;
@@ -487,6 +489,25 @@ impl RpcClient {
         self.call("minimumLedgerSlot", [(); 0]).await
     }
 
+    /// Returns balances for configured wallets in input order.
+    ///
+    /// Missing accounts remain absent, while existing zero-lamport accounts retain zero.
+    pub(super) async fn get_wallet_balances(
+        &self,
+        addresses: &[String],
+    ) -> Result<Vec<Option<u64>>> {
+        let mut balances = Vec::with_capacity(addresses.len());
+        for address_chunk in addresses.chunks(MAX_MULTIPLE_ACCOUNT_ADDRESSES_PER_REQUEST) {
+            balances.extend(
+                self.get_multiple_accounts(address_chunk)
+                    .await?
+                    .into_iter()
+                    .map(|account| account.map(|account| account.lamports)),
+            );
+        }
+        Ok(balances)
+    }
+
     /// Returns identity and vote-account balances plus vote-account rent floors.
     ///
     /// Each `getMultipleAccounts` request contains at most 100 addresses: one
@@ -507,32 +528,9 @@ impl RpcClient {
                 addresses.push(target.identity);
                 addresses.push(target.vote_account);
             }
-            let expected_accounts = addresses.len();
-            let response: RpcValueResponse<Vec<Option<AccountValue>>> = self
-                .call(
-                    "getMultipleAccounts",
-                    (
-                        addresses,
-                        GetMultipleAccountsConfig {
-                            commitment: &self.commitment,
-                            encoding: "base64",
-                            data_slice: DataSlice {
-                                offset: 0,
-                                length: 0,
-                            },
-                        },
-                    ),
-                )
-                .await?;
-            if response.value.len() != expected_accounts {
-                self.telemetry.record_failure("getMultipleAccounts")?;
-                bail!(
-                    "getMultipleAccounts returned {} accounts for {expected_accounts} addresses",
-                    response.value.len()
-                );
-            }
+            let accounts = self.get_multiple_accounts(&addresses).await?;
 
-            let mut accounts = response.value.into_iter();
+            let mut accounts = accounts.into_iter();
             for _ in target_chunk {
                 let identity = accounts
                     .next()
@@ -595,6 +593,37 @@ impl RpcClient {
                 )
             })
             .collect())
+    }
+
+    async fn get_multiple_accounts<T>(&self, addresses: &[T]) -> Result<Vec<Option<AccountValue>>>
+    where
+        T: Serialize,
+    {
+        let expected_accounts = addresses.len();
+        let response: RpcValueResponse<Vec<Option<AccountValue>>> = self
+            .call(
+                "getMultipleAccounts",
+                (
+                    addresses,
+                    GetMultipleAccountsConfig {
+                        commitment: &self.commitment,
+                        encoding: "base64",
+                        data_slice: DataSlice {
+                            offset: 0,
+                            length: 0,
+                        },
+                    },
+                ),
+            )
+            .await?;
+        if response.value.len() != expected_accounts {
+            self.telemetry.record_failure("getMultipleAccounts")?;
+            bail!(
+                "getMultipleAccounts returned {} accounts for {expected_accounts} addresses",
+                response.value.len()
+            );
+        }
+        Ok(response.value)
     }
 
     /// Returns available inflation rewards keyed by requested address.

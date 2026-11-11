@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Number of collection modes in [`ModeId::ALL`].
 pub const MODE_COUNT: usize = 4;
 /// Number of typed commands in [`CommandId::ALL`].
-pub const COMMAND_COUNT: usize = 16;
+pub const COMMAND_COUNT: usize = 17;
 
 /// Transport required to execute a watcher command.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -215,6 +215,8 @@ pub enum CommandId {
     NextLeaderSchedule,
     /// Identity and vote-account balances plus rent exemption.
     AccountBalances,
+    /// Configured economics reserve-wallet balances.
+    ReserveWalletBalances,
     /// Prior-epoch inflation rewards.
     InflationRewards,
     /// Block production retained for the prior reward epoch.
@@ -241,6 +243,7 @@ impl CommandId {
         Self::CurrentLeaderSchedule,
         Self::NextLeaderSchedule,
         Self::AccountBalances,
+        Self::ReserveWalletBalances,
         Self::InflationRewards,
         Self::RewardEpochBlockProduction,
         Self::JitoMevRewards,
@@ -262,6 +265,7 @@ impl CommandId {
             Self::CurrentLeaderSchedule => "current-leader-schedule",
             Self::NextLeaderSchedule => "next-leader-schedule",
             Self::AccountBalances => "account-balances",
+            Self::ReserveWalletBalances => "reserve-wallet-balances",
             Self::InflationRewards => "inflation-rewards",
             Self::RewardEpochBlockProduction => "reward-epoch-block-production",
             Self::JitoMevRewards => "jito-mev-rewards",
@@ -282,6 +286,7 @@ impl CommandId {
             | Self::CurrentLeaderSchedule
             | Self::NextLeaderSchedule => ModeId::Leadership,
             Self::AccountBalances
+            | Self::ReserveWalletBalances
             | Self::InflationRewards
             | Self::RewardEpochBlockProduction
             | Self::JitoMevRewards
@@ -303,7 +308,8 @@ impl CommandId {
             Self::WsHealth => ModeSourceRequirement::Websocket,
             Self::RecentPerformanceSamples
             | Self::CurrentBlockProduction
-            | Self::AccountBalances => ModeSourceRequirement::RpcExtended,
+            | Self::AccountBalances
+            | Self::ReserveWalletBalances => ModeSourceRequirement::RpcExtended,
             Self::InflationRewards | Self::RewardEpochBlockProduction => {
                 ModeSourceRequirement::RpcHistoricalData
             }
@@ -327,11 +333,12 @@ impl CommandId {
             Self::CurrentLeaderSchedule => 8,
             Self::NextLeaderSchedule => 9,
             Self::AccountBalances => 10,
-            Self::InflationRewards => 11,
-            Self::RewardEpochBlockProduction => 12,
-            Self::JitoMevRewards => 13,
-            Self::RecentBlockFeeRewards => 14,
-            Self::TrilliumMevCapture => 15,
+            Self::ReserveWalletBalances => 11,
+            Self::InflationRewards => 12,
+            Self::RewardEpochBlockProduction => 13,
+            Self::JitoMevRewards => 14,
+            Self::RecentBlockFeeRewards => 15,
+            Self::TrilliumMevCapture => 16,
         }
     }
 }
@@ -373,6 +380,7 @@ mod tests {
             CommandId::RecentPerformanceSamples,
             CommandId::CurrentBlockProduction,
             CommandId::AccountBalances,
+            CommandId::ReserveWalletBalances,
         ] {
             assert_eq!(command.source_requirement(), extended_rpc);
         }

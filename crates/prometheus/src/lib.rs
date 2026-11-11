@@ -107,6 +107,7 @@ pub struct Metrics {
     sol_future_leader_slots: GaugeVec,
     sol_economics_identity_balance_sol: GaugeVec,
     sol_economics_vote_account_balance_sol: GaugeVec,
+    sol_economics_reserve_wallet_balance_sol: GaugeVec,
     sol_economics_vote_account_rent_exempt_minimum_sol: GaugeVec,
     sol_economics_vat_reserve_sol: GaugeVec,
     sol_economics_vat_epochs_available: IntGaugeVec,
@@ -630,6 +631,16 @@ impl Metrics {
             self.sol_economics_vote_account_balance_sol
                 .with_label_values(&labels)
                 .set(lamports_to_sol(economics.vote_account_balance_lamports));
+            for reserve_wallet in &economics.reserve_wallets {
+                self.sol_economics_reserve_wallet_balance_sol
+                    .with_label_values(&[
+                        snapshot.network.as_str(),
+                        economics.identity.as_str(),
+                        economics.vote_account.as_str(),
+                        reserve_wallet.address.as_str(),
+                    ])
+                    .set(lamports_to_sol(reserve_wallet.balance_lamports));
+            }
             if let Some(rent_exempt_minimum_lamports) =
                 economics.vote_account_rent_exempt_minimum_lamports
             {
@@ -1013,6 +1024,7 @@ impl Metrics {
         self.sol_node_block_height.reset();
         self.sol_economics_identity_balance_sol.reset();
         self.sol_economics_vote_account_balance_sol.reset();
+        self.sol_economics_reserve_wallet_balance_sol.reset();
         self.sol_economics_vote_account_rent_exempt_minimum_sol
             .reset();
         self.sol_economics_vat_reserve_sol.reset();

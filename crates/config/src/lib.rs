@@ -66,6 +66,8 @@ pub struct LeadershipCommands {
 pub struct EconomicsCommands {
     /// Connector names used for identity and vote-account balances.
     pub account_balances: Vec<String>,
+    /// Connector names used for configured reserve-wallet balances.
+    pub reserve_wallet_balances: Vec<String>,
     /// Connector names used for prior-epoch inflation rewards.
     pub inflation_rewards: Vec<String>,
     /// Connector names used for prior-epoch block production.
@@ -110,6 +112,8 @@ pub struct EconomicsModeConfig {
     pub enabled: bool,
     /// Explicit economics target, or `None` to resolve it from the reserved label.
     pub validator: Option<WatchedValidatorConfig>,
+    /// Wallets whose SOL balances are reserved for validator operations.
+    pub reserve_wallets: Vec<String>,
     /// Commands owned by economics mode.
     pub commands: EconomicsCommands,
 }
@@ -156,6 +160,7 @@ impl ModesConfig {
             CommandId::CurrentLeaderSchedule => &self.leadership.commands.current_leader_schedule,
             CommandId::NextLeaderSchedule => &self.leadership.commands.next_leader_schedule,
             CommandId::AccountBalances => &self.economics.commands.account_balances,
+            CommandId::ReserveWalletBalances => &self.economics.commands.reserve_wallet_balances,
             CommandId::InflationRewards => &self.economics.commands.inflation_rewards,
             CommandId::RewardEpochBlockProduction => {
                 &self.economics.commands.reward_epoch_block_production
@@ -185,6 +190,9 @@ impl ModesConfig {
             }
             CommandId::NextLeaderSchedule => &mut self.leadership.commands.next_leader_schedule,
             CommandId::AccountBalances => &mut self.economics.commands.account_balances,
+            CommandId::ReserveWalletBalances => {
+                &mut self.economics.commands.reserve_wallet_balances
+            }
             CommandId::InflationRewards => &mut self.economics.commands.inflation_rewards,
             CommandId::RewardEpochBlockProduction => {
                 &mut self.economics.commands.reward_epoch_block_production
@@ -1012,6 +1020,9 @@ impl Config {
             let path = command_route_path(command);
             let required = match command {
                 CommandId::RpcHealth | CommandId::EpochInfo | CommandId::VoteAccounts => true,
+                CommandId::ReserveWalletBalances => {
+                    self.modes.economics.enabled && !self.modes.economics.reserve_wallets.is_empty()
+                }
                 CommandId::WsHealth
                 | CommandId::NodeStatus
                 | CommandId::ClusterNodes
@@ -1205,6 +1216,9 @@ fn validate_economics(
         if modes.economics.validator.is_some() {
             bail!("modes.economics.validator requires modes.economics.enabled = true");
         }
+        if !modes.economics.reserve_wallets.is_empty() {
+            bail!("modes.economics.reserve_wallets requires modes.economics.enabled = true");
+        }
         return Ok((modes, watched_validators));
     }
     let ModesConfig {
@@ -1216,12 +1230,34 @@ fn validate_economics(
     let EconomicsModeConfig {
         enabled,
         validator,
+        reserve_wallets,
         commands,
     } = economics;
     let mut validator = normalize_watched_validator(
         validator.context("modes.economics.enabled requires modes.economics.validator")?,
         "modes.economics.validator",
     )?;
+    let reserve_wallets = reserve_wallets
+        .into_iter()
+        .enumerate()
+        .map(|(index, wallet)| {
+            normalize_pubkey(
+                &wallet,
+                &format!("modes.economics.reserve_wallets[{index}]"),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mut seen_reserve_wallets = HashSet::with_capacity(reserve_wallets.len());
+    for wallet in &reserve_wallets {
+        if !seen_reserve_wallets.insert(wallet.as_str()) {
+            bail!("modes.economics.reserve_wallets contains duplicate wallet {wallet:?}");
+        }
+    }
+    if reserve_wallets.is_empty() && !commands.reserve_wallet_balances.is_empty() {
+        bail!(
+            "modes.economics.commands.reserve_wallet_balances requires modes.economics.reserve_wallets"
+        );
+    }
     validator.labels.push(ECONOMICS_TARGET_LABEL.to_string());
     validator.labels.sort();
     validator.labels.dedup();
@@ -1243,6 +1279,7 @@ fn validate_economics(
             economics: EconomicsModeConfig {
                 enabled,
                 validator: Some(validator),
+                reserve_wallets,
                 commands,
             },
         },

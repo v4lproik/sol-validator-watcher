@@ -30,6 +30,7 @@ use axum::{
     Router,
 };
 use serde_json::{json, Value};
+use sol_validator_watcher_domain::ReserveWalletMetrics;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 
@@ -38,6 +39,7 @@ enum MockRpcProfile {
     Default,
     StrictCapabilityParams,
     NoAccountSpace,
+    NoReserveWalletBalances,
     NoCurrentBlockProduction,
     Behind,
     BehindHttp503,
@@ -503,31 +505,44 @@ async fn mock_rpc_handler(
             (StatusCode::OK, Json(rpc_success(schedule))).into_response()
         }
         "getMultipleAccounts" => {
+            let addresses = params
+                .first()
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if matches!(profile, MockRpcProfile::NoReserveWalletBalances)
+                && addresses.iter().any(|address| {
+                    address
+                        .as_str()
+                        .is_some_and(|address| address.starts_with("reserve-"))
+                })
+            {
+                return (StatusCode::OK, Json(rpc_error(-32601, "method not found")))
+                    .into_response();
+            }
             let vote_account_space = if matches!(profile, MockRpcProfile::NoAccountSpace) {
                 Value::Null
             } else {
                 json!(3762)
             };
-            let values = params
-                .first()
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .enumerate()
-                .map(|(index, address)| {
-                    if address
-                        .as_str()
-                        .is_some_and(|address| address.starts_with("missing-"))
-                    {
+            let values = addresses
+                .iter()
+                .map(|address| {
+                    let Some(address) = address.as_str() else {
+                        return Value::Null;
+                    };
+                    if address.starts_with("missing-") {
                         return Value::Null;
                     }
-                    let is_vote_account = index % 2 == 1;
+                    let is_vote_account = address.starts_with("vote-");
+                    let lamports = match address {
+                        "reserve-2" => 4_000_000_000u64,
+                        "zero-reserve" => 0,
+                        _ if is_vote_account => 2_500_000_000,
+                        _ => 3_000_000_000,
+                    };
                     json!({
-                        "lamports": if is_vote_account {
-                            2_500_000_000u64
-                        } else {
-                            3_000_000_000u64
-                        },
+                        "lamports": lamports,
                         "owner": if is_vote_account {
                             "Vote111111111111111111111111111111111111111"
                         } else {
@@ -700,8 +715,10 @@ fn modes_for(connectors: &[&str], economics_enabled: bool) -> ModesConfig {
                 vote_account: Some("vote-1".to_string()),
                 labels: vec![],
             }),
+            reserve_wallets: vec![],
             commands: EconomicsCommands {
                 account_balances: economics_enabled.then(route).unwrap_or_default(),
+                reserve_wallet_balances: vec![],
                 inflation_rewards: economics_enabled.then(route).unwrap_or_default(),
                 reward_epoch_block_production: economics_enabled.then(route).unwrap_or_default(),
                 recent_block_fee_rewards: vec![],

@@ -5,9 +5,9 @@
 
 use super::{
     model::{
-        AccountBalances, EconomicsMetrics, EpochCreditsSample, GossipObservation, RewardSample,
-        ScopeMetrics, Snapshot, ValidatorFundingMetrics, ValidatorRecord, ValidatorStatus,
-        WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS,
+        AccountBalances, EconomicsMetrics, EpochCreditsSample, GossipObservation,
+        ReserveWalletMetrics, RewardSample, ScopeMetrics, Snapshot, ValidatorFundingMetrics,
+        ValidatorRecord, ValidatorStatus, WatchedValidatorMetrics, MAX_UPCOMING_LEADER_SLOTS,
     },
     rpc::{SlotRange, VoteAccountInfo, VoteAccounts},
 };
@@ -518,6 +518,7 @@ pub(super) fn apply_validator_funding_metrics(
 pub(super) fn build_economics_metrics(
     target: &EconomicsTarget,
     balances: AccountBalances,
+    reserve_wallets: Vec<ReserveWalletMetrics>,
     jito_mev_reward: Option<super::JitoMevReward>,
     trillium_mev_capture: Option<super::TrilliumMevCapture>,
     recent_block_fee_rewards: Option<super::RecentBlockFeeRewards>,
@@ -533,6 +534,7 @@ pub(super) fn build_economics_metrics(
         vat_reserve_lamports: funding.vat_reserve_lamports,
         vat_epochs_available: funding.vat_epochs_available,
         vat_next_epoch_funded: funding.vat_next_epoch_funded,
+        reserve_wallets,
         jito_mev_reward,
         trillium_mev_capture,
         recent_block_fee_rewards,

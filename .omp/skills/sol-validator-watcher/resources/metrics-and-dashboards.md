@@ -71,6 +71,11 @@ operator-facing semantics.
 - Keep `sol_economics_*` balance and VAT series scoped to the configured
   economics target because production alerts consume that contract. Publish
   multi-validator funding through distinct `sol_watched_validator_*` series.
+- `sol_economics_reserve_wallet_balance_sol` is snapshot-owned and publishes one
+  series for each configured reserve wallet returned by the required route. Its
+  `reserve_wallet` label is bounded by configuration. Reset removed or missing
+  wallets on the next snapshot; never substitute the economics identity balance
+  or retain a stale reserve balance.
 - Jito MEV reward, commission, and reward-epoch series are snapshot-owned and
   exist only when economics mode, a valid provider-API route, and a settled
   target reward all exist. Missing settlement or route failure remains no data,

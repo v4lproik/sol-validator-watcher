@@ -101,6 +101,62 @@ next_leader_schedule = ["local-validator", "helius-rpc"]
         .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
     Ok(())
 }
+#[test]
+fn loads_reserve_wallets_and_their_command_route() -> Result<()> {
+    let test_dir = unique_test_dir("reserve-wallet");
+    fs::create_dir_all(&test_dir)
+        .with_context(|| format!("failed to create {}", test_dir.display()))?;
+    let config_path = test_dir.join("watcher.toml");
+    fs::write(
+        &config_path,
+        r#"
+network = "mainnet-beta"
+
+[[connectors]]
+name = "primary"
+provider = "solana"
+features = ["historical-data"]
+solana_rpc_compatibility = "extended"
+rpc = { url = "https://api.mainnet-beta.solana.com" }
+
+[modes.health.commands]
+rpc_health = ["primary"]
+
+[modes.consensus.commands]
+epoch_info = ["primary"]
+vote_accounts = ["primary"]
+
+[modes.economics]
+enabled = true
+reserve_wallets = ["reserve-1", "reserve-2"]
+
+[modes.economics.validator]
+vote_account = "vote-1"
+
+[modes.economics.commands]
+account_balances = ["primary"]
+reserve_wallet_balances = ["primary"]
+inflation_rewards = ["primary"]
+reward_epoch_block_production = ["primary"]
+"#,
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+    let config = Config::load(&config_path)?;
+
+    assert_eq!(
+        config.modes.economics.reserve_wallets,
+        ["reserve-1", "reserve-2"]
+    );
+    assert_eq!(
+        config.modes.route(CommandId::ReserveWalletBalances),
+        ["primary"]
+    );
+
+    fs::remove_dir_all(&test_dir)
+        .with_context(|| format!("failed to remove directory {}", test_dir.display()))?;
+    Ok(())
+}
 
 #[test]
 fn loads_typed_connector_backups_and_expands_routes() -> Result<()> {
