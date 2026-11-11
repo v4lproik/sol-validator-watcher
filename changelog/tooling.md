@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Updated the TOML parser from 1.1.8 to 1.2.1.
 - Documented dynamic completed-epoch operating-cost provider routing, the `operating-costs` feature and `commands.operating_costs` contract, bounded response validation, successful-source provenance, fail-closed polling with last-successful-snapshot retention, reset and absence semantics, and strict dashboard separation from protocol reward accounting.
 - Documented plural reserve-wallet configuration, required shared source routing, bounded `getMultipleAccounts` chunking, per-wallet missing and zero-balance semantics, successful provenance, and snapshot-reset metrics in public and repository engineering guidance.
 - Converted the Rust package into a five-member Cargo workspace with centralized package metadata, exact dependency versions, and lint policy; workspace-wide Just recipes now check, document, lint, build, test, and benchmark every member.
