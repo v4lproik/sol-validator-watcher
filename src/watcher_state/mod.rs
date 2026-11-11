@@ -6,11 +6,12 @@
 mod actor;
 mod model;
 
+pub(crate) use crate::mode::{RpcResponseCounts, WatcherStateSnapshot};
 pub(crate) use actor::{
-    ConnectorRpcTelemetry, ConnectorWebsocketTelemetry, RpcRequestOutcome, RpcTelemetry,
-    WatcherState, WatcherStateError, WatcherStateMailbox, ADMISSION_CLEAN_POLL_ROUNDS,
+    WatcherState, WatcherStateError, WatcherStateMailbox, ADMISSION_SUCCESSFUL_POLL_ROUNDS,
 };
-pub(crate) use model::{PollCompletion, RpcResponseCounts, WatcherStateSnapshot};
+pub(crate) use model::PollCompletion;
+pub(crate) use sol_validator_watcher_source::RuntimeTelemetry;
 
 #[cfg(test)]
 mod tests;

@@ -58,6 +58,11 @@ task failure.
   failed must not receive source attribution.
 - An unsupported optional method and a transient request failure can both
   advance to another connector, but they are not the same diagnostic state.
+- Classify sticky failover from typed causes, not display text. Transport,
+  connection, timeout, DNS, and TLS failures carry an explicit
+  source-requirement marker from the owning adapter; HTTP/WebSocket protocol,
+  decode, JSON-RPC, missing-result, and domain-validation failures remain
+  command-scoped.
 - A required command's prerequisite RPC calls remain required. Do not convert
   their transport, HTTP, payload, or JSON-RPC failures into absence.
 - A configured Jito route is required during startup and reload verification but

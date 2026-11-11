@@ -8,14 +8,13 @@
 use super::state::RuntimeState;
 use crate::{
     collector::{
-        collect_snapshot, command::GetHealth, ensure_economics_supported, ModeStatus, Snapshot,
-        SnapshotDataSource,
+        collect_snapshot, ensure_economics_supported, ModeStatus, Snapshot, SnapshotDataSource,
     },
     config::Config,
     metrics::Metrics,
     mode::{CommandId, ModeId},
     tasks::{Shutdown, TaskExit},
-    watcher_state::{WatcherState, WatcherStateError, ADMISSION_CLEAN_POLL_ROUNDS},
+    watcher_state::{WatcherState, WatcherStateError, ADMISSION_SUCCESSFUL_POLL_ROUNDS},
 };
 use anyhow::{Context, Result};
 use std::{
@@ -75,7 +74,7 @@ async fn run_watcher_loop_with_retry_policy(
         watched_validators = runtime.config.watched_validators.len(),
         connectors = runtime.config.connectors.len(),
         economics_mode = runtime.config.modes.economics.as_str(),
-        admission_clean_poll_rounds = ADMISSION_CLEAN_POLL_ROUNDS,
+        admission_successful_poll_rounds = ADMISSION_SUCCESSFUL_POLL_ROUNDS,
         "starting Solana validator watcher"
     );
     let mut consecutive_failed_poll_rounds = 0_u32;
@@ -83,9 +82,18 @@ async fn run_watcher_loop_with_retry_policy(
     loop {
         let previous_config_modified = runtime.config_modified;
         match runtime.reload_if_needed().await {
-            Ok(()) if runtime.config_modified != previous_config_modified => {
+            Ok(sources_changed) if runtime.config_modified != previous_config_modified => {
                 metrics.record_config_reload(&runtime.config.network, "accepted");
-                let reset = watcher_state.reset_admission(&runtime.config.network).await;
+                let reset = if sources_changed {
+                    watcher_state
+                        .reset_runtime(
+                            &runtime.config.network,
+                            runtime.sources.failover_inventory(),
+                        )
+                        .await
+                } else {
+                    watcher_state.reset_admission(&runtime.config.network).await
+                };
                 let Some(()) = state_transition_or_shutdown(reset, &shutdown)
                     .context("failed to reset readiness after configuration reload")?
                 else {
@@ -95,7 +103,7 @@ async fn run_watcher_loop_with_retry_policy(
                     ));
                 };
             }
-            Ok(()) => {}
+            Ok(_) => {}
             Err(err) => {
                 metrics.record_config_reload(&runtime.config.network, "rejected");
                 warn!(error = ?err, "failed to reload config, keeping previous configuration");
@@ -104,7 +112,7 @@ async fn run_watcher_loop_with_retry_policy(
         ensure_connector_capabilities_ready(&mut runtime).await?;
         ensure_economics_capabilities_ready(&mut runtime).await?;
         metrics.set_watcher_up(&runtime.config.network, true);
-        metrics.begin_poll(&runtime.config, &runtime.sources);
+        metrics.begin_poll(&runtime.inventory);
         let Some(()) = state_transition_or_shutdown(watcher_state.begin_poll().await, &shutdown)
             .context("failed to begin polling round")?
         else {
@@ -181,8 +189,9 @@ async fn run_watcher_loop_with_retry_policy(
         if completion.admitted {
             info!(
                 completed_poll_rounds = state.completed_poll_rounds,
-                clean_poll_rounds = state.clean_poll_rounds,
-                "watcher admitted as ready after consecutive clean polling rounds"
+                successful_poll_rounds = state.successful_poll_rounds,
+                degraded = state.degraded,
+                "watcher admitted as ready after consecutive successful polling rounds"
             );
         }
         info!(
@@ -190,7 +199,8 @@ async fn run_watcher_loop_with_retry_policy(
             slot = snapshot.slot,
             scopes = snapshot.scopes.len(),
             ready = state.ready,
-            clean_poll_rounds = state.clean_poll_rounds,
+            degraded = state.degraded,
+            successful_poll_rounds = state.successful_poll_rounds,
             "updated Prometheus metrics"
         );
 
@@ -270,7 +280,7 @@ async fn guard_dependencies_healthy(
     metrics.set_rpc_up(&runtime.config.network, false);
     metrics.set_ws_up(&runtime.config.network, false);
 
-    let rpc_health = match runtime.sources.required(&GetHealth).await {
+    let rpc_health = match runtime.sources.rpc_health().await {
         Ok(health) => health,
         Err(error) => {
             metrics.set_mode_up(&runtime.config.network, ModeId::Health, false);

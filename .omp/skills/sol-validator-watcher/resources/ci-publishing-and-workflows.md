@@ -29,6 +29,9 @@ checks.
   `just rust doc`, the coverage gate, LCOV/HTML generation, artifact uploads,
   and optional Codecov upload. Local verification must exercise every changed
   step that can run locally.
+- Every executable GitHub Actions job runs on the Namespace
+  `namespace-profile-general-4cpu-8gb` profile; `.github/actionlint.yaml`
+  registers the custom runner label for local workflow linting.
 - Prometheus configuration or rule changes run `just stack check` locally and
   in the required CI job.
 - Keep the required verification job name stable unless repository protection

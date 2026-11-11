@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: namespace-profile-general-4cpu-8gb
     timeout-minutes: 30
     env:
       PAGES_AUTO_ENABLE: ${{ vars.PAGES_AUTO_ENABLE }}
@@ -91,7 +91,7 @@ jobs:
   deploy:
     needs: build
     if: ${{ needs.build.outputs.pages_should_run == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: namespace-profile-general-4cpu-8gb
     timeout-minutes: 15
     environment:
       name: github-pages

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added the `operating-costs` provider feature and optional economics `operating_costs` command route, replacing static cost amounts with validated provider-only collection while rejecting disabled-mode routes, incompatible connectors, and multiple provider features on one provider API endpoint.
+- Added optional `modes.economics.reserve_wallets` configuration with a conditionally required `reserve_wallet_balances` command route that accepts only extended RPC sources, normalizes stable list order, rejects duplicates, and rejects disabled, targetless, or unused-route combinations.
+- Moved the single TOML and environment configuration owner into a dedicated workspace library without changing profile paths, schema, normalization, validation order, fingerprints, or reload semantics; its benchmark now compiles against the production library API.
 - Added connector-local backup lists keyed by exact typed source requirements; configuration validation rejects empty, self-referential, duplicate, unknown, or incompatible backups and expands valid lists immediately after each command-route connector.
 - Added the `trillium-mev-capture` provider feature, optional economics `trillium_mev_capture` command route, and public Trillium connector; the Mainnet profile enables complete economics collection for Puffin so Trillium metrics are published without making provider data required for a polling round, and connectors reject combined Jito and Trillium provider features because one `provider_api` transport owns one upstream endpoint.
 - Added the optional consensus `cluster_nodes` route to every committed profile and included `getClusterNodes` in validated core RPC compatibility probes.

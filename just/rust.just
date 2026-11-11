@@ -17,22 +17,22 @@ fmt: _ensure-components
   mise exec -- cargo fmt
 
 check:
-  mise exec -- cargo check
+  mise exec -- cargo check --workspace
 
 doc:
-  RUSTDOCFLAGS="-D warnings" mise exec -- cargo doc --no-deps --document-private-items
+  RUSTDOCFLAGS="-D warnings" mise exec -- cargo doc --workspace --no-deps --document-private-items
 
 clippy: _ensure-components
-  mise exec -- cargo clippy --all-targets --all-features -- -D warnings
+  mise exec -- cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 test:
-  mise exec -- cargo test
+  mise exec -- cargo test --workspace
 
 bench:
-  mise exec -- cargo bench
+  mise exec -- cargo bench --workspace
 
 build profile="debug":
-  profile={{quote(profile)}}; case "${profile}" in debug) mise exec -- cargo build ;; release) mise exec -- cargo build --release ;; *) echo "profile must be debug or release: ${profile}" >&2; exit 2 ;; esac
+  profile={{quote(profile)}}; case "${profile}" in debug) mise exec -- cargo build --workspace ;; release) mise exec -- cargo build --workspace --release ;; *) echo "profile must be debug or release: ${profile}" >&2; exit 2 ;; esac
 
 run profile="debug" config="config/local/validator.toml":
   profile={{quote(profile)}}; \

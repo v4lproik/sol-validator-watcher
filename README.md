@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  Prometheus monitoring and Grafana dashboards for Solana validator operators.
+  Prometheus monitoring and Grafana dashboards for any Solana validator by identity or vote-account public key.
 </p>
 
-Solana Validator Watcher polls configured Solana RPC, WebSocket, and provider APIs for health, consensus, leadership, and validator economics. It exports Prometheus metrics and uses explicit per-command connector fallback routes.
+Configure validators you operate, delegate to, compare, or research. Solana Validator Watcher polls ordered RPC, WebSocket, and provider APIs for health, consensus, leadership, and validator economics, exports Prometheus metrics, and preserves explicit per-command source provenance.
 
 ## Quick start
 
@@ -59,6 +59,62 @@ order. The first successful connector wins.
 | `block-fee-rewards` | Confirmed validator block-fee reward reads |
 | `jito-mev-rewards` | Settled Jito validator rewards through its provider API |
 | `trillium-mev-capture` | Completed-epoch MEV, block rewards, priority and signature fees, transactions, compute use, stake, Jito tips, leader slots, and block production through the public Trillium API |
+| `operating-costs` | Completed-epoch operating-cost budgets through an operator API |
+
+An enabled economics mode may also declare reserve wallets, their explicit
+extended-RPC source chain, and an optional operating-cost provider route:
+
+```toml
+[[connectors]]
+name = "cost-api"
+provider = "operator-cost-service"
+features = ["operating-costs"]
+provider_api = { url = "${OPERATING_COST_API_URL}", headers = { Authorization = "Bearer ${OPERATING_COST_API_TOKEN}" } }
+
+[modes.economics]
+enabled = true
+reserve_wallets = [
+  "PRIMARY_RESERVE_WALLET_PUBLIC_KEY",
+  "SECONDARY_RESERVE_WALLET_PUBLIC_KEY",
+]
+
+[modes.economics.commands]
+reserve_wallet_balances = ["helius-primary"]
+operating_costs = ["cost-api"]
+```
+
+The reserve-wallet route is required when `reserve_wallets` is non-empty. One
+successful routed `getMultipleAccounts` collection publishes each existing
+wallet with the selected connector's source provenance. Missing accounts remain
+absent, existing zero-lamport accounts publish zero, and route exhaustion fails
+the economics snapshot instead of publishing stale balances.
+
+For each completed reward epoch, the watcher sends `GET` to the configured
+operating-cost endpoint with an `epoch=<u64>` query parameter. The endpoint must
+return:
+
+```json
+{
+  "epoch": 812,
+  "costs": [
+    { "name": "validator-hosting", "lamports_per_epoch": 5000000000 },
+    { "name": "rpc-provider", "lamports_per_epoch": 1000000000 }
+  ]
+}
+```
+
+The returned epoch must match the request. The complete response is limited to
+1 MiB and 64 costs. Names are trimmed, non-empty, unique, control-character
+free, and limited to 128 bytes; explicit zero costs are valid and the aggregate
+must fit in `u64`. A configured route is required at collection time: connector
+fallback applies normally, but route exhaustion, malformed data, an empty cost
+list, or an epoch mismatch fails the economics poll. A successful poll publishes
+the itemized values, total, and selected-source provenance. With no route, the
+watcher publishes no operating-cost series. The standalone Operating Costs
+dashboard shows collection state, snapshot freshness, configured fallback,
+successful-source provenance, current budgets, and history. It deliberately
+keeps operator-supplied budgets separate from protocol rewards and does not
+calculate profitability.
 
 A connector may declare ordered backups for only the source types they can
 replace:
@@ -96,14 +152,15 @@ Backup keys are exact: `rpc-core`, `rpc-extended`, `rpc-historical-data`,
 must exist and satisfy the key's transport, RPC compatibility, and provider
 feature contract.
 
-At runtime, a failed command attempt immediately opens failover for that primary
-connector and exact backup key. Subsequent commands sharing that pair skip the
-primary for 60 seconds. After the cooldown, only the command that caused the
-failover may make one real primary attempt: success restores the primary for the
-whole key, while failure restarts the cooldown. Inserted backup entries remain
-ungated, and other source types remain independent. Reloading a changed source
-configuration installs a newly verified source chain with fresh failover state;
-a rejected reload preserves the active chain and its state.
+At runtime, transport or connectivity failures open failover for the primary
+connector and exact backup key, so compatible commands share the outage.
+HTTP, protocol, decode, JSON-RPC, missing-result, and domain failures open only
+the causal command circuit. Each open circuit skips the primary for 60 seconds,
+then admits one real primary request; success recovers the circuits that request
+probed, while failure restarts the applicable cooldown. Inserted backup entries
+remain ungated. Reloading changed source configuration installs a newly verified
+chain with fresh circuit state; config-only and rejected reloads preserve active
+circuits.
 
 Run a profile directly with:
 
@@ -152,9 +209,23 @@ automatic rollback, backup/restore procedure, and release gate.
 | <http://127.0.0.1:9090> | Local Prometheus |
 | <http://127.0.0.1:3001> | Local Grafana dashboards |
 
-Readiness requires five consecutive clean polling rounds. Recoverable collection failures retain the last successful snapshot while marking affected modes and readiness down.
+Readiness requires five consecutive complete polling rounds. Successful fallback snapshots remain ready while `sol_watcher_degraded` reports reduced source redundancy; a failed whole poll retains the last successful snapshot and revokes readiness.
 
-Grafana includes overview, consensus, leadership, economics, and MEV Capture dashboards. The MEV dashboard compares Trillium's latest completed-epoch capture, allocations, block rewards, priority and signature fees, transactions, compute use, Jito tips, stake, leader slots, produced blocks, and efficiency while keeping independent published fields separate. The economics dashboard compares selected watched validators by inflation reward, reward-epoch blocks, reward per produced block, account balances, VAT reserve, and VAT runway, then visualizes network epoch progress, recent slot duration, time to epoch end, and each validator's next leader ETA. Missing provider or account samples render as no data instead of zero. Prometheus and Grafana are published on loopback by default. The watcher container runs unprivileged with a read-only root filesystem and dropped Linux capabilities.
+Grafana includes overview, consensus, leadership, economics, MEV Capture, and
+Operating Costs dashboards. The MEV dashboard compares Trillium's latest
+completed-epoch capture, allocations, block rewards, priority and signature
+fees, transactions, compute use, Jito tips, stake, leader slots, produced
+blocks, and efficiency while keeping independent published fields separate.
+The economics dashboard compares selected watched validators by inflation
+reward, reward-epoch blocks, reward per produced block, account balances, VAT
+reserve, and VAT runway, then visualizes network epoch progress, recent slot
+duration, time to epoch end, and each validator's next leader ETA. The
+Operating Costs dashboard isolates operator-supplied budgets, route and source
+provenance, collection state, snapshot freshness, and budget history without
+combining them with protocol rewards. Missing provider or account samples
+render as no data instead of zero. Prometheus and Grafana are published on
+loopback by default. The watcher container runs unprivileged with a read-only
+root filesystem and dropped Linux capabilities.
 
 ## Published images
 
@@ -174,14 +245,18 @@ gh attestation verify \
 
 ## Modules
 
+The Cargo workspace isolates shared domain contracts, configuration loading,
+source collection, and Prometheus projection. The root package remains the only
+binary and composes those libraries with runtime supervision.
+
 | Module | Owns | Start here | Changelog |
 | --- | --- | --- | --- |
-| Watcher | Commands, collection, routing, provenance, and aggregation | [`src/mode.rs`](src/mode.rs), [`src/source.rs`](src/source.rs), [`src/collector/`](src/collector/) | [`changelog/watcher.md`](changelog/watcher.md) |
-| Runtime | Startup, polling, HTTP, reload, state, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/) | [`changelog/runtime.md`](changelog/runtime.md) |
-| Configuration | TOML loading, validation, and profiles | [`src/config/`](src/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
-| Observability | Metrics, Prometheus, Grafana, and Pages | [`src/metrics/`](src/metrics/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/) | [`changelog/observability.md`](changelog/observability.md) |
+| Watcher | Shared domain contracts plus commands, collection, routing, provenance, and aggregation | [`crates/domain/`](crates/domain/), [`crates/source/`](crates/source/) | [`changelog/watcher.md`](changelog/watcher.md) |
+| Runtime | Binary composition, startup, polling, HTTP, reload, state, and shutdown | [`src/main.rs`](src/main.rs), [`src/runtime/`](src/runtime/), [`src/watcher_state/`](src/watcher_state/) | [`changelog/runtime.md`](changelog/runtime.md) |
+| Configuration | One TOML profile loader, validation, and committed profiles | [`crates/config/`](crates/config/), [`config/`](config/) | [`changelog/configuration.md`](changelog/configuration.md) |
+| Observability | Prometheus projection, metrics contract, Grafana, and Pages | [`crates/prometheus/`](crates/prometheus/), [`docker/prometheus/`](docker/prometheus/), [`docker/grafana/`](docker/grafana/) | [`changelog/observability.md`](changelog/observability.md) |
 | Operations | Containers, Compose, and local stacks | [`docker/`](docker/) | [`changelog/operations.md`](changelog/operations.md) |
-| Tooling | Just, CI, coverage, and publishing | [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
+| Tooling | Workspace-wide Just, CI, coverage, and publishing | [`Cargo.toml`](Cargo.toml), [`Justfile`](Justfile), [`just/`](just/), [`.github/workflows/`](.github/workflows/) | [`changelog/tooling.md`](changelog/tooling.md) |
 
 ## Development
 

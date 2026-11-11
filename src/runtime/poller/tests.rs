@@ -21,7 +21,7 @@ use crate::{
     source::SourceChain,
     tasks::{TaskExit, TaskManager},
     watcher_state::{
-        WatcherState, WatcherStateMailbox, WatcherStateSnapshot, ADMISSION_CLEAN_POLL_ROUNDS,
+        WatcherState, WatcherStateMailbox, WatcherStateSnapshot, ADMISSION_SUCCESSFUL_POLL_ROUNDS,
     },
 };
 use anyhow::{Context, Result};
@@ -173,9 +173,10 @@ enabled = false
     .with_context(|| format!("failed to write {}", config_path.display()))?;
 
     let mailbox = WatcherStateMailbox::new();
-    let runtime = RuntimeState::load(config_path, mailbox.rpc_telemetry())?;
+    let runtime = RuntimeState::load(config_path, mailbox.runtime_telemetry())?;
     let metrics = Arc::new(Metrics::new()?);
-    let (watcher_state, watcher_state_actor) = mailbox.start("startup-test", Arc::clone(&metrics));
+    let (watcher_state, watcher_state_actor) =
+        mailbox.start("startup-test", &[], Arc::clone(&metrics));
     let mut tasks = TaskManager::new();
     tasks.spawn(
         "watcher-state-actor",
@@ -215,7 +216,8 @@ enabled = false
 }
 
 #[tokio::test]
-async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<()> {
+async fn unhealthy_node_publishes_without_revoking_readiness_before_failed_poll_recovery(
+) -> Result<()> {
     let (rpc_url, control, server_task) = start_controlled_capability_probe_server(None).await?;
     let test_dir = unique_test_dir("poll-recovery");
     fs::create_dir_all(&test_dir)
@@ -225,12 +227,12 @@ async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<
         write_poll_test_config(&test_dir, "poll-recovery-test", &rpc_url, &liveness_path)?;
 
     let mailbox = WatcherStateMailbox::new();
-    let mut runtime = RuntimeState::load(config_path, mailbox.rpc_telemetry())?;
+    let mut runtime = RuntimeState::load(config_path, mailbox.runtime_telemetry())?;
     runtime.connector_capabilities_verified = true;
     runtime.config.poll_interval_sec = 0;
     let metrics = Arc::new(Metrics::new()?);
     let (watcher_state, watcher_state_actor) =
-        mailbox.start("poll-recovery-test", Arc::clone(&metrics));
+        mailbox.start("poll-recovery-test", &[], Arc::clone(&metrics));
     let observer_state = watcher_state.clone();
     let observer_metrics = Arc::clone(&metrics);
     let retry_policy = PollRetryPolicy {
@@ -254,7 +256,10 @@ async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<
     );
     tasks.spawn("poll-recovery-observer", async move {
         let admitted = wait_for_state(&observer_state, |state| state.ready).await?;
-        assert_eq!(admitted.clean_poll_rounds, ADMISSION_CLEAN_POLL_ROUNDS);
+        assert_eq!(
+            admitted.successful_poll_rounds,
+            ADMISSION_SUCCESSFUL_POLL_ROUNDS
+        );
         let rendered = observer_metrics.render()?;
         let successful_timestamp = metric_value(
             &rendered,
@@ -263,10 +268,13 @@ async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<
 
         control.set_health_behind(true);
         let degraded = wait_for_state(&observer_state, |state| {
-            state.completed_poll_rounds > admitted.completed_poll_rounds && !state.ready
+            state.completed_poll_rounds > admitted.completed_poll_rounds && state.ready
         })
         .await?;
-        assert_eq!(degraded.clean_poll_rounds, 0);
+        assert_eq!(
+            degraded.successful_poll_rounds,
+            ADMISSION_SUCCESSFUL_POLL_ROUNDS
+        );
         let rendered = observer_metrics.render()?;
         let degraded_timestamp = metric_value(
             &rendered,
@@ -288,7 +296,10 @@ async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<
         assert!(rendered.contains("sol_rpc_up{network=\"poll-recovery-test\"} 0"));
 
         control.set_health_behind(false);
-        let restored = wait_for_state(&observer_state, |state| state.ready).await?;
+        let restored = wait_for_state(&observer_state, |state| {
+            state.completed_poll_rounds > degraded.completed_poll_rounds && state.ready
+        })
+        .await?;
         let rendered = observer_metrics.render()?;
         let restored_timestamp = metric_value(
             &rendered,
@@ -301,7 +312,7 @@ async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<
             state.completed_poll_rounds > restored.completed_poll_rounds && !state.ready
         })
         .await?;
-        assert_eq!(failed.clean_poll_rounds, 0);
+        assert_eq!(failed.successful_poll_rounds, 0);
         let rendered = observer_metrics.render()?;
         assert_eq!(
             metric_value(
@@ -323,7 +334,7 @@ async fn degraded_node_health_publishes_before_failed_poll_recovery() -> Result<
         let readmitted = wait_for_state(&observer_state, |state| state.ready).await?;
         assert!(
             readmitted.completed_poll_rounds
-                >= failed.completed_poll_rounds + u64::from(ADMISSION_CLEAN_POLL_ROUNDS)
+                >= failed.completed_poll_rounds + u64::from(ADMISSION_SUCCESSFUL_POLL_ROUNDS)
         );
 
         Ok(TaskExit::ShutdownRequested)
@@ -350,11 +361,11 @@ async fn liveness_write_failure_is_fatal_after_snapshot_publication() -> Result<
         write_poll_test_config(&test_dir, "liveness-failure-test", &rpc_url, &liveness_path)?;
 
     let mailbox = WatcherStateMailbox::new();
-    let mut runtime = RuntimeState::load(config_path, mailbox.rpc_telemetry())?;
+    let mut runtime = RuntimeState::load(config_path, mailbox.runtime_telemetry())?;
     runtime.connector_capabilities_verified = true;
     let metrics = Arc::new(Metrics::new()?);
     let (watcher_state, watcher_state_actor) =
-        mailbox.start("liveness-failure-test", Arc::clone(&metrics));
+        mailbox.start("liveness-failure-test", &[], Arc::clone(&metrics));
     let mut tasks = TaskManager::new();
     tasks.spawn(
         "watcher-state-actor",
@@ -410,7 +421,7 @@ async fn watcher_loop_reports_state_actor_loss_without_shutdown() -> Result<()> 
     let mailbox = WatcherStateMailbox::new();
     let metrics = Arc::new(Metrics::new()?);
     let (watcher_state, watcher_state_actor) =
-        mailbox.start("actor-loss-test", Arc::clone(&metrics));
+        mailbox.start("actor-loss-test", &[], Arc::clone(&metrics));
     drop(watcher_state_actor);
     let tasks = TaskManager::new();
 
@@ -435,7 +446,7 @@ async fn watcher_loop_finishes_if_state_actor_is_unavailable_after_shutdown() ->
     let mailbox = WatcherStateMailbox::new();
     let metrics = Arc::new(Metrics::new()?);
     let (watcher_state, watcher_state_actor) =
-        mailbox.start("shutdown-race-test", Arc::clone(&metrics));
+        mailbox.start("shutdown-race-test", &[], Arc::clone(&metrics));
     drop(watcher_state_actor);
 
     let mut tasks = TaskManager::new();
@@ -459,7 +470,7 @@ async fn watcher_loop_preserves_invalid_state_transition_during_shutdown() -> Re
     let mailbox = WatcherStateMailbox::new();
     let metrics = Arc::new(Metrics::new()?);
     let (watcher_state, watcher_state_actor) =
-        mailbox.start("shutdown-transition-test", Arc::clone(&metrics));
+        mailbox.start("shutdown-transition-test", &[], Arc::clone(&metrics));
     let actor_tasks = TaskManager::new();
     let actor_task = tokio::spawn(watcher_state_actor.run(actor_tasks.shutdown_handle()));
     watcher_state.begin_poll().await?;
@@ -577,14 +588,16 @@ fn disabled_economics_runtime() -> Result<RuntimeState> {
         modes: modes_for("primary"),
         ..Config::default()
     };
-    let rpc_telemetry = crate::watcher_state::RpcTelemetry::unobserved();
-    let sources = SourceChain::from_config(&config, rpc_telemetry.clone())?;
+    let runtime_telemetry = crate::watcher_state::RuntimeTelemetry::unobserved();
+    let sources = SourceChain::from_config(&config, runtime_telemetry.clone())?;
+    let inventory = sources.runtime_inventory(&config);
 
     Ok(RuntimeState {
         config_path: PathBuf::from("config.toml"),
         config,
         sources,
-        rpc_telemetry,
+        inventory,
+        runtime_telemetry,
         config_modified: UNIX_EPOCH,
         metrics_address: SocketAddr::from(([127, 0, 0, 1], 8000)),
         connector_capabilities_verified: false,

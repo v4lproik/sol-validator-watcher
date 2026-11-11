@@ -19,8 +19,9 @@ a validator or expose public ports.
 - Keep the configured RPC response limit at or below the available watcher
   memory. The committed default is 32 MiB and the production watcher limit is
   512 MiB.
-- Treat `/healthz` as process liveness and `/readyz` as traffic readiness.
-  Readiness requires five consecutive clean polling rounds.
+- Treat `/healthz` as process liveness and `/readyz` as snapshot availability.
+  Readiness requires five consecutive complete polling rounds; a backup-sourced
+  complete snapshot remains ready but reports degraded source redundancy.
 
 ## Prepare
 
@@ -65,8 +66,8 @@ just production canary \
 ```
 
 The canary uses the production profile and secrets but does not publish ports or
-write production volumes. It must complete five clean polls, expose the expected
-immutable build revision, and stop cleanly.
+write production volumes. It must complete five successful polls, expose the
+expected immutable build revision, and stop cleanly.
 
 Roll out the candidate only after the canary passes:
 
@@ -133,11 +134,17 @@ runtime. Investigate rejections instead of restarting around them.
 | Alert | First checks | Action |
 | --- | --- | --- |
 | `SolValidatorWatcherTargetDown` | container status, `/healthz`, watcher logs | Restore the process or last-known-good image; do not suppress the target. |
-| `SolValidatorWatcherNotReady` | `/readyz`, failed RPC counters, mode status | Identify the failing required command or provider. Readiness recovers only after five clean polls. |
+| `SolValidatorWatcherNotReady` | `/readyz`, failed RPC counters, mode status | Identify the failing required command or provider. Readiness recovers after five complete polls. |
+| `SolValidatorWatcherSourceFailoverActive` | `sol_source_failover_status`, transition counters, source logs | Restore the affected primary connector; successful backup snapshots remain available while redundancy is degraded. |
 | `SolValidatorWatcherConfigReloadRejected` | watcher logs, `sol_config_info`, profile diff | Revert or correct the profile; the prior runtime remains active. |
-| `SolValidatorWatcherModeFallbackActive` | route and source metrics, primary provider health | Restore the primary provider or explicitly accept the degraded route. |
+| `SolValidatorWatcherFallbackActive` | route and source metrics, selected provider health | A recent snapshot used a non-primary route; correlate with the source-circuit alert to distinguish an active cooldown from a one-round fallback. |
 | `SolValidatorWatcherBlockFeeCacheIneffective` | cache hit/miss and requested-method counters | Check epoch/slot churn and provider behavior before increasing request budgets. |
 | `SolValidatorWatcherSnapshotStale` | latest successful snapshot, RPC status, host clock | Restore source access; stale data must not be treated as current. |
+
+`sol_source_failover_status` uses `0` for primary, `1` for open cooldown, and
+`2` for an admitted recovery probe. An empty `command` label identifies the
+shared connector/source-requirement circuit; a populated label identifies the
+isolated command circuit.
 
 Critical alerts inhibit warning alerts for the same deployment and network. The
 committed Alertmanager receiver reads its endpoint from a secret file, groups

@@ -3,9 +3,12 @@
 //! Reload candidates build and verify complete source chains before replacing the
 //! last-known-good runtime.
 
+use crate::mode::RuntimeInventory;
 use crate::{
-    collector::ensure_economics_supported, config::Config, source::SourceChain,
-    watcher_state::RpcTelemetry,
+    collector::ensure_economics_supported,
+    config::Config,
+    source::SourceChain,
+    watcher_state::{RuntimeTelemetry, WatcherStateMailbox},
 };
 use anyhow::{Context, Result};
 use std::{
@@ -24,8 +27,10 @@ pub(super) struct RuntimeState {
     pub(super) config: Config,
     /// Active connector clients and compiled command routes.
     pub(super) sources: SourceChain,
-    /// RPC event handle shared with newly constructed clients.
-    pub(super) rpc_telemetry: RpcTelemetry,
+    /// Bounded active runtime metadata consumed by the Prometheus exporter.
+    pub(super) inventory: RuntimeInventory,
+    /// Connector and source-route telemetry shared with newly constructed clients.
+    pub(super) runtime_telemetry: RuntimeTelemetry,
     /// Modification time of the active profile revision.
     pub(super) config_modified: SystemTime,
     /// Startup HTTP address; address changes require process restart.
@@ -38,17 +43,19 @@ pub(super) struct RuntimeState {
 
 impl RuntimeState {
     /// Loads the initial config and constructs its source chain without live probes.
-    pub(super) fn load(config_path: PathBuf, rpc_telemetry: RpcTelemetry) -> Result<Self> {
+    pub(super) fn load(config_path: PathBuf, runtime_telemetry: RuntimeTelemetry) -> Result<Self> {
         let config = Config::load(&config_path)?;
         let config_modified = config_mtime(&config_path)?;
         let metrics_address = SocketAddr::new(config.metrics_host, config.metrics_port);
-        let sources = SourceChain::from_config(&config, rpc_telemetry.clone())?;
+        let sources = SourceChain::from_config(&config, runtime_telemetry.clone())?;
+        let inventory = sources.runtime_inventory(&config);
 
         Ok(Self {
             config_path,
             config,
             sources,
-            rpc_telemetry,
+            inventory,
+            runtime_telemetry,
             config_modified,
             metrics_address,
             connector_capabilities_verified: false,
@@ -59,11 +66,12 @@ impl RuntimeState {
     /// Validates and atomically installs a changed profile.
     ///
     /// Connector and economics probes complete before active state is replaced.
-    /// An invalid candidate leaves every active field unchanged.
-    pub(super) async fn reload_if_needed(&mut self) -> Result<()> {
+    /// An invalid candidate leaves every active field unchanged. Returns whether
+    /// the accepted profile replaced the compiled source chain.
+    pub(super) async fn reload_if_needed(&mut self) -> Result<bool> {
         let modified = config_mtime(&self.config_path)?;
         if modified == self.config_modified {
-            return Ok(());
+            return Ok(false);
         }
 
         let next = Config::load(&self.config_path)?;
@@ -78,20 +86,30 @@ impl RuntimeState {
 
         let sources_changed =
             self.config.connectors != next.connectors || self.config.modes != next.modes;
-        let next_sources = if sources_changed {
-            let sources = SourceChain::from_config(&next, self.rpc_telemetry.clone())?;
-            sources
+        let validation_mailbox = WatcherStateMailbox::new();
+        let candidate_sources =
+            SourceChain::from_config(&next, validation_mailbox.runtime_telemetry())?;
+        if sources_changed {
+            candidate_sources
                 .verify_capabilities()
                 .await
                 .context("reload candidate connector capability verification failed")?;
-            Some(sources)
+        }
+        ensure_economics_supported(&candidate_sources, &next)
+            .await
+            .context("reload candidate economics capability verification failed")?;
+        let next_sources = if sources_changed {
+            Some(SourceChain::from_config(
+                &next,
+                self.runtime_telemetry.clone(),
+            )?)
         } else {
             None
         };
-        let candidate_sources = next_sources.as_ref().unwrap_or(&self.sources);
-        ensure_economics_supported(candidate_sources, &next)
-            .await
-            .context("reload candidate economics capability verification failed")?;
+        let next_inventory = next_sources
+            .as_ref()
+            .unwrap_or(&self.sources)
+            .runtime_inventory(&next);
         let next_economics_capabilities_verified = next.modes.economics.enabled;
 
         info!(
@@ -106,9 +124,10 @@ impl RuntimeState {
             self.connector_capabilities_verified = true;
         }
         self.config = next;
+        self.inventory = next_inventory;
         self.config_modified = modified;
         self.economics_capabilities_verified = next_economics_capabilities_verified;
-        Ok(())
+        Ok(sources_changed)
     }
 }
 /// Returns the profile modification time with path-specific error context.

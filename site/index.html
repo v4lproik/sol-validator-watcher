@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Solana Validator Watcher — Operator observability</title>
+    <title>Solana Validator Watcher — Any validator by public key</title>
     <meta
       name="description"
-      content="Open-source Prometheus monitoring and Grafana dashboards for Solana validator health, consensus, leadership, funding, and completed-epoch MEV."
+      content="Monitor any Solana validator by identity or vote-account public key. Compare health, consensus, leadership, funding, and completed-epoch MEV in Prometheus and Grafana."
     >
     <meta name="theme-color" content="#f4f1e8">
     <script>
@@ -32,11 +32,24 @@
     <meta property="og:title" content="Solana Validator Watcher">
     <meta
       property="og:description"
-      content="Know your validator before the next slot. Health, consensus, leadership, and economics in one operator surface."
+      content="Monitor any Solana validator by public key. Compare health, consensus, leadership, funding, and completed-epoch MEV."
     >
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://v4lproik.github.io/sol-validator-watcher/">
+    <meta property="og:image" content="https://v4lproik.github.io/sol-validator-watcher/assets/social-preview.png">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="640">
+    <meta property="og:image:alt" content="Solana Validator Watcher — monitor any validator by public key">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Solana Validator Watcher">
+    <meta
+      name="twitter:description"
+      content="Monitor any Solana validator by public key with Prometheus and Grafana."
+    >
+    <meta name="twitter:image" content="https://v4lproik.github.io/sol-validator-watcher/assets/social-preview.png">
+    <link rel="canonical" href="https://v4lproik.github.io/sol-validator-watcher/">
     <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -91,9 +104,9 @@
       <section class="hero shell" aria-labelledby="hero-title">
         <div class="hero-copy">
           <p class="pill">Open-source Solana observability</p>
-          <h1 id="hero-title">Know your validator before the next slot.</h1>
+          <h1 id="hero-title">Know any validator before the next slot.</h1>
           <p class="hero-lead">
-            Readiness, vote performance, leader delivery, account runway, and completed-epoch MEV—collected by one Rust exporter and explained in five provisioned Grafana views.
+            Track validators you run, delegate to, compare, or research by identity or vote-account public key—then read health, leadership, funding, completed-epoch MEV, and operator-supplied cost budgets in six Grafana dashboards.
           </p>
 
           <div class="cta-row">
@@ -103,12 +116,12 @@
 
           <dl class="hero-proof" aria-label="Project facts">
             <div>
-              <dt>5</dt>
-              <dd>operator dashboards</dd>
+              <dt>6</dt>
+              <dd>Grafana dashboards</dd>
             </div>
             <div>
               <dt>5</dt>
-              <dd>clean polls to ready</dd>
+              <dd>successful polls to ready</dd>
             </div>
             <div>
               <dt>Prometheus</dt>
@@ -125,7 +138,7 @@
             </div>
             <img
               src="assets/dashboard-overview.webp"
-              alt="Grafana overview showing watched validator liveness, validators needing attention, and watched-validator gossip posture"
+              alt="Grafana overview showing readiness, validators needing attention, and gossip posture for configured validator keys"
               width="1600"
               height="987"
               decoding="async"
@@ -135,8 +148,8 @@
           <div class="signal-card">
             <span class="signal-dot" aria-hidden="true"></span>
             <div>
-              <strong>Operator state, immediately visible</strong>
-              <span>Readiness, validator status, gossip, and source routing</span>
+              <strong>Validator state, immediately visible</strong>
+              <span>Readiness, vote status, gossip, and source routing for every configured key</span>
             </div>
           </div>
         </div>
@@ -144,8 +157,8 @@
 
       <section class="proof-band" aria-label="Project capabilities">
         <div class="shell proof-band-inner">
-          <span>Five dashboards</span>
-          <span>Every watched validator</span>
+          <span>Six dashboards</span>
+          <span>Any validator by public key</span>
           <span>Per-command provenance</span>
           <span>Completed-epoch MEV</span>
           <span>Prometheus + Grafana</span>
@@ -155,11 +168,11 @@
       <section id="dashboards" class="section section-gallery shell" aria-labelledby="dashboards-title">
         <div class="section-heading section-heading-split">
           <div>
-            <p class="eyebrow">Five provisioned views</p>
-            <h2 id="dashboards-title">One validator story, from vote to value.</h2>
+            <p class="eyebrow">Four dashboard previews</p>
+            <h2 id="dashboards-title">Any validator story, from vote to value.</h2>
           </div>
           <p>
-            Move from network-relative voting and upcoming leader slots to account runway and completed-epoch MEV without leaving the same operating surface.
+            Move from network-relative voting and upcoming leader slots to account runway and completed-epoch MEV for any configured validator key.
           </p>
         </div>
 
@@ -277,7 +290,7 @@
               </div>
               <figcaption>
                 <span>Provisioned Grafana capture</span>
-                <strong>Put every watched validator in network context.</strong>
+                <strong>Put every configured validator key in network context.</strong>
               </figcaption>
             </figure>
 
@@ -293,7 +306,7 @@
               <div class="gallery-image-shell">
                 <img
                   src="assets/dashboard-economics.webp"
-                  alt="Economics dashboard showing watched-validator funding, epoch progress, average slot timing, time to epoch end, and next-leader timing"
+                  alt="Economics dashboard showing funding, epoch progress, average slot timing, time to epoch end, and next-leader timing for configured validator keys"
                   width="1600"
                   height="987"
                   loading="lazy"
@@ -342,11 +355,11 @@
         <div class="shell">
           <div class="section-heading section-heading-split section-heading-dark">
             <div>
-              <p class="eyebrow">Operator workflow</p>
-              <h2 id="workflow-title">From signal to answer in one surface.</h2>
+              <p class="eyebrow">Key-first workflow</p>
+              <h2 id="workflow-title">From public key to a clear answer.</h2>
             </div>
             <p>
-              Start with process readiness and validator state, diagnose against network context, then verify recovery through clean polling rounds.
+              Start with a configured validator key and snapshot availability, compare validator state and source degradation with the network, then verify recovery through successful polling rounds.
             </p>
           </div>
 
@@ -355,7 +368,7 @@
               <span class="step-number step-detect">1</span>
               <p class="step-label">Detect</p>
               <h3>Find what needs attention.</h3>
-              <p>Health, readiness, and watched-validator state make the first failure visible without searching across tools.</p>
+              <p>Health, readiness, and selected-validator state make the first failure visible without searching across tools.</p>
             </li>
             <li>
               <span class="step-number step-diagnose">2</span>
@@ -366,8 +379,8 @@
             <li>
               <span class="step-number step-verify">3</span>
               <p class="step-label">Verify</p>
-              <h3>Observe a clean recovery.</h3>
-              <p>Five consecutive clean polling rounds restore readiness while failed modes and stale snapshots stay explicit.</p>
+              <h3>Observe recovery.</h3>
+              <p>Five consecutive complete polling rounds restore readiness; active source failover, failed modes, and stale snapshots stay explicit.</p>
             </li>
           </ol>
 
@@ -385,16 +398,16 @@
 
       <section class="section section-features shell" aria-labelledby="features-title">
         <div class="section-heading">
-          <p class="eyebrow">Built for operator truth</p>
+          <p class="eyebrow">Built for verifiable context</p>
           <h2 id="features-title">The answer includes the source.</h2>
           <p>Every view preserves the difference between healthy, unavailable, missing, and stale.</p>
         </div>
 
         <div class="feature-grid">
           <article class="feature-card feature-card-violet">
-            <p class="feature-value">Every validator</p>
-            <h3>One row per watched identity.</h3>
-            <p>Compare vote state, gossip posture, balances, VAT reserve, runway, and next-leader timing without losing validator context.</p>
+            <p class="feature-value">Every public validator</p>
+            <h3>One row per configured key.</h3>
+            <p>Compare validators you operate, delegate to, research, or benchmark by vote state, gossip posture, balances, VAT reserve, runway, and next-leader timing.</p>
           </article>
           <article class="feature-card feature-card-coral">
             <p class="feature-value">Completed epoch</p>
@@ -413,7 +426,7 @@
         <div class="start-card">
           <div class="start-copy">
             <p class="eyebrow">Local proof</p>
-            <h2 id="start-title">Run the complete surface locally.</h2>
+            <h2 id="start-title">Run the complete monitoring stack locally.</h2>
             <p>
               The repository owns the exporter, provisioned dashboards, Prometheus configuration, and repeatable stack commands.
             </p>
@@ -460,7 +473,7 @@
 
       <section class="closing shell" aria-labelledby="closing-title">
         <p class="eyebrow">Open source · MIT</p>
-        <h2 id="closing-title">Bring validator health, consensus, funding, and MEV into focus.</h2>
+        <h2 id="closing-title">Bring any validator's health, consensus, funding, and MEV into focus.</h2>
         <div class="cta-row">
           <a class="button button-accent" href="https://github.com/v4lproik/sol-validator-watcher">Explore the repository</a>
           <a class="text-link text-link-large" href="https://github.com/v4lproik/sol-validator-watcher/blob/main/docs/production-runbook.md">Read the production runbook <span aria-hidden="true">↗</span></a>
@@ -474,7 +487,7 @@
           <img src="assets/logo.svg" alt="" width="32" height="32">
           <span>Sol Validator Watcher</span>
         </a>
-        <p>Prometheus monitoring and Grafana dashboards for Solana validator operators.</p>
+        <p>Prometheus monitoring and Grafana dashboards for any Solana validator by public key.</p>
         <nav class="footer-links" aria-label="Footer navigation">
           <a href="https://github.com/v4lproik/sol-validator-watcher">GitHub</a>
           <a href="coverage/">Coverage</a>

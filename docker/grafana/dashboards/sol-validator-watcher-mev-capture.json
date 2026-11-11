@@ -54,13 +54,22 @@
       "title": "Economics",
       "type": "link",
       "url": "/d/sol-validator-watcher-economics"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Operating Costs",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-operating-costs"
     }
   ],
   "liveNow": true,
   "panels": [
     {
       "collapsed": false,
-      "description": "Latest completed-epoch Trillium MEV, block-reward, transaction, and compute analytics for the configured economics validator.",
+      "description": "Start here. Confirm the published epoch, gross tip flow, captured MEV, per-slot yield, commission, and tip transaction volume before comparing allocations or history.",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -80,8 +89,9 @@
         "y": 1
       },
       "id": 2,
+      "description": "Explains the common epoch and absence contract. Every populated Trillium panel comes from one latest completed-epoch record; optional fields and the two derived share ratios can still be absent.",
       "options": {
-        "content": "[Data: Trillium](https://trillium.so) · CC BY 4.0. Values describe the latest completed epoch, not current-epoch accrual. No data means economics mode is disabled, the Trillium route is unconfigured or unavailable, or Trillium has no record for the target in its latest ten completed epochs.",
+        "content": "[Data: Trillium](https://trillium.so) · CC BY 4.0. Values describe the latest completed epoch, not current-epoch accrual. If the whole dashboard has no data, economics mode may be disabled, the Trillium route may be unconfigured or unavailable, or Trillium may have no record for the target in its latest ten completed epochs. If one source-value panel has no data, Trillium may not have published that optional field. Published MEV / Gross Tips and Validator Share of Capture show no data when their denominator is zero because those ratios are undefined.",
         "mode": "markdown"
       },
       "title": "Data Contract",
@@ -93,7 +103,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Completed epoch represented by every Trillium panel.",
+      "description": "The completed Solana epoch represented by every Trillium value on this dashboard. Check this first so values from a newly published or corrected epoch are not compared with an older observation.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -157,7 +167,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Gross Jito tip deposits before block-engine and tip-router fees.",
+      "description": "Total Jito tips received in the completed epoch before block-engine and tip-router fees. This is gross tip flow, not validator revenue; compare it with MEV Captured, allocations, and commission.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -221,7 +231,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Total MEV captured by the validator's blocks according to Trillium's mev_earned field.",
+      "description": "Total MEV Trillium attributes to this validator's produced blocks for the completed epoch. This is not the validator's take-home amount; use the validator allocation and MEV commission panels to understand the reported split.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -285,7 +295,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "MEV captured per assigned leader slot; skipped slots count as zero.",
+      "description": "Trillium's published MEV divided by all assigned leader slots for the completed epoch; the dashboard does not recompute it. Skipped slots count as zero, so this opportunity-normalized rate does not make a high skip rate look better.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -349,7 +359,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Validator MEV commission for the represented epoch.",
+      "description": "The validator's Jito tip-distribution commission for the completed epoch. A higher percentage directs more of the commissionable MEV share to the validator and less to delegating stakers. It is unrelated to vote-account inflation commission and separate from priority-fee commission; 0% does not imply stakers receive all captured MEV because provider fee fields remain separate.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -413,7 +423,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Jito tip transactions observed in the represented epoch.",
+      "description": "Number of Jito tip transactions observed in the completed epoch. This measures activity volume, not SOL value; compare it with Gross Jito Tips to distinguish more tips from larger tips.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -474,7 +484,7 @@
     },
     {
       "collapsed": false,
-      "description": "Gross Jito tips, allocations, and fee amounts remain independent published fields; compare them without inferring an exact accounting identity.",
+      "description": "Trace the completed-epoch tip flow from gross deposits to published capture, destination allocations, and fees. Trillium publishes these as independent fields, so the dashboard does not force them into an accounting identity.",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -491,7 +501,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Latest completed-epoch values by destination. Jito block-engine and tip-router fees are separate stages in the capture flow.",
+      "description": "Latest completed-epoch SOL amounts allocated to the validator and stakers or attributed to block-engine and tip-router fees. Compare bar lengths for relative magnitude; independent provider fields may not sum exactly to Gross Jito Tips or MEV Captured.",
       "fieldConfig": {
         "defaults": {
           "decimals": 4,
@@ -546,7 +556,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Gross Jito tip deposits compared with Trillium's published MEV captured value.",
+      "description": "Gross Jito tip deposits and Trillium's published captured MEV shown over Prometheus observation time. Step changes mark a newly published or corrected completed epoch; the lines are not continuous within-epoch accrual.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -650,7 +660,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Blocks produced as a percentage of assigned leader slots in the represented epoch.",
+      "description": "Blocks produced divided by assigned leader slots for the completed epoch. 100% means every assigned opportunity produced a block; missed or skipped slots lower the percentage.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -714,7 +724,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Ratio of Trillium's published mev_earned value to gross Jito tips. This ratio does not identify an individual fee. A zero-gross epoch renders zero.",
+      "description": "Published captured MEV as a percentage of gross Jito tips for the same epoch. Use it to see the gap between the two provider fields, not as commission or validator take-home. No data is shown when gross tips are zero because the percentage is undefined; the allocation fields may not reconcile exactly.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -763,7 +773,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 * sol_economics_trillium_mev_capture_sol{network=\"$network\"} / clamp_min(sol_economics_trillium_total_jito_tips_sol{network=\"$network\"}, 0.000000001)",
+          "expr": "100 * sol_economics_trillium_mev_capture_sol{network=\"$network\"} / sol_economics_trillium_total_jito_tips_sol{network=\"$network\"} and on (network, identity, vote_account) sol_economics_trillium_total_jito_tips_sol{network=\"$network\"} > 0",
           "instant": true,
           "legendFormat": "{{network}} · {{identity}} · Published MEV / Gross Tips",
           "range": false,
@@ -778,7 +788,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Share of captured MEV allocated to the validator after commission and tip-router handling.",
+      "description": "Validator allocation as a percentage of Trillium's published captured MEV. This is the reported payout share, not the configured MEV commission. No data is shown when captured MEV is zero; do not assume the remainder equals the staker share because the fields are independently published.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -827,7 +837,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 * sol_economics_trillium_mev_allocation_sol{network=\"$network\",destination=\"validator\"} / clamp_min(sol_economics_trillium_mev_capture_sol{network=\"$network\"}, 0.000000001)",
+          "expr": "100 * sol_economics_trillium_mev_allocation_sol{network=\"$network\",destination=\"validator\"} / on (network, identity, vote_account) sol_economics_trillium_mev_capture_sol{network=\"$network\"} and on (network, identity, vote_account) sol_economics_trillium_mev_capture_sol{network=\"$network\"} > 0",
           "instant": true,
           "legendFormat": "{{network}} · {{identity}} · Validator share",
           "range": false,
@@ -839,7 +849,7 @@
     },
     {
       "collapsed": false,
-      "description": "Completed-epoch block rewards, priority fees, signature fees, and per-block distributions published by Trillium.",
+      "description": "Compare completed-epoch reward composition, distribution per produced block, activated stake, and priority-fee commission. These panels provide reward context around MEV without folding distinct reward types together.",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -856,7 +866,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Independent completed-epoch block-reward amounts. Components are not forced into an accounting identity.",
+      "description": "Overlapping views of completed-epoch rewards, not additive components. After Burn already includes validator signature and priority fees, while Priority Fees Total overlaps the validator and delegator priority-fee amounts. Compare the bars; do not sum them.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -924,7 +934,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Average and median MEV, priority-fee, signature-fee, and gross Jito-tip amounts per produced block.",
+      "description": "Average and median reward amounts per produced block. Skipped leader slots are excluded, so pair this with Produced / Assigned when comparing validators. Trillium reports median MEV equal to average MEV because MEV is not recorded per block.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -992,7 +1002,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Activated stake represented by Trillium's completed-epoch record.",
+      "description": "Activated stake recorded by Trillium for this validator and completed epoch. It is context for the validator's scale, not total network stake or a live current-epoch stake reading.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1056,7 +1066,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Validator priority-fee commission converted from Trillium basis points to percent.",
+      "description": "The validator's configured share under a priority-fee sharing program, converted from basis points to percent. Higher values retain more of the shared fee amount for the validator. No data means Trillium did not publish this optional field; this is separate from MEV commission.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1117,7 +1127,7 @@
     },
     {
       "collapsed": false,
-      "description": "Completed-epoch transaction outcomes, block throughput, success rates, and compute consumption published by Trillium.",
+      "description": "Inspect completed-epoch transaction outcomes, throughput, success rates, and compute use. Per-block rates include produced blocks only, so compare them with Produced / Assigned; average-versus-median gaps show workload skew.",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1134,7 +1144,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Successful and failed transactions for all traffic and user traffic in produced blocks.",
+      "description": "Successful and failed transactions included in produced blocks, split into all transactions and the non-vote user subset. User counts are already included in the totals, so do not add the categories. A failed transaction here executed and returned an error; it is not a missed block.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1202,7 +1212,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Average and median transaction throughput per produced block, split where Trillium publishes a transaction type.",
+      "description": "Average and median transactions per produced block, with user meaning non-vote traffic. Skipped leader slots are excluded, so a high skip rate can make per-block throughput look better; compare this panel with Produced / Assigned.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1270,7 +1280,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Average completed-epoch transaction success rates for all and user transactions.",
+      "description": "Average per-block success percentages for all transactions and non-vote user transactions. This describes outcomes of transactions included in produced blocks, not transaction landing rate, skipped slots, or validator health.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1338,7 +1348,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Average and median compute units consumed per produced block.",
+      "description": "Average and median compute units consumed per produced block. Skipped leader slots are excluded. A mean above the median indicates a high-compute tail; compare this with Transactions / Block and Produced / Assigned.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1403,7 +1413,7 @@
     },
     {
       "collapsed": false,
-      "description": "Prometheus retains each latest completed-epoch value over scrape time; step changes occur when Trillium publishes or corrects an epoch.",
+      "description": "Prometheus retains each latest completed-epoch value over scrape time. The charts are step histories of what the watcher knew: a step marks a new or corrected Trillium publication, not continuous within-epoch accumulation.",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1420,7 +1430,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Latest completed-epoch gross Jito tips and published MEV capture over observation time.",
+      "description": "Gross Jito tips and published captured MEV across completed-epoch observations. Read each plateau as one published epoch value; a vertical step means Trillium advanced or corrected the latest completed record.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1524,7 +1534,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Stake-honest MEV capture rate; assigned skipped slots count as zero.",
+      "description": "Trillium's published MEV per assigned leader slot across completed-epoch observations; the dashboard does not recompute it. Skipped slots count as zero, so this step history compares opportunity-normalized MEV yield without rewarding a high skip rate.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1616,7 +1626,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Validator, staker, block-engine, and tip-router values over observation time.",
+      "description": "Validator, staker, block-engine, and tip-router amounts across completed-epoch observations. Compare each series independently; they are provider-published fields and are not guaranteed to sum to one common total.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1708,7 +1718,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Commission associated with each latest completed-epoch capture.",
+      "description": "Validator MEV commission across completed-epoch observations. A step indicates a newly published or corrected epoch; use it to separate commission-policy changes from changes in gross MEV capture.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1797,7 +1807,7 @@
     },
     {
       "collapsed": false,
-      "description": "Collection availability, watcher freshness, and the selected Trillium connector are independent signals.",
+      "description": "Use these operational signals to judge whether the MEV values are current and attributable. Economics mode, whole-watcher snapshot age, and selected Trillium source answer different failure questions.",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1814,7 +1824,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Disabled, down, up, or pending based on economics mode state.",
+      "description": "Latest economics collection result, not validator node health. UP means the latest enabled-mode collection succeeded; DOWN means it failed; PENDING means the enabled mode has not completed once; DISABLED means economics collection is configured off.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1916,7 +1926,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Seconds since the last complete watcher snapshot; Trillium absence alone does not make required economics collection fail.",
+      "description": "Seconds since the last complete watcher snapshot; lower is fresher. This measures publication age for the whole watcher, not the age of Trillium's completed-epoch record, so interpret it with Economics Mode and Published Epoch.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1980,7 +1990,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Connector that supplied the latest Trillium command result. A valid provider response with no target record still identifies its source; no row means every configured attempt failed or the route is absent.",
+      "description": "Connector and provider that supplied the latest Trillium command result. Precedence 1 is the configured primary and larger numbers are fallback positions. A valid no-record response still identifies its source; no row means every configured attempt failed or the route is absent.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -2087,6 +2097,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher MEV Capture",
   "uid": "sol-validator-watcher-mev-capture",
-  "version": 8,
+  "version": 11,
   "weekStart": ""
 }

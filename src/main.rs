@@ -11,18 +11,16 @@
 )]
 #![deny(clippy::unwrap_used)]
 
-mod collector;
-mod config;
-mod labels;
-mod metrics;
-mod mode;
+use sol_validator_watcher_config as config;
+use sol_validator_watcher_domain as failover;
+use sol_validator_watcher_domain as mode;
+use sol_validator_watcher_prometheus as metrics;
+use sol_validator_watcher_source::{collector, source};
 mod runtime;
-mod source;
 #[cfg(test)]
 mod surfpool_tests;
 mod tasks;
 mod watcher_state;
-mod websocket;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};

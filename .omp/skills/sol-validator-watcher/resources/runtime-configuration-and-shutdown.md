@@ -49,25 +49,37 @@ liveness files, signals, and shutdown.
   capability, endpoint, and verification when the watcher starts consuming
   them.
 - Provider features are `historical-data`, `block-fee-rewards`,
-  `jito-mev-rewards`, and `trillium-mev-capture`; `rpc`, `websocket`, and
-  `provider-api` are transports, not features.
+  `jito-mev-rewards`, `trillium-mev-capture`, and `operating-costs`; `rpc`,
+  `websocket`, and `provider-api` are transports, not features.
 - Core commands are RPC health, node-local status, epoch info, vote accounts,
   and current/next leader schedules. Recent performance samples, current block
   production, account balances, and rent exemption require extended
   compatibility. Prior-epoch inflation rewards and block production additionally
   require `historical-data`. Recent block-fee rewards require an extended RPC
   connector with the `block-fee-rewards` feature and `confirmed` or `finalized`
-  commitment. Jito rewards and Trillium capture use provider APIs independently.
+  commitment. Jito rewards, Trillium capture, and operating costs use distinct
+  provider APIs independently.
+- `modes.economics.reserve_wallets` is optional and valid only when economics is
+  enabled. When non-empty, `commands.reserve_wallet_balances` is required and
+  must resolve to an `extended` RPC connector. Reject duplicate wallets and
+  reject a reserve-wallet route when the list is empty instead of retaining
+  unused configuration.
+- `modes.economics.commands.operating_costs` is optional and valid only when
+  economics is enabled. Every connector on the route must declare the
+  `operating-costs` feature and a provider API transport. A configured route is
+  a required poll input for every completed reward epoch; route exhaustion,
+  malformed data, an empty budget, or an epoch mismatch fails that poll.
 - Each `modes.<mode>.commands.<command>` array declares connector entries in
   priority order. During validation, append each entry's backup list for that
   command's exact source requirement immediately after the entry. The resulting
   route is the complete fallback order; connector declaration order is not
   execution policy. Optional extended routes may be empty in a core-only profile.
 - Backup keys are `rpc-core`, `rpc-extended`, `rpc-historical-data`,
-  `rpc-block-fee-rewards`, `websocket`, `jito-mev-rewards`, and
-  `trillium-mev-capture`. Do not recursively expand a backup connector's own
-  lists. Both the declaring connector and every named backup must satisfy the
-  exact key's transport, compatibility, and feature contract.
+  `rpc-block-fee-rewards`, `websocket`, `jito-mev-rewards`,
+  `trillium-mev-capture`, and `operating-costs`. Do not recursively expand a
+  backup connector's own lists. Both the declaring connector and every named
+  backup must satisfy the exact key's transport, compatibility, and feature
+  contract.
 - Failover state belongs to the compiled source chain. A reload that changes
   connectors or command routes must build and verify the candidate chain before
   replacing the active chain and resetting its failover gates. A rejected
@@ -149,20 +161,24 @@ liveness files, signals, and shutdown.
   A watcher that is retrying failed collection remains process-healthy through
   `/healthz`, but does not advance this data-liveness timestamp.
 - `/healthz` proves only that the HTTP process is serving. `/readyz` admits the
-  current configuration only after five consecutive required polling rounds
-  complete without a failed RPC attempt. A failed attempt, failed whole poll, or
-  accepted configuration reload resets the admission streak.
-- Publish the build revision compiled into the binary, the active configuration
-  fingerprint, and current command fallback state so operators can distinguish
-  deploy, reload, and provider failover changes.
+  current configuration after five consecutive complete polling rounds.
+  Successful backup-sourced rounds advance admission and remain ready while
+  source failover is reported independently as degraded. A failed whole poll
+  resets admission. Candidate reload probes use isolated telemetry and cannot
+  mutate active source circuits. An accepted config-only reload resets admission
+  but preserves source-circuit state; a source-changing reload installs a fresh
+  circuit inventory transactionally.
+- Publish build revision, active configuration fingerprint, readiness,
+  degradation, circuit state/transitions, and latest command fallback so
+  operators can distinguish deploy, reload, availability, and redundancy.
 - The `healthcheck` CLI command probes `/healthz`, not `/readyz`, so container
   health tracks the serving process without restarting on recoverable
   collection failures.
-- The watcher-state actor is the sole writer for readiness, completed rounds,
-  the clean-round streak, their Prometheus samples, and the 30-second state
-  report. Successful and failed poll completions plus accepted-reload events are
-  acknowledged only after the actor publishes a coherent snapshot for HTTP
-  readers.
+- The watcher-state actor is the sole writer for readiness, degradation,
+  completed rounds, the successful-round streak, circuit transitions, their
+  Prometheus samples, and the 30-second state report. Successful and failed poll
+  completions plus accepted-reload events are acknowledged only after the actor
+  publishes a coherent snapshot for HTTP readers.
 - A watcher-state transition failure remains fatal unless process-wide shutdown
   was already requested. During cooperative shutdown, the actor may stop before
   the poller publishes its final transition; treat only that ordering race as

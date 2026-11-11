@@ -1,6 +1,8 @@
 # Operator Observability Roadmap
 
-The dashboards are organized by execution mode, but several panels can still provide stronger operator decision support.
+The dashboards are separated by operator question: execution-mode surfaces own
+protocol state, while provider drill-downs own independently sourced data.
+Several panels can still provide stronger operator decision support.
 
 ## Improve now with current metrics
 
@@ -10,9 +12,9 @@ These changes do not require new exporter metrics.
 
 - Keep the top row focused on operator state.
   - process health
-  - five-round readiness admission and clean-poll streak
+  - five-round readiness admission, successful-poll streak, and independent source-degradation state
   - RPC and websocket health
-  - failed RPC attempts, HTTP response classes, and readiness-critical status codes
+  - failed RPC attempts, HTTP response classes, and operator-diagnostic status codes
   - metrics freshness
 - Show every watched validator directly in the operator-state row.
   - map each identity to an explicit `ACTIVE` or `DELINQUENT` voting state
@@ -32,6 +34,9 @@ These changes do not require new exporter metrics.
   surface the worst validator or scope first.
 - Economics: keep rewards, rewarded blocks, and reward per produced block
   together; distinguish a disabled mode from a failed or stale command.
+- Operating Costs: keep operator-supplied budgets, collection state, source
+  provenance, and history separate from protocol rewards; do not infer
+  profitability or subtract costs from rewards in a repository dashboard.
 - Every mode dashboard must expose its enabled state, configured command routes
   with declared and required standard Solana RPC compatibility, latest
   successful command sources, and source health.
@@ -68,7 +73,7 @@ These changes do not require new exporter metrics.
 
 ## Current operator timing, throughput, and funding signals
 
-The exporter and mode dashboards now publish:
+The exporter and dashboards now publish:
 
 - `sol_epoch_progress_pct`, `sol_epoch_slots_remaining`,
   `sol_average_slot_time_seconds`, and
@@ -86,6 +91,9 @@ The exporter and mode dashboards now publish:
 - watched-validator `sol_watched_validator_identity_balance_sol`,
   `sol_watched_validator_vote_account_balance_sol`, rent exemption, VAT reserve,
   complete funded VAT epochs, and next-epoch VAT funding status
+- configured reserve-wallet `sol_economics_reserve_wallet_balance_sol` series
+- provider-reported completed-epoch `sol_economics_operating_cost_sol` budgets
+  and `sol_economics_operating_cost_total_sol`
 - economics-target `sol_economics_jito_mev_reward_sol`,
   `sol_economics_jito_mev_commission_pct`, and
   `sol_economics_jito_mev_reward_epoch`
@@ -110,6 +118,23 @@ configured economics target because the production VAT alert consumes them.
 Configured Jito reward routes use the economics target's vote account. Missing
 settlement data or an exhausted optional route omits the Jito series instead of
 publishing zero; required economics RPC failures remain fail-closed.
+
+When `modes.economics.reserve_wallets` is non-empty, one required routed
+`getMultipleAccounts` command publishes a current balance series for each
+existing reserve wallet with successful source provenance. A null account omits
+only that wallet, a real zero-lamport account publishes zero, and route
+exhaustion fails the economics snapshot.
+
+Operating costs are fetched through an optional provider route for the same
+completed epoch requested by the economics poll. Each successful snapshot
+publishes the validated itemized lamport values and total with
+successful-source provenance. No configured route publishes no cost series.
+When a configured route fails, the poll publishes no new snapshot and
+readiness drops while the exporter continues serving the last successful
+snapshot, including its prior cost series. The standalone Operating Costs
+dashboard exposes collection state, snapshot freshness, fallback order,
+successful source, current budgets, and history. It never combines those
+operator-supplied budgets with protocol rewards or presents profitability.
 
 Public watched-validator gossip posture is exposed through
 `sol_watched_validator_gossip_visible` and
@@ -162,6 +187,13 @@ runway. Configured-target block fees and Jito rewards remain separate. Missing
 inflation-reward or account samples stay absent while independently collected
 values remain visible.
 
+The Operating Costs dashboard displays operator-supplied completed-epoch
+budgets independently of protocol rewards. Its collection status, snapshot age,
+configured fallback, and successful-source panels distinguish unconfigured,
+pending, failed, retained, and current data. Current and historical values are
+budgets reported by the configured operator API, not observed expenses,
+invoice accruals, or calculated profitability.
+
 The MEV Capture dashboard uses Trillium's public completed-epoch validator
 rewards feed. It displays `mev_earned`, independently published
 validator/staker allocations and Jito fee amounts, MEV and priority-fee
@@ -183,7 +215,6 @@ These are the operator signals that would most improve the dashboards.
 
 ### Remaining rewards and balances
 
-- reserve wallet balance
 - cumulative rewards
 
 ### Validator economics and revenue
@@ -204,5 +235,5 @@ These are the operator signals that would most improve the dashboards.
 
 ## Recommended order
 
-1. Add finalized revenue components and configurable operating costs.
+1. Add the remaining finalized revenue components with aligned attribution and periods.
 2. Add stake and topology history.

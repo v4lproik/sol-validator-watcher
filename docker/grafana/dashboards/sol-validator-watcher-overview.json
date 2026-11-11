@@ -54,6 +54,15 @@
       "title": "MEV Capture",
       "type": "link",
       "url": "/d/sol-validator-watcher-mev-capture"
+    },
+    {
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "title": "Operating Costs",
+      "type": "link",
+      "url": "/d/sol-validator-watcher-operating-costs"
     }
   ],
   "liveNow": true,
@@ -2352,7 +2361,7 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 41
       },
@@ -2425,8 +2434,8 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 5,
         "y": 41
       },
       "id": 22,
@@ -2454,14 +2463,99 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(sol_watcher_clean_poll_streak{network=\"$network\"})",
+          "expr": "max(sol_watcher_successful_poll_streak{network=\"$network\"})",
           "instant": true,
-          "legendFormat": "Clean Polls",
+          "legendFormat": "Successful Polls",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Clean Polls (5 Required)",
+      "title": "Successful Polls (5 Required)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "READY reports snapshot availability. DEGRADED means a source failover circuit is open or probing, so complete snapshots currently depend on reduced connector redundancy.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "REDUNDANT"
+                },
+                "1": {
+                  "color": "yellow",
+                  "index": 1,
+                  "text": "DEGRADED"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 5,
+        "x": 10,
+        "y": 41
+      },
+      "id": 34,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(sol_watcher_degraded{network=\"$network\"})",
+          "instant": true,
+          "legendFormat": "Source redundancy",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Source Redundancy",
       "type": "stat"
     },
     {
@@ -2499,8 +2593,8 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 6,
-        "x": 12,
+        "w": 4,
+        "x": 15,
         "y": 41
       },
       "id": 24,
@@ -2564,8 +2658,8 @@
       },
       "gridPos": {
         "h": 9,
-        "w": 6,
-        "x": 18,
+        "w": 5,
+        "x": 19,
         "y": 41
       },
       "id": 23,
@@ -2712,6 +2806,6 @@
   "timezone": "",
   "title": "Solana Validator Watcher Overview",
   "uid": "sol-validator-watcher-overview",
-  "version": 7,
+  "version": 9,
   "weekStart": ""
 }

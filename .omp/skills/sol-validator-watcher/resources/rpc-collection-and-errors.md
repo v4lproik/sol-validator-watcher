@@ -53,7 +53,7 @@ probes, and economics collection.
   secret-bearing URL.
 - Count each failed RPC attempt and each received HTTP status before returning
   from the protocol boundary. Keep failure totals, response classes, and
-  readiness-critical exact codes bounded; never use a URL, error message, or
+  operator-diagnostic exact codes bounded; never use a URL, error message, or
   request identifier as a metric label.
 
 ### Keep command routing deterministic
@@ -64,13 +64,15 @@ probes, and economics collection.
   connector that succeeds wins, and a failure advances only within the
   resolved route.
 - A failed route connector opens failover only when that connector declares
-  backups for the command's exact source requirement. Subsequent commands
-  sharing the connector and requirement skip it for 60 seconds. After the
-  cooldown, admit one actual attempt of the command that caused the failover;
-  its success restores the connector for the whole source requirement, and its
-  failure restarts the cooldown. Inserted backup entries and connectors without
-  a matching backup declaration remain ungated. Do not substitute a broad
-  capability probe, let another command close the gate, or retain sticky global
+  backups for the command's exact source requirement. Transport and connectivity
+  failures open a circuit shared by that connector and source requirement;
+  HTTP status, response-size, decode, JSON-RPC, missing-result, and semantic
+  failures open only the command circuit. Inserted backup entries and connectors
+  without a matching backup declaration remain ungated.
+- Open circuits skip the primary for 60 seconds. After cooldown, each circuit
+  admits at most one real primary request. Success recovers only the circuits
+  whose probes admitted that request; failure restarts the applicable cooldown.
+  Do not substitute a broad capability probe or retain sticky global
   active-provider state.
 - Connector declaration order is inventory, not fallback policy. Do not add
   numeric priorities, hidden sorting, or global connector-order fallback.
@@ -82,6 +84,11 @@ probes, and economics collection.
   leader schedules. `extended` also supplies recent performance samples,
   current block production, account reads, rent exemption, inflation rewards,
   and minimum ledger slot. `extended` satisfies a `core` requirement.
+- Configured economics reserve wallets use one required, independently routed
+  `getMultipleAccounts` command on `extended` RPC. Chunk requests at the endpoint
+  bound, preserve input order and successful-source provenance, omit a wallet
+  when its account result is null, preserve a real zero-lamport balance, and fail
+  the economics snapshot only when the command route is exhausted.
 - These are watcher-defined standard Solana JSON-RPC compatibility profiles,
   not provider product tiers. Agave `--full-rpc-api` maps to `extended`; hosted
   providers may expose the same methods alongside independent proprietary APIs.
@@ -106,6 +113,14 @@ probes, and economics collection.
   provider-API endpoint and is consumed only by the optional economics command.
   A configured route is checked against the resolved target during startup and
   reload; polling exhaustion omits only the Jito reward series.
+- `operating-costs` is independent of Solana RPC compatibility and uses its own
+  provider API endpoint. For the completed reward epoch, send `GET` with one
+  request-owned `epoch` query parameter and require the response epoch to match.
+  Bound the body to 1 MiB and the cost list to 64 entries; normalize names,
+  reject empty or duplicate names, control characters, names above 128 bytes,
+  empty lists, unknown fields, and aggregate lamport overflow. A configured
+  route is required: preserve successful-source provenance and fail the
+  economics poll when all candidates fail.
 - Validate every configured route against its declared transport, Solana RPC
   compatibility, and feature before client construction. Then verify each RPC
   connector's declaration with bounded valid method requests before the first
@@ -114,6 +129,9 @@ probes, and economics collection.
 - Required and optional execution are separate policies. Required commands
   exhaust their route and return the last causal error. Optional commands may
   exhaust their route and return absence, but every failed attempt is logged.
+- Required reserve-wallet balance collection is conditional on non-empty
+  `modes.economics.reserve_wallets`. Do not reuse the configured target's
+  identity balance or publish stale/default values when its route fails.
 - The optional consensus `cluster_nodes` command treats route exhaustion as
   unavailable. Only a successful `getClusterNodes` response may classify a
   watched identity as visible or missing, and only successful results record

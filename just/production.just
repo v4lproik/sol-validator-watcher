@@ -15,7 +15,7 @@ check env_file=".env.production":
 test-alert-delivery:
   scripts/test-alertmanager-delivery.sh {{quote(alertmanager_tool_image)}}
 
-# Run a five-clean-poll canary without replacing the production service.
+# Run a five-successful-poll canary without replacing the production service.
 canary env_file candidate:
   scripts/canary-production.sh {{quote(env_file)}} {{quote(candidate)}}
 

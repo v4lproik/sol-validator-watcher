@@ -2,7 +2,14 @@
 
 ## Unreleased
 
+- Updated the TOML parser from 1.1.8 to 1.2.1.
+- Documented dynamic completed-epoch operating-cost provider routing, the `operating-costs` feature and `commands.operating_costs` contract, bounded response validation, successful-source provenance, fail-closed polling with last-successful-snapshot retention, reset and absence semantics, and strict dashboard separation from protocol reward accounting.
+- Documented plural reserve-wallet configuration, required shared source routing, bounded `getMultipleAccounts` chunking, per-wallet missing and zero-balance semantics, successful provenance, and snapshot-reset metrics in public and repository engineering guidance.
+- Converted the Rust package into a five-member Cargo workspace with centralized package metadata, exact dependency versions, and lint policy; workspace-wide Just recipes now check, document, lint, build, test, and benchmark every member.
+- Migrated every executable GitHub Actions job from GitHub-hosted Ubuntu runners to the Namespace `namespace-profile-general-4cpu-8gb` profile and registered the custom label for local workflow linting.
+- Repositioned the GitHub README around monitoring any Solana validator by identity or vote-account public key.
 - Documented exact source-type connector backup composition, validation, non-recursive expansion, immediate requirement-scoped failover, causal-command recovery probes, cooldown failback, and transactional source-chain replacement in repository routing and runtime-configuration guidance.
+- Documented typed command-versus-source-requirement failover classification, generation-safe recovery probes, fallback-ready admission, independent degradation, transactional circuit reset, and updated the production canary to verify the successful-poll metric.
 - Documented bounded watched-validator account-balance batching, per-validator absence semantics, configured-target fail-closure, target-only economics alert inputs, and snapshot-owned watched-validator funding metric invariants in repository engineering guidance.
 - Documented the single-network Grafana selection and exact-matcher invariant in repository engineering guidance.
 - Documented bounded Trillium validator-reward collection, conditional revalidation, basis-point commission conversion, independent upstream values, snapshot-reset metrics, dashboard no-data semantics, and the Mainnet profile that publishes the Trillium data.
@@ -40,4 +47,4 @@
 - Documented mode source requirements and secret-safe verification for complete credential-bearing provider URLs.
 - Documented command implementation ownership, core/extended standard Solana RPC compatibility, independent provider API surfaces, valid method-specific probes, and transactional reload verification in the repository engineering guidance.
 - Extended the opt-in Surfpool smoke to verify the connector's declared standard Solana RPC compatibility against the live local endpoint before collecting a snapshot.
-- Documented five-round readiness admission, process-liveness separation, bounded RPC failure and HTTP response status telemetry, and the required runtime smoke boundary.
+- Documented five-round complete-snapshot readiness admission, process-liveness separation, independent source degradation, bounded RPC failure and HTTP response status telemetry, and the required runtime smoke boundary.
