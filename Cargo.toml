@@ -10,7 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 anyhow = "=1.0.104"
 axum = "=0.8.9"
-clap = { version = "=4.6.7", features = ["derive"] }
+clap = { version = "=4.6.9", features = ["derive"] }
 criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
 prometheus = "=0.14.0"
 reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls"] }
